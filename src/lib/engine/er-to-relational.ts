@@ -1,4 +1,4 @@
-import type { ERDiagram, EREntity, ERAttribute, ERRelationship } from '@/types/er-diagram';
+import type { ERDiagram, EREntity, ERAttribute } from '@/types/er-diagram';
 import type { Column, TableSchema } from '@/types/database';
 
 export function erToRelational(diagram: ERDiagram): TableSchema[] {

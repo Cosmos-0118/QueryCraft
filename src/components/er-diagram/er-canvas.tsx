@@ -16,11 +16,16 @@ import { useERStore } from '@/stores/er-store';
 import { EntityNode } from './entity-node';
 import { AttributeNode } from './attribute-node';
 import { RelationshipNode } from './relationship-node';
+import { FloatingEdge } from './floating-edge';
 
 const nodeTypes = {
   entity: EntityNode,
   attribute: AttributeNode,
   relationship: RelationshipNode,
+};
+
+const edgeTypes = {
+  floating: FloatingEdge,
 };
 
 export function ERCanvas() {
@@ -77,18 +82,18 @@ export function ERCanvas() {
 
   const edges = useMemo<Edge[]>(() => {
     const e: Edge[] = [];
-    // Attribute → Entity — subtle straight lines
+    // Attribute → Entity — subtle floating lines (shortest path)
     for (const attr of store.attributes) {
       e.push({
         id: `attr-${attr.id}-${attr.entityId}`,
         source: attr.entityId,
         target: attr.id,
-        type: 'straight',
+        type: 'floating',
         style: { stroke: 'rgba(113,113,122,0.3)', strokeWidth: 1 },
         animated: false,
       });
     }
-    // Relationship → Entities — prominent straight lines with labels
+    // Relationship → Entities — prominent floating lines with labels
     for (const rel of store.relationships) {
       const [e1, e2] = rel.entities;
       const labelParts = rel.cardinality.split(':');
@@ -96,7 +101,7 @@ export function ERCanvas() {
         id: `rel-${rel.id}-${e1}`,
         source: e1,
         target: rel.id,
-        type: 'straight',
+        type: 'floating',
         label: labelParts[0],
         labelBgPadding: [6, 3] as [number, number],
         labelBgBorderRadius: 4,
@@ -108,7 +113,7 @@ export function ERCanvas() {
         id: `rel-${rel.id}-${e2}`,
         source: rel.id,
         target: e2,
-        type: 'straight',
+        type: 'floating',
         label: labelParts[1],
         labelBgPadding: [6, 3] as [number, number],
         labelBgBorderRadius: 4,
@@ -168,6 +173,7 @@ export function ERCanvas() {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         fitView
         fitViewOptions={{ padding: 0.3 }}
@@ -175,6 +181,9 @@ export function ERCanvas() {
         onNodesDelete={(deleted) => deleted.forEach((n) => store.removeNode(n.id))}
         minZoom={0.15}
         maxZoom={2.5}
+        nodeDragThreshold={1}
+        selectNodesOnDrag={false}
+        nodesFocusable
         proOptions={{ hideAttribution: true }}
       >
         <Background

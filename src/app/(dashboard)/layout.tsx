@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRef, useState, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { useAuth } from '@/hooks/use-auth';
-import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore, type AppearanceMode, type ColorTheme } from '@/stores/theme-store';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,

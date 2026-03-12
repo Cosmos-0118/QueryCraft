@@ -154,7 +154,7 @@ export function evaluateAlgebra(
 // Simple condition evaluator supporting: =, !=, <, >, <=, >=, AND, OR
 function evalCondition(cond: string, row: Row): boolean {
   // Replace column references with values
-  let expr = cond;
+  const expr = cond;
 
   // Handle AND/OR
   if (/\bAND\b/i.test(expr)) {

@@ -90,8 +90,8 @@ export const AttributeNode = memo(function AttributeNode({ data, selected }: Nod
           {label}
         </span>
 
-        <Handle type="target" position={Position.Left} className="!h-1.5 !w-1.5 !rounded-full !border-0 !bg-zinc-500" />
-        <Handle type="source" position={Position.Right} id="right" className="!h-1.5 !w-1.5 !rounded-full !border-0 !bg-zinc-500" />
+        <Handle type="target" position={Position.Left} isConnectable={false} className="!h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0" />
+        <Handle type="source" position={Position.Right} id="right" isConnectable={false} className="!h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0" />
       </div>
     </div>
   );

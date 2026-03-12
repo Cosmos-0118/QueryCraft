@@ -1,5 +1,4 @@
 export default function LessonPage({
-  params,
 }: {
   params: Promise<{ topicSlug: string; lessonSlug: string }>;
 }) {

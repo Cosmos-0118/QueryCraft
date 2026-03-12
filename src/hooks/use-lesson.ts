@@ -10,6 +10,6 @@ export function useLesson() {
     next: () => {},
     prev: () => {},
     togglePlay: () => {},
-    goToStep: (_index: number) => {},
+    goToStep: () => {},
   };
 }

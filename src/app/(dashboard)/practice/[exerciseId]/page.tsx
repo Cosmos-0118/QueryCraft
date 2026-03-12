@@ -1,5 +1,4 @@
 export default function ExercisePage({
-  params,
 }: {
   params: Promise<{ exerciseId: string }>;
 }) {

@@ -1,4 +1,4 @@
-export default function TopicPage({ params }: { params: Promise<{ topicSlug: string }> }) {
+export default function TopicPage({}: { params: Promise<{ topicSlug: string }> }) {
   return (
     <div>
       <h1 className="text-3xl font-bold">Topic Lessons</h1>

@@ -130,7 +130,7 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
     if (result.error) { setError(result.error); return; }
 
     for (const row of rows) {
-      const vals = validCols.map((c, ci) => {
+      const vals = validCols.map((c) => {
         const colIdx = columns.indexOf(c);
         const v = row[colIdx]?.trim() ?? '';
         if (!v) return 'NULL';

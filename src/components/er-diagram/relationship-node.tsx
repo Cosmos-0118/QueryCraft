@@ -50,11 +50,11 @@ export const RelationshipNode = memo(function RelationshipNode({ data, selected 
         </span>
       </div>
 
-      {/* Handles — positioned at diamond tips, invisible (only for edge connections) */}
-      <Handle type="target" position={Position.Left} className="!-left-0.5 !h-1.5 !w-1.5 !rounded-full !border-0 !bg-violet-400/60" />
-      <Handle type="source" position={Position.Right} className="!-right-0.5 !h-1.5 !w-1.5 !rounded-full !border-0 !bg-violet-400/60" />
-      <Handle type="target" position={Position.Top} id="top" className="!-top-0.5 !h-1.5 !w-1.5 !rounded-full !border-0 !bg-violet-400/60" />
-      <Handle type="source" position={Position.Bottom} id="bottom" className="!-bottom-0.5 !h-1.5 !w-1.5 !rounded-full !border-0 !bg-violet-400/60" />
+      {/* Handles — invisible, only for React Flow edge routing */}
+      <Handle type="target" position={Position.Left} isConnectable={false} className="!h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0" />
+      <Handle type="source" position={Position.Right} isConnectable={false} className="!h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0" />
+      <Handle type="target" position={Position.Top} id="top" isConnectable={false} className="!h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0" />
+      <Handle type="source" position={Position.Bottom} id="bottom" isConnectable={false} className="!h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0" />
     </div>
   );
 });

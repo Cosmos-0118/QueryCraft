@@ -62,11 +62,11 @@ export const EntityNode = memo(function EntityNode({ data, selected }: NodeProps
         </div>
       </div>
 
-      {/* Handles — small dots for edge connections */}
-      <Handle type="source" position={Position.Right} className={`!h-1.5 !w-1.5 !rounded-full !border-0 ${isWeak ? '!bg-amber-400/60' : '!bg-violet-400/60'}`} />
-      <Handle type="target" position={Position.Left} className={`!h-1.5 !w-1.5 !rounded-full !border-0 ${isWeak ? '!bg-amber-400/60' : '!bg-violet-400/60'}`} />
-      <Handle type="source" position={Position.Bottom} id="bottom" className={`!h-1.5 !w-1.5 !rounded-full !border-0 ${isWeak ? '!bg-amber-400/60' : '!bg-violet-400/60'}`} />
-      <Handle type="target" position={Position.Top} id="top" className={`!h-1.5 !w-1.5 !rounded-full !border-0 ${isWeak ? '!bg-amber-400/60' : '!bg-violet-400/60'}`} />
+      {/* Handles — invisible, only for React Flow edge routing */}
+      <Handle type="source" position={Position.Right} isConnectable={false} className="!h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0" />
+      <Handle type="target" position={Position.Left} isConnectable={false} className="!h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0" />
+      <Handle type="source" position={Position.Bottom} id="bottom" isConnectable={false} className="!h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0" />
+      <Handle type="target" position={Position.Top} id="top" isConnectable={false} className="!h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0" />
     </div>
   );
 });
