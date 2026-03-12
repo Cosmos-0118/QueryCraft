@@ -857,21 +857,21 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 
 > Build the interactive SQL playground with in-browser execution.
 
-- [ ] Set up sql.js (WASM) integration (`lib/engine/sql-executor.ts`)
-- [ ] Build `useSqlEngine` hook (init, execute, get tables, reset)
-- [ ] Build SQL editor component with CodeMirror 6 (`sandbox/sql-editor.tsx`)
+- [x] Set up sql.js (WASM) integration (`lib/engine/sql-executor.ts`)
+- [x] Build `useSqlEngine` hook (init, execute, get tables, reset)
+- [x] Build SQL editor component with CodeMirror 6 (`sandbox/sql-editor.tsx`)
   - Syntax highlighting, autocomplete (tables, columns, keywords)
   - Execute on Ctrl+Enter / Cmd+Enter
-- [ ] Build schema browser sidebar (`sandbox/schema-browser.tsx`)
-- [ ] Build data generator dialog (`sandbox/data-generator-dialog.tsx`)
+- [x] Build schema browser sidebar (`sandbox/schema-browser.tsx`)
+- [x] Build data generator dialog (`sandbox/data-generator-dialog.tsx`)
   - Table name, number of rows, column definitions
   - Auto-generate with Faker.js or manual entry
-- [ ] Build query history component (`sandbox/query-history.tsx`)
-- [ ] Build the sandbox page combining all components
-- [ ] Build Zustand sandbox store (tables, query, results, history)
-- [ ] Implement CSV export for query results
-- [ ] Pre-load sample datasets (one-click load University, Banking, etc.)
-- [ ] Build `lib/engine/data-generator.ts` using Faker.js
+- [x] Build query history component (`sandbox/query-history.tsx`)
+- [x] Build the sandbox page combining all components
+- [x] Build Zustand sandbox store (tables, query, results, history)
+- [x] Implement CSV export for query results
+- [x] Pre-load sample datasets (one-click load University, Banking, etc.)
+- [x] Build `lib/engine/data-generator.ts` using Faker.js
 - [ ] Write sql-executor unit tests
 
 **Output:** Students can create tables, generate data, write SQL, and see visual results — all in-browser.
@@ -882,17 +882,17 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 
 > Build the algebra expression parser, evaluator, and visual step-through.
 
-- [ ] Build algebra tokenizer (`lib/engine/algebra-parser.ts`) — tokenize σ, π, ⋈, ∪, −, ×, ρ
-- [ ] Build algebra parser — expression → AST (operation tree)
-- [ ] Build algebra evaluator (`lib/engine/algebra-evaluator.ts`) — evaluate AST against in-memory tables
-- [ ] Build symbol palette UI (`algebra/symbol-palette.tsx`)
-- [ ] Build expression input (`algebra/algebra-input.tsx`) — text input + symbol insertion
-- [ ] Build expression tree visualization (`algebra/expression-tree.tsx`) — SVG/canvas tree
-- [ ] Build intermediate result display (`algebra/intermediate-result.tsx`) — table at each tree node
-- [ ] Build algebra-to-SQL converter (`algebra/algebra-to-sql.tsx`) — shows equivalent SQL
-- [ ] Build the algebra page combining all components
-- [ ] Build Zustand algebra store
-- [ ] Integrate with visual engine (table-viewer, table-diff, step-navigator)
+- [x] Build algebra tokenizer (`lib/engine/algebra-parser.ts`) — tokenize σ, π, ⋈, ∪, −, ×, ρ
+- [x] Build algebra parser — expression → AST (operation tree)
+- [x] Build algebra evaluator (`lib/engine/algebra-evaluator.ts`) — evaluate AST against in-memory tables
+- [x] Build symbol palette UI (`algebra/symbol-palette.tsx`)
+- [x] Build expression input (`algebra/algebra-input.tsx`) — text input + symbol insertion
+- [x] Build expression tree visualization (`algebra/expression-tree.tsx`) — SVG/canvas tree
+- [x] Build intermediate result display (`algebra/intermediate-result.tsx`) — table at each tree node
+- [x] Build algebra-to-SQL converter (`algebra/algebra-to-sql.tsx`) — shows equivalent SQL
+- [x] Build the algebra page combining all components
+- [x] Build Zustand algebra store
+- [x] Integrate with visual engine (table-viewer, table-diff, step-navigator)
 - [ ] Write parser + evaluator unit tests
 
 **Output:** Students type relational algebra, see it parsed into a tree, evaluated step by step, with table diffs at each node.
@@ -903,18 +903,18 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 
 > Build the drag-and-drop ER diagram tool with auto-conversion to relational tables.
 
-- [ ] Set up React Flow canvas (`er-diagram/er-canvas.tsx`)
-- [ ] Build entity node component (rectangle, supports renaming)
-- [ ] Build weak entity node (double border)
-- [ ] Build relationship node (diamond shape)
-- [ ] Build attribute node (oval, with variants: key, multivalued, derived, composite)
-- [ ] Build cardinality edge labels (1:1, 1:N, M:N)
-- [ ] Build ER toolbar (add entity, relationship, attribute, delete, export as PNG)
-- [ ] Build ER-to-relational conversion engine (`lib/engine/er-to-relational.ts`)
-- [ ] "Convert to Tables" button — generates relational schema from ER diagram
-- [ ] Display generated tables using `table-viewer`
-- [ ] Pre-built ER diagrams for case studies (University, Banking)
-- [ ] Build Zustand ER store (nodes, edges, diagram state)
+- [x] Set up React Flow canvas (`er-diagram/er-canvas.tsx`)
+- [x] Build entity node component (rectangle, supports renaming)
+- [x] Build weak entity node (double border)
+- [x] Build relationship node (diamond shape)
+- [x] Build attribute node (oval, with variants: key, multivalued, derived, composite)
+- [x] Build cardinality edge labels (1:1, 1:N, M:N)
+- [x] Build ER toolbar (add entity, relationship, attribute, delete, export as PNG)
+- [x] Build ER-to-relational conversion engine (`lib/engine/er-to-relational.ts`)
+- [x] "Convert to Tables" button — generates relational schema from ER diagram
+- [x] Display generated tables using `table-viewer`
+- [x] Pre-built ER diagrams for case studies (University, Banking)
+- [x] Build Zustand ER store (nodes, edges, diagram state)
 - [ ] Write ER conversion unit tests
 
 **Output:** Students build ER diagrams visually and auto-generate relational tables.
@@ -925,18 +925,18 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 
 > Build the normalization analysis engine and step-by-step decomposition UI.
 
-- [ ] Build normalizer engine (`lib/engine/normalizer-engine.ts`):
+- [x] Build normalizer engine (`lib/engine/normalizer-engine.ts`):
   - Compute attribute closure
   - Find candidate keys
   - Detect current normal form (UNF through 5NF)
   - Decompose to target NF (e.g., 1NF → 2NF → 3NF)
-- [ ] Build FD input component (`normalizer/fd-input.tsx`) — add/remove functional dependencies
-- [ ] Build dependency diagram (`normalizer/dependency-diagram.tsx`) — arrows from determinant to dependent
-- [ ] Build normal form badge (`normalizer/normal-form-badge.tsx`) — colored badge (UNF=red, 1NF=orange, etc.)
-- [ ] Build decomposition stepper (`normalizer/decomposition-stepper.tsx`) — animated table splitting
-- [ ] Build anomaly demo (`normalizer/anomaly-demo.tsx`) — interactive insert/update/delete anomaly
-- [ ] Build the normalizer page combining all components
-- [ ] Build Zustand normalizer store
+- [x] Build FD input component (`normalizer/fd-input.tsx`) — add/remove functional dependencies
+- [x] Build dependency diagram (`normalizer/dependency-diagram.tsx`) — arrows from determinant to dependent
+- [x] Build normal form badge (`normalizer/normal-form-badge.tsx`) — colored badge (UNF=red, 1NF=orange, etc.)
+- [x] Build decomposition stepper (`normalizer/decomposition-stepper.tsx`) — animated table splitting
+- [x] Build anomaly demo (`normalizer/anomaly-demo.tsx`) — interactive insert/update/delete anomaly
+- [x] Build the normalizer page combining all components
+- [x] Build Zustand normalizer store
 - [ ] Write normalizer engine unit tests (critical: closure, candidate keys, NF detection)
 
 **Output:** Students input a table + FDs, see the current NF, watch step-by-step decomposition with anomaly demos.
