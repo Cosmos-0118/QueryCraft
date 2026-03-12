@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# QueryCraft
+
+An interactive, browser-based platform for learning database concepts — SQL, relational algebra, ER diagrams, and normalization — with step-by-step visual execution. Everything runs client-side; no server or database required.
+
+## Features
+
+- **SQL Sandbox** — Write and execute SQL in-browser using sql.js (WebAssembly SQLite). Schema browser, query history, CSV export.
+- **Relational Algebra** — Parse, visualize, and evaluate expressions (σ, π, ⋈, ∪, −, ×, ρ) with animated step-through and algebra-to-SQL conversion.
+- **ER Diagram Builder** — Drag-and-drop entity-relationship diagrams with React Flow. Auto-convert ER models to relational tables.
+- **Normalization Wizard** — Input functional dependencies, detect normal forms (1NF–5NF), and watch step-by-step decomposition with anomaly demos.
+- **Table Generator** — Define schemas and generate realistic data using 40+ semantic patterns (names, emails, GPAs, salaries, etc.) powered by Faker.js.
+- **SQL Reference** — Searchable command reference covering DDL, DML, constraints, joins, subqueries, set operations, PL/SQL, DCL, relational algebra, and normalization.
+
+## Tech Stack
+
+| Layer     | Technology                             |
+| --------- | -------------------------------------- |
+| Framework | Next.js (App Router, TypeScript)       |
+| Styling   | Tailwind CSS, shadcn/ui, Framer Motion |
+| SQL       | sql.js (WASM — in-browser SQLite)      |
+| Diagrams  | React Flow (@xyflow/react)             |
+| Editor    | CodeMirror 6                           |
+| State     | Zustand (persisted to localStorage)    |
+| Data Gen  | @faker-js/faker                        |
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+git clone https://github.com/Cosmos-0118/QueryCraft.git
+cd QueryCraft
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). No environment variables needed.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deployment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Deploy as a static-capable Next.js app on [Vercel](https://vercel.com) (recommended) or any platform that supports Next.js. No server-side resources required.
 
-## Learn More
+## License
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT

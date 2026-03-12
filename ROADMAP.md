@@ -11,13 +11,10 @@
 3. [Tech Stack](#3-tech-stack)
 4. [Architecture Overview](#4-architecture-overview)
 5. [File Structure](#5-file-structure)
-6. [Database Schema](#6-database-schema)
-7. [Security Model](#7-security-model)
-8. [Syllabus Coverage Map](#8-syllabus-coverage-map)
-9. [Sample Datasets](#9-sample-datasets)
-10. [Development Phases](#10-development-phases)
-11. [API Endpoints](#11-api-endpoints)
-12. [Future Enhancements](#12-future-enhancements)
+6. [Syllabus Coverage Map](#6-syllabus-coverage-map)
+7. [Sample Datasets](#7-sample-datasets)
+8. [Development Phases](#8-development-phases)
+9. [Future Enhancements](#9-future-enhancements)
 
 ---
 
@@ -50,11 +47,9 @@ A web platform with **two primary modes**:
 
 ### 2.1 Authentication & Accounts
 
-- Email/password registration and login (no OAuth for now)
-- Argon2id password hashing (memory-hard, GPU-resistant)
-- JWT access tokens (short-lived, 15 min) + HTTP-only refresh tokens (7 days)
-- CSRF protection on all mutating endpoints
-- Account lockout after 5 failed login attempts (15 min cooldown)
+- Email/password registration and login
+- Client-side password hashing (SHA-256 via Web Crypto API)
+- All account data stored in localStorage (no server required)
 
 ### 2.2 Guided Learning Engine
 
@@ -107,23 +102,19 @@ A web platform with **two primary modes**:
 
 ## 3. Tech Stack
 
-| Layer                  | Technology                                    | Why                                                         |
-| ---------------------- | --------------------------------------------- | ----------------------------------------------------------- |
-| **Framework**          | Next.js 14+ (App Router, TypeScript)          | SSR, file-based routing, API routes, excellent DX           |
-| **UI Library**         | Tailwind CSS + shadcn/ui                      | Clean, accessible, customizable components                  |
-| **Animations**         | Framer Motion                                 | Smooth table transitions, step animations                   |
-| **Diagrams**           | React Flow                                    | Battle-tested library for node-based ER diagrams            |
-| **SQL Editor**         | CodeMirror 6                                  | Lightweight, extensible, syntax highlighting + autocomplete |
-| **Client SQL Engine**  | sql.js (SQLite WASM)                          | Execute SQL in-browser, zero server cost, instant results   |
-| **State Management**   | Zustand                                       | Minimal boilerplate, great for sandbox state                |
-| **Forms & Validation** | React Hook Form + Zod                         | Type-safe validation on client and server                   |
-| **Database**           | PostgreSQL (Aiven)                            | Application data: users, auth, sessions                     |
-| **ORM**                | Drizzle ORM                                   | Type-safe, lightweight, great migration support             |
-| **Auth Hashing**       | Argon2id (via argon2 npm)                     | Memory-hard hashing, OWASP recommended                      |
-| **Rate Limiting**      | Custom token-bucket (in-memory + DB fallback) | Prevent brute force, no Redis dependency needed initially   |
-| **Fake Data**          | @faker-js/faker                               | Generate realistic sample data for tables                   |
-| **Testing**            | Vitest + Playwright                           | Unit tests + E2E tests                                      |
-| **Deployment**         | Vercel                                        | Native Next.js support, edge functions, global CDN          |
+| Layer                  | Technology                          | Why                                                         |
+| ---------------------- | ----------------------------------- | ----------------------------------------------------------- |
+| **Framework**          | Next.js (App Router, TypeScript)    | File-based routing, excellent DX                            |
+| **UI Library**         | Tailwind CSS + shadcn/ui            | Clean, accessible, customizable components                  |
+| **Animations**         | Framer Motion                       | Smooth table transitions, step animations                   |
+| **Diagrams**           | React Flow (@xyflow/react)          | Battle-tested library for node-based ER diagrams            |
+| **SQL Editor**         | CodeMirror 6                        | Lightweight, extensible, syntax highlighting + autocomplete |
+| **Client SQL Engine**  | sql.js (SQLite WASM)                | Execute SQL in-browser, zero server cost, instant results   |
+| **State Management**   | Zustand (persisted to localStorage) | Minimal boilerplate, great for sandbox state                |
+| **Forms & Validation** | React Hook Form + Zod               | Type-safe client-side validation                            |
+| **Fake Data**          | @faker-js/faker                     | Generate realistic sample data for tables                   |
+| **Testing**            | Vitest                              | Unit tests                                                  |
+| **Deployment**         | Vercel                              | Native Next.js support, global CDN                          |
 
 ---
 
@@ -148,40 +139,21 @@ A web platform with **two primary modes**:
 │  │   sql.js (WASM)  ·  algebra-engine  ·  normalizer-engine │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                                                                 │
-└─────────────────────────────┬───────────────────────────────────┘
-                              │ HTTPS (Auth, Sessions)
-┌─────────────────────────────▼───────────────────────────────────┐
-│                     SERVER (Next.js API Routes)                 │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │              Persistence (localStorage via Zustand)      │   │
+│  │   auth · sandbox · lessons · algebra · normalizer · ER   │   │
+│  └──────────────────────────────────────────────────────────┘   │
 │                                                                 │
-│  ┌────────────┐  ┌────────────────────────┐                     │
-│  │  Auth API  │  │  Session Persistence   │                     │
-│  │  (Argon2)  │  │  (Save/Load State)     │                     │
-│  └─────┬──────┘  └──────┬───────┘  └───────────┬────────────┘   │
-│        │                │                      │                │
-│  ┌─────▼────────────────▼──────────────────────▼────────────┐   │
-│  │           Security Layer                                 │   │
-│  │  rate-limiter · CSRF · input-sanitizer · auth-guards     │   │
-│  └─────────────────────────┬────────────────────────────────┘   │
-│                            │                                    │
-└────────────────────────────┼────────────────────────────────────┘
-                             │
-                    ┌────────▼────────┐
-                    │   PostgreSQL    │
-                    │   (Aiven)       │
-                    │                 │
-                    │  users          │
-                    │  sessions       │
-                    │  sandbox_states │
-                    └─────────────────┘
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Key Architecture Decision:** SQL execution happens **entirely client-side** via sql.js (SQLite in WebAssembly). This means:
+**Key Architecture Decision:** The entire application runs **client-side**. This means:
 
-- No risk of SQL injection against the real database
-- No server load for student queries
-- Instant execution (no network round-trip)
+- SQL execution via sql.js (SQLite in WebAssembly) — no server needed
+- No network round-trips for queries — instant execution
 - Each student gets a fully isolated environment
-- The Aiven PostgreSQL database is used **only** for application data (users, auth, sessions)
+- All state (auth, sessions, progress) persisted to localStorage
+- No database, no API routes, no environment variables required
 
 ---
 
@@ -235,24 +207,6 @@ QueryCraft/
 │   │   │   │
 │   │   │   └── settings/                     # ── User Settings ──
 │   │   │       └── page.tsx                  # Profile, password change, theme, data export
-│   │   │
-│   │   └── api/                              # ── API Routes ──
-│   │       ├── auth/
-│   │       │   ├── register/
-│   │       │   │   └── route.ts              # POST — create account
-│   │       │   ├── login/
-│   │       │   │   └── route.ts              # POST — authenticate, return tokens
-│   │       │   ├── logout/
-│   │       │   │   └── route.ts              # POST — invalidate refresh token
-│   │       │   └── refresh/
-│   │       │       └── route.ts              # POST — rotate access token
-│   │       ├── users/
-│   │       │   └── me/
-│   │       │       └── route.ts              # GET/PATCH — current user profile
-│   │       └── sessions/
-│   │           ├── route.ts                  # GET/POST — list/create saved sessions
-│   │           └── [sessionId]/
-│   │               └── route.ts              # GET/PUT/DELETE — manage a saved session
 │   │
 │   ├── components/                           # ── React Components ──
 │   │   ├── ui/                               # shadcn/ui primitives (auto-generated)
@@ -319,7 +273,6 @@ QueryCraft/
 │   │   ├── sandbox/                          # ── SQL Sandbox Components ──
 │   │   │   ├── sql-editor.tsx                # CodeMirror editor with SQL highlighting
 │   │   │   ├── schema-browser.tsx            # Sidebar: current tables, columns, types
-│   │   │   ├── data-generator-dialog.tsx     # Dialog: table name, rows, cols, auto/manual
 │   │   │   └── query-history.tsx             # Scrollable list of past queries
 │   │   │
 │   │   ├── dashboard/                        # ── Dashboard Components ──
@@ -333,24 +286,6 @@ QueryCraft/
 │   │       └── empty-state.tsx               # Empty state illustrations
 │   │
 │   ├── lib/                                  # ── Core Libraries & Business Logic ──
-│   │   ├── db/                               # Database layer
-│   │   │   ├── index.ts                      # Drizzle client initialization (Aiven connection)
-│   │   │   ├── schema.ts                     # All table definitions (users, sessions, rate limits)
-│   │   │   └── migrations/                   # Auto-generated migration SQL files
-│   │   │       └── 0000_initial.sql
-│   │   │
-│   │   ├── auth/                             # Authentication logic
-│   │   │   ├── crypto.ts                     # Argon2id hash/verify, secure token generation
-│   │   │   ├── tokens.ts                     # JWT creation/verification, refresh token rotation
-│   │   │   ├── session.ts                    # Session management (create, validate, destroy)
-│   │   │   └── guards.ts                     # Middleware: requireAuth, requireGuest
-│   │   │
-│   │   ├── security/                         # Security utilities
-│   │   │   ├── rate-limiter.ts               # Token-bucket rate limiter (per IP + per user)
-│   │   │   ├── input-sanitizer.ts            # XSS prevention, input length limits
-│   │   │   ├── csrf.ts                       # CSRF token generation and validation
-│   │   │   └── headers.ts                    # Security headers (CSP, HSTS, X-Frame-Options...)
-│   │   │
 │   │   ├── engine/                           # ── Computation Engines (client-importable) ──
 │   │   │   ├── sql-executor.ts               # sql.js wrapper: init WASM, exec query, get tables
 │   │   │   ├── algebra-parser.ts             # Tokenizer + parser for relational algebra syntax
@@ -407,12 +342,14 @@ QueryCraft/
 │   │   ├── use-session-persistence.ts        # Auto-save and restore sandbox/lesson state
 │   │   └── use-debounce.ts                   # Debounce utility hook
 │   │
-│   ├── stores/                               # ── Zustand Stores ──
-│   │   ├── auth-store.ts                     # User object, tokens, auth status
+│   ├── stores/                               # ── Zustand Stores (all persisted to localStorage) ──
+│   │   ├── auth-store.ts                     # Client-side auth (SHA-256, localStorage)
 │   │   ├── sandbox-store.ts                  # Current tables, query, results, history
 │   │   ├── lesson-store.ts                   # Current lesson, step index, playback state
 │   │   ├── algebra-store.ts                  # Current expression, tree, evaluation state
 │   │   ├── normalizer-store.ts               # Table, FDs, current NF, decomposition steps
+│   │   ├── generator-store.ts                # Table generator definitions and state
+│   │   ├── er-store.ts                       # ER diagram nodes, edges, diagram state
 │   │   └── theme-store.ts                    # Dark/light mode preference
 │   │
 │   ├── types/                                # ── TypeScript Type Definitions ──
@@ -427,177 +364,33 @@ QueryCraft/
 │       └── animations.css                    # Custom keyframe animations for table transitions
 │
 ├── seed/                                     # ── Seed Data & Datasets ──
-│   ├── seed.ts                               # Main seed script (run with tsx)
-│   ├── datasets/
-│   │   ├── university.json                   # Students, courses, enrollments, departments
-│   │   ├── banking.json                      # Accounts, transactions, branches, customers
-│   │   ├── ecommerce.json                    # Products, orders, customers, categories
-│   │   ├── library.json                      # Books, members, loans, authors
-│   │   └── hospital.json                     # Patients, doctors, appointments, departments
+│   └── datasets/
+│       ├── university.json                   # Students, courses, enrollments, departments
+│       └── banking.json                      # Accounts, transactions, branches, customers
 ├── tests/                                    # ── Test Suite ──
-│   ├── unit/
-│   │   ├── algebra-parser.test.ts
-│   │   ├── algebra-evaluator.test.ts
-│   │   ├── normalizer-engine.test.ts
-│   │   ├── sql-executor.test.ts
-│   │   ├── data-generator.test.ts
-│   │   ├── crypto.test.ts
-│   │   └── validators.test.ts
-│   ├── integration/
-│   │   ├── auth-api.test.ts
-│   │   └── sessions-api.test.ts
-│   └── e2e/
-│       ├── auth-flow.spec.ts
-│       ├── sandbox.spec.ts
-│       └── guided-lesson.spec.ts
+│   └── unit/
+│       ├── session-persistence.test.ts
+│       └── validators.test.ts
 │
 ├── docs/                                     # ── Documentation ──
 │   ├── SECURITY.md                           # Security model documentation
 │   ├── API.md                                # API endpoint documentation
 │   └── CONTRIBUTING.md                       # Contribution guidelines
 │
-├── .env.example                              # Template for environment variables
 ├── .eslintrc.json
 ├── .gitignore
-├── .prettierrc
-├── drizzle.config.ts                         # Drizzle ORM configuration
 ├── next.config.ts                            # Next.js configuration
 ├── package.json
-├── postcss.config.js
-├── tailwind.config.ts
+├── postcss.config.mjs
 ├── tsconfig.json
 ├── vitest.config.ts                          # Vitest test configuration
-├── playwright.config.ts                      # Playwright E2E configuration
 ├── ROADMAP.md                                # ← You are here
-├── README.md
-└── TheIdea.txt
+└── README.md
 ```
 
 ---
 
-## 6. Database Schema
-
-The Aiven PostgreSQL database stores **application data only** (not student SQL sandbox data).
-
-```sql
--- ==================== USERS ====================
-CREATE TABLE users (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email           VARCHAR(255) UNIQUE NOT NULL,
-    password_hash   TEXT NOT NULL,                    -- Argon2id hash
-    display_name    VARCHAR(100) NOT NULL,
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ DEFAULT NOW(),
-    is_locked       BOOLEAN DEFAULT FALSE,
-    failed_attempts INT DEFAULT 0,
-    locked_until    TIMESTAMPTZ
-);
-
--- ==================== REFRESH TOKENS ====================
-CREATE TABLE refresh_tokens (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID REFERENCES users(id) ON DELETE CASCADE,
-    token_hash      TEXT NOT NULL,                    -- SHA-256 of refresh token
-    expires_at      TIMESTAMPTZ NOT NULL,
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    revoked         BOOLEAN DEFAULT FALSE
-);
-
-CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id);
-
--- ==================== SAVED SESSIONS ====================
-CREATE TABLE saved_sessions (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID REFERENCES users(id) ON DELETE CASCADE,
-    session_type    VARCHAR(50) NOT NULL,             -- "sandbox" | "algebra" | "normalizer" | "er-builder"
-    session_name    VARCHAR(200),
-    state_json      JSONB NOT NULL,                   -- Serialized state (tables, queries, etc.)
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_sessions_user ON saved_sessions(user_id);
-
--- ==================== RATE LIMITING ====================
-CREATE TABLE rate_limit_log (
-    id              BIGSERIAL PRIMARY KEY,
-    identifier      VARCHAR(255) NOT NULL,            -- IP or user:action key
-    action          VARCHAR(100) NOT NULL,             -- "login" | "register" | "submit"
-    attempted_at    TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_rate_limit ON rate_limit_log(identifier, action, attempted_at);
-```
-
----
-
-## 7. Security Model
-
-### 7.1 Password Security
-
-| Property    | Value                     |
-| ----------- | ------------------------- |
-| Algorithm   | Argon2id                  |
-| Memory cost | 64 MB                     |
-| Time cost   | 3 iterations              |
-| Parallelism | 4                         |
-| Salt        | 16 bytes (auto-generated) |
-| Hash output | 32 bytes                  |
-
-Argon2id is the OWASP-recommended hashing algorithm — it's resistant to GPU attacks, side-channel attacks, and time-memory trade-offs.
-
-### 7.2 Token Strategy
-
-```
-Access Token (JWT)
-├── Algorithm: HS256 (HMAC-SHA256)
-├── Expires: 15 minutes
-├── Payload: { sub: userId, email, iat, exp }
-├── Storage: In-memory (Zustand store, never localStorage)
-└── Sent via: Authorization: Bearer <token>
-
-Refresh Token
-├── Format: 32-byte cryptographically random hex string
-├── Storage: HTTP-only, Secure, SameSite=Strict cookie
-├── Expires: 7 days
-├── DB: Stored as SHA-256 hash (never plaintext)
-└── Rotation: New refresh token on every use, old one revoked
-```
-
-### 7.3 Rate Limiting
-
-| Endpoint                | Limit        | Window              |
-| ----------------------- | ------------ | ------------------- |
-| POST /api/auth/login    | 5 requests   | 15 minutes (per IP) |
-| POST /api/auth/register | 3 requests   | 1 hour (per IP)     |
-| All other API routes    | 100 requests | 1 minute (per user) |
-
-### 7.4 Input Validation & Sanitization
-
-- All inputs validated with **Zod** schemas at the API boundary
-- Email: RFC 5322 format, max 255 chars
-- Password: min 8 chars, max 128 chars, complexity not enforced (per NIST 800-63B)
-- Display name: max 100 chars, alphanumeric + spaces
-- All text outputs HTML-escaped (React does this by default)
-- SQL sandbox is client-side only — never touches the real database
-
-### 7.5 Security Headers (via `next.config.ts`)
-
-```
-Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval';
-X-Content-Type-Options: nosniff
-X-Frame-Options: DENY
-X-XSS-Protection: 0
-Referrer-Policy: strict-origin-when-cross-origin
-Strict-Transport-Security: max-age=31536000; includeSubDomains
-Permissions-Policy: camera=(), microphone=(), geolocation=()
-```
-
-Note: `'wasm-unsafe-eval'` is required for sql.js (WebAssembly) to function.
-
----
-
-## 8. Syllabus Coverage Map
+## 6. Syllabus Coverage Map
 
 Shows how each syllabus topic maps to a QueryCraft feature:
 
@@ -632,7 +425,7 @@ Shows how each syllabus topic maps to a QueryCraft feature:
 
 ---
 
-## 9. Sample Datasets
+## 7. Sample Datasets
 
 Pre-built datasets for guided lessons and sandbox quick-start:
 
@@ -652,75 +445,39 @@ Pre-built datasets for guided lessons and sandbox quick-start:
 - **transactions** (id, account_id, type, amount, timestamp)
 - **loans** (id, customer_id, branch_id, amount, interest_rate)
 
-### E-Commerce Database
-
-- **products** (id, name, category_id, price, stock)
-- **categories** (id, name, parent_id)
-- **customers** (id, name, email, registered_at)
-- **orders** (id, customer_id, total, status, ordered_at)
-- **order_items** (order_id, product_id, quantity, unit_price)
-
-### Library Database
-
-- **books** (id, title, author_id, isbn, genre, year)
-- **authors** (id, name, nationality, birth_year)
-- **members** (id, name, membership_type, joined_at)
-- **loans** (id, book_id, member_id, borrowed_at, due_at, returned_at)
-
-### Hospital Database
-
-- **patients** (id, name, dob, blood_type, phone)
-- **doctors** (id, name, specialization, department_id)
-- **departments** (id, name, floor, head_doctor_id)
-- **appointments** (id, patient_id, doctor_id, date, diagnosis)
-
 Each dataset comes with **50–200 rows per table**, generated via Faker.js with realistic data. Students can load any dataset into the sandbox with one click.
 
 ---
 
-## 10. Development Phases
+## 8. Development Phases
 
 ### Phase 0 — Project Foundation
 
 > Set up the development environment, install dependencies, configure tooling.
 
-- [x] Initialize Next.js 14 project with TypeScript and App Router
+- [x] Initialize Next.js project with TypeScript and App Router
 - [x] Configure Tailwind CSS + shadcn/ui
 - [x] Set up ESLint + Prettier
-- [x] Configure Drizzle ORM + Aiven PostgreSQL connection
-- [x] Create `.env.example` with all required variables
 - [x] Set up project folder structure (empty files/dirs)
-- [x] Create initial Drizzle schema + run first migration
 - [x] Set up Vitest for unit testing
 - [x] Configure security headers in `next.config.ts`
 - [x] Create landing page (hero section, feature cards, CTA)
 
-**Output:** App boots, connects to DB, landing page renders.
+**Output:** App boots, landing page renders.
 
 ---
 
-### Phase 1 — Authentication & Security
+### Phase 1 — Authentication
 
-> Build the auth system: registration, login, token management, rate limiting.
+> Build client-side auth: registration, login, localStorage persistence.
 
-- [x] Implement Argon2id hashing utilities (`lib/auth/crypto.ts`)
-- [x] Implement JWT + refresh token logic (`lib/auth/tokens.ts`)
-- [x] Build registration API (`POST /api/auth/register`)
-- [x] Build login API (`POST /api/auth/login`)
-- [x] Build logout API (`POST /api/auth/logout`)
-- [x] Build token refresh API (`POST /api/auth/refresh`)
-- [x] Implement rate limiter (`lib/security/rate-limiter.ts`)
-- [x] Implement CSRF protection (`lib/security/csrf.ts`)
-- [x] Implement input sanitizer (`lib/security/input-sanitizer.ts`)
-- [x] Build auth guard middleware (`lib/auth/guards.ts`)
+- [x] Implement client-side SHA-256 hashing via Web Crypto API
 - [x] Create login page + form component
 - [x] Create registration page + form component
-- [x] Build Zustand auth store
+- [x] Build Zustand auth store (persisted to localStorage)
 - [x] Build `useAuth` hook
-- [x] Implement account lockout after failed attempts
-- [x] Write auth unit + integration tests
 
-**Output:** Users can register, log in, stay authenticated, and be rate-limited.
+**Output:** Users can register, log in, and stay authenticated via localStorage.
 
 ---
 
@@ -729,13 +486,12 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 > Build the dashboard layout, sidebar, routing structure.
 
 - [x] Create dashboard layout (`(dashboard)/layout.tsx`) with sidebar + header
-- [x] Build sidebar with navigation links (Learn, Sandbox, Algebra, ER Builder, Normalizer, Settings)
+- [x] Build sidebar with navigation links (Learn, Sandbox, Algebra, ER Builder, Normalizer, Table Generator, Settings)
 - [x] Build header with user menu, theme toggle, breadcrumbs
 - [x] Build mobile navigation (responsive)
 - [x] Create dashboard home page (placeholder cards for now)
 - [x] Implement dark/light theme toggle with Zustand
-- [x] Create settings page (profile edit, password change, theme preference)
-- [x] Build the `GET/PATCH /api/users/me` endpoint
+- [x] Create settings page (profile edit, theme preference)
 
 **Output:** Authenticated users see a full app shell with navigation.
 
@@ -877,10 +633,9 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 
 ### Phase 9 — Session Persistence
 
-> Save/restore all user state.
+> Save/restore all user state via localStorage.
 
-- [x] Build `POST/GET/PUT/DELETE /api/sessions` — CRUD for saved sessions
-- [x] Implement session auto-save:
+- [x] Implement session auto-save (Zustand persist):
   - Sandbox: save tables, data, query history every 30s
   - Lessons: save current step on every step change
   - Algebra/Normalizer: save current state on every change
@@ -898,41 +653,19 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 - [ ] Responsive design audit — test all pages on mobile, tablet, desktop
 - [ ] Accessibility audit — keyboard navigation, screen reader labels, ARIA attributes
 - [ ] Performance audit — Lighthouse score > 90, lazy load heavy components (React Flow, CodeMirror)
-- [ ] Error handling — error boundaries, API error toasts, graceful degradation
+- [ ] Error handling — error boundaries, graceful degradation
 - [ ] Loading states — skeleton loaders for all async content
 - [ ] SEO — meta tags, Open Graph, structured data for landing page
 - [ ] Write remaining unit tests (target 80%+ coverage on engines)
-- [ ] Write E2E tests — auth flow, sandbox flow, lesson flow
 - [ ] Set up CI/CD — GitHub Actions: lint → type-check → test → build
 - [ ] Deploy to Vercel
-- [ ] Configure custom domain
-- [ ] Set up error monitoring (Sentry)
-- [ ] Write README.md with setup instructions
-- [ ] Final security review — OWASP checklist pass
+- [x] Write README.md with setup instructions
 
-**Output:** Production-ready application, deployed and monitored.
+**Output:** Production-ready application, deployed.
 
 ---
 
-## 11. API Endpoints
-
-| Method | Endpoint             | Description                 | Auth   |
-| ------ | -------------------- | --------------------------- | ------ |
-| POST   | `/api/auth/register` | Create account              | No     |
-| POST   | `/api/auth/login`    | Authenticate, return tokens | No     |
-| POST   | `/api/auth/logout`   | Revoke refresh token        | Yes    |
-| POST   | `/api/auth/refresh`  | Get new access token        | Cookie |
-| GET    | `/api/users/me`      | Get current user profile    | Yes    |
-| PATCH  | `/api/users/me`      | Update profile / password   | Yes    |
-| GET    | `/api/sessions`      | List saved sessions         | Yes    |
-| POST   | `/api/sessions`      | Create/save a session       | Yes    |
-| GET    | `/api/sessions/:id`  | Get specific saved session  | Yes    |
-| PUT    | `/api/sessions/:id`  | Update a saved session      | Yes    |
-| DELETE | `/api/sessions/:id`  | Delete a saved session      | Yes    |
-
----
-
-## 12. Future Enhancements
+## 9. Future Enhancements
 
 Ideas to explore after the core platform is complete:
 
@@ -950,36 +683,6 @@ Ideas to explore after the core platform is complete:
 | **Leaderboard**            | Gamified ranking by exercise completion and speed             |
 | **Transaction Simulator**  | Multi-user concurrent transaction visual (for Unit 5)         |
 | **SQL Dialect Toggle**     | Switch between MySQL, PostgreSQL, SQLite syntax               |
-
----
-
-## Environment Variables
-
-```env
-# .env.example
-
-# ── Database (Aiven PostgreSQL) ──
-DATABASE_URL=postgresql://user:password@host:port/dbname?sslmode=require
-
-# ── Auth ──
-JWT_SECRET=<random-64-char-hex>
-REFRESH_TOKEN_SECRET=<random-64-char-hex>
-
-# ── Argon2 Tuning ──
-ARGON2_MEMORY_COST=65536
-ARGON2_TIME_COST=3
-ARGON2_PARALLELISM=4
-
-# ── Rate Limiting ──
-RATE_LIMIT_LOGIN_MAX=5
-RATE_LIMIT_LOGIN_WINDOW_MS=900000
-RATE_LIMIT_REGISTER_MAX=3
-RATE_LIMIT_REGISTER_WINDOW_MS=3600000
-
-# ── App ──
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-NODE_ENV=development
-```
 
 ---
 
