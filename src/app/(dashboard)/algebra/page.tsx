@@ -75,7 +75,7 @@ const BANKING_EXAMPLES = [
 ];
 
 export default function AlgebraPage() {
-  const { isReady, execute, loadSQL, tables } = useSqlEngine();
+  const { isReady, execute, loadSQL, tables, refreshTables } = useSqlEngine();
   const store = useAlgebraStore();
   const [browserOpen, setBrowserOpen] = useState(false);
   const [activeDataset, setActiveDataset] = useState<string | null>(null);
@@ -268,6 +268,7 @@ export default function AlgebraPage() {
         onClose={() => setBrowserOpen(false)}
         tables={tables}
         execute={execute}
+        onRefresh={refreshTables}
       />
     </>
   );
