@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useThemeStore, type AppearanceMode, type ColorTheme } from '@/stores/theme-store';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
-  ClipboardList, TrendingUp, Settings, Sun, Moon, Monitor, Palette,
+  Settings, Sun, Moon, Monitor, Palette,
 } from 'lucide-react';
 
 const emptySubscribe = () => () => {};
@@ -26,8 +26,6 @@ const NAV_ITEMS: { label: string; href: string; icon: ReactNode }[] = [
   { label: 'Algebra', href: '/algebra', icon: <Sigma size={18} /> },
   { label: 'ER Builder', href: '/er-builder', icon: <PenTool size={18} /> },
   { label: 'Normalizer', href: '/normalizer', icon: <RefreshCw size={18} /> },
-  { label: 'Practice', href: '/practice', icon: <ClipboardList size={18} /> },
-  { label: 'Progress', href: '/progress', icon: <TrendingUp size={18} /> },
   { label: 'Settings', href: '/settings', icon: <Settings size={18} /> },
 ];
 

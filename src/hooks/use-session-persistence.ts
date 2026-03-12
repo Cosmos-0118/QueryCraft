@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
-import { useProgressStore } from '@/stores/progress-store';
+import { useEffect, useCallback } from 'react';
 
 const SESSION_KEY = 'querycraft-session';
 
@@ -10,14 +9,10 @@ export interface SessionData {
   lastTopicSlug?: string;
   lastLessonSlug?: string;
   lastLessonStep?: number;
-  lastExerciseId?: string;
   timestamp: string;
 }
 
 export function useSessionPersistence() {
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const { logActivity } = useProgressStore();
-
   const restore = useCallback((): SessionData | null => {
     try {
       const raw = localStorage.getItem(SESSION_KEY);
@@ -36,7 +31,6 @@ export function useSessionPersistence() {
           lastTopicSlug: data.lastTopicSlug ?? existing?.lastTopicSlug,
           lastLessonSlug: data.lastLessonSlug ?? existing?.lastLessonSlug,
           lastLessonStep: data.lastLessonStep ?? existing?.lastLessonStep,
-          lastExerciseId: data.lastExerciseId ?? existing?.lastExerciseId,
           timestamp: new Date().toISOString(),
         };
         localStorage.setItem(SESSION_KEY, JSON.stringify(merged));
@@ -46,18 +40,6 @@ export function useSessionPersistence() {
     },
     [restore],
   );
-
-  // Track time spent — log 1 minute every 60s while page is visible
-  useEffect(() => {
-    timerRef.current = setInterval(() => {
-      if (!document.hidden) {
-        logActivity(1);
-      }
-    }, 60_000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [logActivity]);
 
   return { save, restore };
 }

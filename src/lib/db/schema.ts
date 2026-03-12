@@ -8,7 +8,6 @@ import {
   timestamp,
   bigserial,
   jsonb,
-  uniqueIndex,
   index,
 } from 'drizzle-orm/pg-core';
 
@@ -41,31 +40,6 @@ export const refreshTokens = pgTable(
   (table) => [index('idx_refresh_tokens_user').on(table.userId)],
 );
 
-// ==================== TOPIC PROGRESS ====================
-export const progress = pgTable(
-  'progress',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    userId: uuid('user_id')
-      .references(() => users.id, { onDelete: 'cascade' })
-      .notNull(),
-    topicSlug: varchar('topic_slug', { length: 100 }).notNull(),
-    lessonSlug: varchar('lesson_slug', { length: 100 }),
-    currentStep: integer('current_step').default(0),
-    completed: boolean('completed').default(false),
-    completedAt: timestamp('completed_at', { withTimezone: true }),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-  },
-  (table) => [
-    uniqueIndex('idx_progress_user_topic_lesson').on(
-      table.userId,
-      table.topicSlug,
-      table.lessonSlug,
-    ),
-    index('idx_progress_user').on(table.userId),
-  ],
-);
-
 // ==================== SAVED SESSIONS ====================
 export const savedSessions = pgTable(
   'saved_sessions',
@@ -81,26 +55,6 @@ export const savedSessions = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
   (table) => [index('idx_sessions_user').on(table.userId)],
-);
-
-// ==================== EXERCISE SUBMISSIONS ====================
-export const exerciseSubmissions = pgTable(
-  'exercise_submissions',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    userId: uuid('user_id')
-      .references(() => users.id, { onDelete: 'cascade' })
-      .notNull(),
-    exerciseId: varchar('exercise_id', { length: 100 }).notNull(),
-    submittedAnswer: text('submitted_answer').notNull(),
-    isCorrect: boolean('is_correct').notNull(),
-    attemptNumber: integer('attempt_number').notNull().default(1),
-    submittedAt: timestamp('submitted_at', { withTimezone: true }).defaultNow(),
-  },
-  (table) => [
-    index('idx_submissions_user').on(table.userId),
-    index('idx_submissions_exercise').on(table.exerciseId),
-  ],
 );
 
 // ==================== RATE LIMITING ====================

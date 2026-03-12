@@ -13,7 +13,6 @@ interface SessionData {
   lastTopicSlug?: string;
   lastLessonSlug?: string;
   lastLessonStep?: number;
-  lastExerciseId?: string;
   timestamp: string;
 }
 
@@ -46,7 +45,6 @@ function save(data: Partial<SessionData>) {
     lastTopicSlug: data.lastTopicSlug ?? existing?.lastTopicSlug,
     lastLessonSlug: data.lastLessonSlug ?? existing?.lastLessonSlug,
     lastLessonStep: data.lastLessonStep ?? existing?.lastLessonStep,
-    lastExerciseId: data.lastExerciseId ?? existing?.lastExerciseId,
     timestamp: new Date().toISOString(),
   };
   localStorageMock.setItem(SESSION_KEY, JSON.stringify(merged));
@@ -102,14 +100,6 @@ describe('Session Persistence', () => {
     expect(result!.lastLessonStep).toBe(3);
   });
 
-  it('saves exercise session data', () => {
-    save({ lastPage: 'exercise', lastExerciseId: 'sql-005' });
-
-    const result = restore();
-    expect(result!.lastPage).toBe('exercise');
-    expect(result!.lastExerciseId).toBe('sql-005');
-  });
-
   it('defaults lastPage to / when not provided and no existing session', () => {
     save({ lastTopicSlug: 'normalization' });
 
@@ -129,99 +119,5 @@ describe('Session Persistence', () => {
     expect(new Date(second).getTime()).not.toBeNaN();
     // Second timestamp should be >= first
     expect(new Date(second).getTime()).toBeGreaterThanOrEqual(new Date(first).getTime());
-  });
-});
-
-describe('Progress Store — computeStreak', () => {
-  it('calculates streak correctly for consecutive days', () => {
-    // This is a unit test for the streak logic extracted from progress-store
-    function computeStreak(
-      activity: Record<string, { lessonsCompleted: number; exercisesSolved: number }>,
-    ) {
-      let streak = 0;
-      const today = new Date();
-      for (let i = 0; i < 365; i++) {
-        const d = new Date(today);
-        d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
-        const entry = activity[key];
-        if (entry && (entry.lessonsCompleted > 0 || entry.exercisesSolved > 0)) {
-          streak++;
-        } else if (i > 0) {
-          break;
-        }
-      }
-      return streak;
-    }
-
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const twoDaysAgo = new Date(today);
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-
-    const activity = {
-      [today.toISOString().slice(0, 10)]: { lessonsCompleted: 1, exercisesSolved: 0 },
-      [yesterday.toISOString().slice(0, 10)]: { lessonsCompleted: 0, exercisesSolved: 2 },
-      [twoDaysAgo.toISOString().slice(0, 10)]: { lessonsCompleted: 1, exercisesSolved: 1 },
-    };
-
-    expect(computeStreak(activity)).toBe(3);
-  });
-
-  it('returns 0 when no activity today', () => {
-    function computeStreak(
-      activity: Record<string, { lessonsCompleted: number; exercisesSolved: number }>,
-    ) {
-      let streak = 0;
-      const today = new Date();
-      for (let i = 0; i < 365; i++) {
-        const d = new Date(today);
-        d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
-        const entry = activity[key];
-        if (entry && (entry.lessonsCompleted > 0 || entry.exercisesSolved > 0)) {
-          streak++;
-        } else if (i > 0) {
-          break;
-        }
-      }
-      return streak;
-    }
-
-    expect(computeStreak({})).toBe(0);
-  });
-
-  it('breaks streak on gap day', () => {
-    function computeStreak(
-      activity: Record<string, { lessonsCompleted: number; exercisesSolved: number }>,
-    ) {
-      let streak = 0;
-      const today = new Date();
-      for (let i = 0; i < 365; i++) {
-        const d = new Date(today);
-        d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
-        const entry = activity[key];
-        if (entry && (entry.lessonsCompleted > 0 || entry.exercisesSolved > 0)) {
-          streak++;
-        } else if (i > 0) {
-          break;
-        }
-      }
-      return streak;
-    }
-
-    const today = new Date();
-    const threeDaysAgo = new Date(today);
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-
-    const activity = {
-      [today.toISOString().slice(0, 10)]: { lessonsCompleted: 1, exercisesSolved: 0 },
-      // gap on yesterday and day before
-      [threeDaysAgo.toISOString().slice(0, 10)]: { lessonsCompleted: 1, exercisesSolved: 0 },
-    };
-
-    expect(computeStreak(activity)).toBe(1);
   });
 });

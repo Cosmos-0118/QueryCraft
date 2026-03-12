@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import {
-  GraduationCap, Terminal, Sigma, PenTool, RefreshCw, ClipboardList,
+  GraduationCap, Terminal, Sigma, PenTool, RefreshCw,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -34,12 +34,6 @@ const features: { icon: ReactNode; title: string; description: string }[] = [
     title: 'Normalization Wizard',
     description:
       'Input a table with functional dependencies. Watch it decompose 1NF → 2NF → 3NF → BCNF with anomaly demonstrations at each step.',
-  },
-  {
-    icon: <ClipboardList size={28} className="text-primary" />,
-    title: 'Practice Exercises',
-    description:
-      'Auto-graded problems across all topics. Get instant feedback, progressive hints, and track your mastery over time.',
   },
 ];
 

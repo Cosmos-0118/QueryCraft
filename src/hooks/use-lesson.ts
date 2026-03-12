@@ -2,13 +2,11 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { useLessonStore } from '@/stores/lesson-store';
-import { useProgressStore } from '@/stores/progress-store';
 import { getLesson } from '@/lib/lessons/content';
 import { buildVisualStep, type VisualStep } from '@/lib/lessons/step-builder';
 
 export function useLesson(topicSlug: string, lessonSlug: string) {
   const store = useLessonStore();
-  const { markLessonStepComplete } = useProgressStore();
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -34,15 +32,6 @@ export function useLesson(topicSlug: string, lessonSlug: string) {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [store.isPlaying, store.playbackSpeed, store.lesson]);
-
-  // Record step completions into persistent progress store
-  useEffect(() => {
-    if (store.lesson) {
-      store.completedSteps.forEach((stepIdx) => {
-        markLessonStepComplete(topicSlug, lessonSlug, stepIdx, store.lesson!.steps.length);
-      });
-    }
-  }, [store.completedSteps, store.lesson, topicSlug, lessonSlug, markLessonStepComplete]);
 
   const currentStep: VisualStep | null =
     store.lesson && store.currentStepIndex < store.lesson.steps.length
