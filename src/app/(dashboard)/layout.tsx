@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
+import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore, type AppearanceMode, type ColorTheme } from '@/stores/theme-store';
 
 const NAV_ITEMS = [
@@ -50,11 +51,27 @@ function Breadcrumbs() {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const router = useRouter();
+  const { user, isAuthenticated, logout } = useAuth();
+  const hydrated = useAuthStore((s) => s._hasHydrated);
   const { appearance, colorTheme, setAppearance, setColorTheme } = useThemeStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (hydrated && !isAuthenticated) {
+      router.replace('/login');
+    }
+  }, [hydrated, isAuthenticated, router]);
+
+  if (!hydrated || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-background">
