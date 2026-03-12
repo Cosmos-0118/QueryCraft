@@ -343,8 +343,8 @@ export function AlgebraInput({ value, onChange, onEvaluate, tableNames = [] }: A
   };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-900/60">
-      <div className="flex items-center justify-between border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-2.5">
+    <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/60">
+      <div className="flex items-center justify-between rounded-t-xl border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-2.5">
         <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
           Expression
         </span>
