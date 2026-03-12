@@ -1,38 +1,42 @@
 import Link from 'next/link';
+import {
+  GraduationCap, Terminal, Sigma, PenTool, RefreshCw, ClipboardList,
+} from 'lucide-react';
+import type { ReactNode } from 'react';
 
-const features = [
+const features: { icon: ReactNode; title: string; description: string }[] = [
   {
-    icon: '🎯',
+    icon: <GraduationCap size={28} className="text-primary" />,
     title: 'Guided Lessons',
     description:
       'Step-by-step visual tutorials covering all 5 DBMS units. Watch tables form, queries execute, and schemas transform in real time.',
   },
   {
-    icon: '💻',
+    icon: <Terminal size={28} className="text-primary" />,
     title: 'SQL Sandbox',
     description:
       'Write and execute SQL in your browser — no server needed. Auto-generate data, see instant visual results with highlighted changes.',
   },
   {
-    icon: '🧮',
+    icon: <Sigma size={28} className="text-primary" />,
     title: 'Relational Algebra',
     description:
       'Type algebra expressions (σ, π, ⋈, ∪, −, ×, ρ), see them parsed into trees, and watch step-by-step evaluation with intermediate results.',
   },
   {
-    icon: '📐',
+    icon: <PenTool size={28} className="text-primary" />,
     title: 'ER Diagram Builder',
     description:
       'Drag-and-drop entities, relationships, and attributes. Auto-convert your ER diagram to relational tables with one click.',
   },
   {
-    icon: '🔄',
+    icon: <RefreshCw size={28} className="text-primary" />,
     title: 'Normalization Wizard',
     description:
       'Input a table with functional dependencies. Watch it decompose 1NF → 2NF → 3NF → BCNF with anomaly demonstrations at each step.',
   },
   {
-    icon: '📝',
+    icon: <ClipboardList size={28} className="text-primary" />,
     title: 'Practice Exercises',
     description:
       'Auto-graded problems across all topics. Get instant feedback, progressive hints, and track your mastery over time.',

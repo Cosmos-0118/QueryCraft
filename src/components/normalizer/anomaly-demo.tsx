@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { cn } from '@/lib/utils/helpers';
+import { Plus, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 
 interface AnomalyDemoProps {
   tableName: string;
@@ -11,9 +12,9 @@ interface AnomalyDemoProps {
 }
 
 const ANOMALY_TYPES = [
-  { key: 'insert', label: 'Insertion', icon: '➕', color: 'text-green-500' },
-  { key: 'update', label: 'Update', icon: '✏️', color: 'text-blue-500' },
-  { key: 'delete', label: 'Deletion', icon: '🗑️', color: 'text-red-500' },
+  { key: 'insert', label: 'Insertion', icon: <Plus size={14} />, color: 'text-green-500' },
+  { key: 'update', label: 'Update', icon: <Pencil size={14} />, color: 'text-blue-500' },
+  { key: 'delete', label: 'Deletion', icon: <Trash2 size={14} />, color: 'text-red-500' },
 ] as const;
 
 const EXPLANATIONS: Record<string, string> = {
@@ -53,7 +54,7 @@ export function AnomalyDemo({ tableName, columns, primaryKey, className }: Anoma
 
         {selected && (
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-sm">
-            <p className="font-medium text-amber-600">⚠️ {EXPLANATIONS[selected]}</p>
+            <p className="font-medium text-amber-600"><AlertTriangle size={14} className="inline mr-1" />{EXPLANATIONS[selected]}</p>
             <p className="mt-2 text-xs text-muted-foreground">
               Table: <span className="font-mono font-bold">{tableName}</span>({columns.join(', ')}) — 
               PK: {primaryKey.join(', ')}

@@ -1,15 +1,16 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
   Controls,
+  MiniMap,
   type Node,
   type Edge,
   type NodeChange,
-  applyNodeChanges,
   type OnNodesChange,
+  BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useERStore } from '@/stores/er-store';
@@ -25,6 +26,23 @@ const nodeTypes = {
 
 export function ERCanvas() {
   const store = useERStore();
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        store.undo();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        store.redo();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [store]);
 
   const nodes = useMemo<Node[]>(() => {
     const n: Node[] = [];
@@ -60,32 +78,44 @@ export function ERCanvas() {
 
   const edges = useMemo<Edge[]>(() => {
     const e: Edge[] = [];
-    // Attribute → Entity
+    // Attribute → Entity — subtle, thin
     for (const attr of store.attributes) {
       e.push({
-        id: `${attr.id}-${attr.entityId}`,
+        id: `attr-${attr.id}-${attr.entityId}`,
         source: attr.entityId,
         target: attr.id,
-        style: { stroke: 'var(--border)', strokeWidth: 1.5 },
+        type: 'smoothstep',
+        style: { stroke: 'rgba(113,113,122,0.35)', strokeWidth: 1.2 },
+        animated: false,
       });
     }
-    // Relationship → Entities
+    // Relationship → Entities — prominent, with labels
     for (const rel of store.relationships) {
       const [e1, e2] = rel.entities;
       const labelParts = rel.cardinality.split(':');
       e.push({
-        id: `${rel.id}-${e1}`,
+        id: `rel-${rel.id}-${e1}`,
         source: e1,
         target: rel.id,
+        type: 'smoothstep',
         label: labelParts[0],
-        style: { stroke: 'var(--border)', strokeWidth: 1.5 },
+        labelBgPadding: [8, 4] as [number, number],
+        labelBgBorderRadius: 6,
+        labelStyle: { fontWeight: 700, fontSize: 10, fill: '#d4d4d8', fontFamily: 'system-ui' },
+        labelBgStyle: { fill: '#27272a', stroke: 'rgba(63,63,70,0.5)', strokeWidth: 1 },
+        style: { stroke: 'rgba(139,92,246,0.45)', strokeWidth: 1.5 },
       });
       e.push({
-        id: `${rel.id}-${e2}`,
+        id: `rel-${rel.id}-${e2}`,
         source: rel.id,
         target: e2,
+        type: 'smoothstep',
         label: labelParts[1],
-        style: { stroke: 'var(--border)', strokeWidth: 1.5 },
+        labelBgPadding: [8, 4] as [number, number],
+        labelBgBorderRadius: 6,
+        labelStyle: { fontWeight: 700, fontSize: 10, fill: '#d4d4d8', fontFamily: 'system-ui' },
+        labelBgStyle: { fill: '#27272a', stroke: 'rgba(63,63,70,0.5)', strokeWidth: 1 },
+        style: { stroke: 'rgba(139,92,246,0.45)', strokeWidth: 1.5 },
       });
     }
     return e;
@@ -93,7 +123,6 @@ export function ERCanvas() {
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      // Handle position changes via store
       for (const change of changes) {
         if (change.type === 'position' && change.position) {
           const id = change.id;
@@ -115,18 +144,45 @@ export function ERCanvas() {
   );
 
   return (
-    <div className="h-[500px] rounded-lg border border-border bg-card">
+    <div
+      ref={wrapperRef}
+      className="er-canvas-wrapper h-full w-full overflow-hidden rounded-xl border border-zinc-800/80"
+      style={{ background: 'linear-gradient(180deg, #0c0c0f 0%, #111114 100%)' }}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         fitView
+        fitViewOptions={{ padding: 0.3 }}
         deleteKeyCode={['Backspace', 'Delete']}
         onNodesDelete={(deleted) => deleted.forEach((n) => store.removeNode(n.id))}
+        minZoom={0.15}
+        maxZoom={2.5}
+        proOptions={{ hideAttribution: true }}
       >
-        <Background />
-        <Controls />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={24}
+          size={1}
+          color="rgba(113,113,122,0.12)"
+          style={{ background: 'transparent' }}
+        />
+        <Controls
+          showInteractive={false}
+          className="!rounded-xl !border !border-zinc-800/60 !bg-zinc-900/90 !shadow-xl !shadow-black/20 !backdrop-blur-sm [&>button]:!border-zinc-800/40 [&>button]:!bg-transparent [&>button]:!text-zinc-400 [&>button:hover]:!bg-zinc-800/60"
+        />
+        <MiniMap
+          nodeStrokeWidth={2}
+          className="!rounded-xl !border !border-zinc-800/60 !bg-zinc-900/80 !shadow-xl !shadow-black/20 !backdrop-blur-sm"
+          maskColor="rgba(0,0,0,0.25)"
+          nodeColor={(node) => {
+            if (node.type === 'entity') return '#8b5cf6';
+            if (node.type === 'relationship') return '#7c3aed';
+            return '#71717a';
+          }}
+        />
       </ReactFlow>
     </div>
   );

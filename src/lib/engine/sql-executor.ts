@@ -18,7 +18,7 @@ function loadSqlJs(): Promise<SqlJs> {
     sqlPromise = import('sql.js').then((mod) => {
       const initSqlJs = mod.default;
       return initSqlJs({
-        locateFile: (file: string) => `https://sql.js.org/dist/${file}`,
+        locateFile: () => '/sql-wasm.wasm',
       });
     });
   }

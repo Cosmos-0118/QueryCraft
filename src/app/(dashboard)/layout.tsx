@@ -2,27 +2,40 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore, type AppearanceMode, type ColorTheme } from '@/stores/theme-store';
+import {
+  LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
+  ClipboardList, TrendingUp, Settings, Sun, Moon, Monitor, Palette,
+} from 'lucide-react';
 
-const NAV_ITEMS = [
-  { label: 'Dashboard', href: '/dashboard', icon: '📊' },
-  { label: 'Learn', href: '/learn', icon: '📚' },
-  { label: 'SQL Sandbox', href: '/sandbox', icon: '💻' },
-  { label: 'Algebra', href: '/algebra', icon: '🧮' },
-  { label: 'ER Builder', href: '/er-builder', icon: '📐' },
-  { label: 'Normalizer', href: '/normalizer', icon: '🔄' },
-  { label: 'Practice', href: '/practice', icon: '📝' },
-  { label: 'Progress', href: '/progress', icon: '📈' },
-  { label: 'Settings', href: '/settings', icon: '⚙️' },
+const emptySubscribe = () => () => {};
+function useHydrated() {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
+}
+
+const NAV_ITEMS: { label: string; href: string; icon: ReactNode }[] = [
+  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={18} /> },
+  { label: 'Learn', href: '/learn', icon: <BookOpen size={18} /> },
+  { label: 'SQL Sandbox', href: '/sandbox', icon: <Terminal size={18} /> },
+  { label: 'Algebra', href: '/algebra', icon: <Sigma size={18} /> },
+  { label: 'ER Builder', href: '/er-builder', icon: <PenTool size={18} /> },
+  { label: 'Normalizer', href: '/normalizer', icon: <RefreshCw size={18} /> },
+  { label: 'Practice', href: '/practice', icon: <ClipboardList size={18} /> },
+  { label: 'Progress', href: '/progress', icon: <TrendingUp size={18} /> },
+  { label: 'Settings', href: '/settings', icon: <Settings size={18} /> },
 ];
 
-const APPEARANCE_OPTIONS: { value: AppearanceMode; label: string }[] = [
-  { value: 'light', label: '☀️ Light' },
-  { value: 'dark', label: '🌙 Dark' },
-  { value: 'system', label: '💻 System' },
+const APPEARANCE_OPTIONS: { value: AppearanceMode; label: string; icon: ReactNode }[] = [
+  { value: 'light', label: 'Light', icon: <Sun size={14} /> },
+  { value: 'dark', label: 'Dark', icon: <Moon size={14} /> },
+  { value: 'system', label: 'System', icon: <Monitor size={14} /> },
 ];
 
 const COLOR_THEME_OPTIONS: { value: ColorTheme; label: string; swatch: string }[] = [
@@ -52,20 +65,22 @@ function Breadcrumbs() {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const mounted = useHydrated();
   const { user, isAuthenticated, logout } = useAuth();
-  const hydrated = useAuthStore((s) => s._hasHydrated);
   const { appearance, colorTheme, setAppearance, setColorTheme } = useThemeStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const redirected = useRef(false);
 
   useEffect(() => {
-    if (hydrated && !isAuthenticated) {
+    if (mounted && !isAuthenticated && !redirected.current) {
+      redirected.current = true;
       router.replace('/login');
     }
-  }, [hydrated, isAuthenticated, router]);
+  }, [mounted, isAuthenticated, router]);
 
-  if (!hydrated || !isAuthenticated) {
+  if (!mounted || !isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -95,7 +110,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
               >
-                <span className="text-base">{item.icon}</span>
+                {item.icon}
                 {item.label}
               </Link>
             );
@@ -127,7 +142,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 onClick={() => setMobileOpen(false)}
                 className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
               >
-                ✕
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
               </button>
             </div>
             <nav className="space-y-1 p-3">
@@ -144,7 +159,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                     }`}
                   >
-                    <span className="text-base">{item.icon}</span>
+                    {item.icon}
                     {item.label}
                   </Link>
                 );
@@ -179,7 +194,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 title="Theme settings"
               >
-                🎨
+                <Palette size={18} />
               </button>
               {themeMenuOpen && (
                 <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-border bg-card p-3 shadow-lg">
@@ -191,13 +206,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <button
                         key={opt.value}
                         onClick={() => setAppearance(opt.value)}
-                        className={`flex-1 rounded-lg px-2 py-1.5 text-xs transition-colors ${
+                        className={`flex-1 rounded-lg px-2 py-1.5 text-xs transition-colors flex items-center justify-center gap-1 ${
                           appearance === opt.value
                             ? 'bg-primary/10 font-medium text-primary'
                             : 'text-muted-foreground hover:bg-muted'
                         }`}
                       >
-                        {opt.label}
+                        {opt.icon} {opt.label}
                       </button>
                     ))}
                   </div>

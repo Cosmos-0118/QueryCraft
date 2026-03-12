@@ -46,7 +46,7 @@ export function QueryHistory({ history, onSelect, onClear, className }: QueryHis
             >
               <div className="flex items-center gap-2">
                 <span className={entry.success ? 'text-green-500' : 'text-red-500'}>
-                  {entry.success ? '✓' : '✗'}
+                  {entry.success ? <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>}
                 </span>
                 <code className="line-clamp-1 flex-1 font-mono text-xs">{entry.query}</code>
               </div>

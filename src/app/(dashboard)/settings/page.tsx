@@ -3,11 +3,13 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useThemeStore, type AppearanceMode, type ColorTheme } from '@/stores/theme-store';
+import { Sun, Moon, Monitor } from 'lucide-react';
+import type { ReactNode } from 'react';
 
-const APPEARANCE_OPTIONS: { value: AppearanceMode; label: string; desc: string }[] = [
-  { value: 'light', label: '☀️ Light', desc: 'Always light' },
-  { value: 'dark', label: '🌙 Dark', desc: 'Always dark' },
-  { value: 'system', label: '💻 System', desc: 'Match OS setting' },
+const APPEARANCE_OPTIONS: { value: AppearanceMode; label: string; desc: string; icon: ReactNode }[] = [
+  { value: 'light', label: 'Light', desc: 'Always light', icon: <Sun size={16} /> },
+  { value: 'dark', label: 'Dark', desc: 'Always dark', icon: <Moon size={16} /> },
+  { value: 'system', label: 'System', desc: 'Match OS setting', icon: <Monitor size={16} /> },
 ];
 
 const COLOR_THEMES: { value: ColorTheme; label: string; swatch: string; desc: string }[] = [
@@ -186,8 +188,9 @@ export default function SettingsPage() {
                   : 'border-border text-muted-foreground hover:bg-muted'
               }`}
             >
-              <div className="text-lg">{opt.label.split(' ')[0]}</div>
-              <div className="mt-1">{opt.desc}</div>
+              <div className="flex justify-center text-lg">{opt.icon}</div>
+              <div className="mt-1">{opt.label}</div>
+              <div className="mt-0.5 text-xs">{opt.desc}</div>
             </button>
           ))}
         </div>
