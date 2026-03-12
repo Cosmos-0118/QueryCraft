@@ -11,6 +11,7 @@ import { ExpressionTree } from '@/components/algebra/expression-tree';
 import { IntermediateResult } from '@/components/algebra/intermediate-result';
 import { AlgebraToSql } from '@/components/algebra/algebra-to-sql';
 import { TableBrowser } from '@/components/algebra/table-browser';
+import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import type { QueryResult } from '@/types/database';
 import { cn } from '@/lib/utils/helpers';
 import {
@@ -21,6 +22,7 @@ import {
   BookOpen,
   Sparkles,
   Table2,
+  Plus,
 } from 'lucide-react';
 
 import universityData from '@/../seed/datasets/university.json';
@@ -78,6 +80,7 @@ export default function AlgebraPage() {
   const { isReady, execute, loadSQL, tables, refreshTables } = useSqlEngine();
   const store = useAlgebraStore();
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [activeDataset, setActiveDataset] = useState<string | null>(null);
 
   const handleLoadDataset = useCallback(
@@ -157,6 +160,14 @@ export default function AlgebraPage() {
               );
             })}
             <div className="mx-1 h-5 w-px bg-zinc-700/50" />
+            <button
+              onClick={() => setCreateOpen(true)}
+              disabled={!isReady}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20 disabled:opacity-40"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Create Table
+            </button>
             <button
               onClick={() => setBrowserOpen(true)}
               disabled={tables.length === 0}
@@ -268,7 +279,12 @@ export default function AlgebraPage() {
         onClose={() => setBrowserOpen(false)}
         tables={tables}
         execute={execute}
-        onRefresh={refreshTables}
+      />
+      <CreateTableModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        execute={execute}
+        onCreated={refreshTables}
       />
     </>
   );
