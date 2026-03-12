@@ -1,0 +1,28 @@
+{
+  "customers": [
+    { "id": 1, "name": "John Doe", "address": "123 Main St", "phone": "555-0101", "email": "john@email.com" },
+    { "id": 2, "name": "Jane Roe", "address": "456 Oak Ave", "phone": "555-0102", "email": "jane@email.com" },
+    { "id": 3, "name": "Sam Brown", "address": "789 Pine Rd", "phone": "555-0103", "email": "sam@email.com" }
+  ],
+  "accounts": [
+    { "id": 1001, "customer_id": 1, "type": "savings", "balance": 15000.50, "opened_date": "2023-01-15" },
+    { "id": 1002, "customer_id": 1, "type": "checking", "balance": 3200.00, "opened_date": "2023-01-15" },
+    { "id": 1003, "customer_id": 2, "type": "savings", "balance": 8500.75, "opened_date": "2023-03-20" },
+    { "id": 1004, "customer_id": 3, "type": "checking", "balance": 1200.00, "opened_date": "2023-06-01" }
+  ],
+  "branches": [
+    { "id": 1, "name": "Downtown", "city": "Metro City", "assets": 5000000 },
+    { "id": 2, "name": "Uptown", "city": "Metro City", "assets": 3500000 },
+    { "id": 3, "name": "Suburbia", "city": "Green Town", "assets": 2000000 }
+  ],
+  "transactions": [
+    { "id": 1, "account_id": 1001, "type": "deposit", "amount": 500.00, "timestamp": "2025-10-01T10:00:00Z" },
+    { "id": 2, "account_id": 1002, "type": "withdrawal", "amount": 200.00, "timestamp": "2025-10-02T14:30:00Z" },
+    { "id": 3, "account_id": 1003, "type": "deposit", "amount": 1000.00, "timestamp": "2025-10-03T09:15:00Z" },
+    { "id": 4, "account_id": 1001, "type": "withdrawal", "amount": 300.00, "timestamp": "2025-10-05T16:45:00Z" }
+  ],
+  "loans": [
+    { "id": 1, "customer_id": 2, "branch_id": 1, "amount": 50000, "interest_rate": 7.5 },
+    { "id": 2, "customer_id": 3, "branch_id": 2, "amount": 25000, "interest_rate": 8.0 }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "departments": [
+    { "id": 1, "name": "Cardiology", "floor": 3, "head_doctor_id": 1 },
+    { "id": 2, "name": "Neurology", "floor": 4, "head_doctor_id": 2 },
+    { "id": 3, "name": "Orthopedics", "floor": 2, "head_doctor_id": 3 }
+  ],
+  "doctors": [
+    { "id": 1, "name": "Dr. Heart", "specialization": "Cardiology", "department_id": 1 },
+    { "id": 2, "name": "Dr. Brain", "specialization": "Neurology", "department_id": 2 },
+    { "id": 3, "name": "Dr. Bones", "specialization": "Orthopedics", "department_id": 3 }
+  ],
+  "patients": [
+    { "id": 1, "name": "Tom Hardy", "dob": "1990-05-15", "blood_type": "O+", "phone": "555-1001" },
+    { "id": 2, "name": "Emma Stone", "dob": "1988-11-06", "blood_type": "A+", "phone": "555-1002" },
+    { "id": 3, "name": "Chris Evans", "dob": "1981-06-13", "blood_type": "B+", "phone": "555-1003" }
+  ],
+  "appointments": [
+    { "id": 1, "patient_id": 1, "doctor_id": 1, "date": "2025-10-01", "diagnosis": "Hypertension" },
+    { "id": 2, "patient_id": 2, "doctor_id": 2, "date": "2025-10-02", "diagnosis": "Migraine" },
+    { "id": 3, "patient_id": 3, "doctor_id": 3, "date": "2025-10-03", "diagnosis": "Fracture" },
+    { "id": 4, "patient_id": 1, "doctor_id": 2, "date": "2025-10-10", "diagnosis": "Dizziness" }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "students": [
+    { "id": 1, "name": "Alice Johnson", "age": 20, "department_id": 1, "gpa": 3.8 },
+    { "id": 2, "name": "Bob Smith", "age": 21, "department_id": 2, "gpa": 3.5 },
+    { "id": 3, "name": "Carol Davis", "age": 22, "department_id": 1, "gpa": 3.9 },
+    { "id": 4, "name": "David Wilson", "age": 20, "department_id": 3, "gpa": 3.2 },
+    { "id": 5, "name": "Eve Martinez", "age": 23, "department_id": 2, "gpa": 3.7 }
+  ],
+  "departments": [
+    { "id": 1, "name": "Computer Science", "head_professor": "Dr. Turing", "building": "Tech Hall" },
+    { "id": 2, "name": "Mathematics", "head_professor": "Dr. Euler", "building": "Science Block" },
+    { "id": 3, "name": "Physics", "head_professor": "Dr. Newton", "building": "Science Block" }
+  ],
+  "courses": [
+    { "id": 101, "title": "Database Systems", "credits": 4, "department_id": 1 },
+    { "id": 102, "title": "Algorithms", "credits": 3, "department_id": 1 },
+    { "id": 201, "title": "Linear Algebra", "credits": 3, "department_id": 2 },
+    { "id": 301, "title": "Quantum Mechanics", "credits": 4, "department_id": 3 }
+  ],
+  "enrollments": [
+    { "student_id": 1, "course_id": 101, "semester": "Fall 2025", "grade": "A" },
+    { "student_id": 1, "course_id": 201, "semester": "Fall 2025", "grade": "A-" },
+    { "student_id": 2, "course_id": 102, "semester": "Fall 2025", "grade": "B+" },
+    { "student_id": 3, "course_id": 101, "semester": "Fall 2025", "grade": "A" },
+    { "student_id": 4, "course_id": 301, "semester": "Fall 2025", "grade": "B" },
+    { "student_id": 5, "course_id": 201, "semester": "Fall 2025", "grade": "A" }
+  ],
+  "professors": [
+    { "id": 1, "name": "Dr. Turing", "department_id": 1, "salary": 95000 },
+    { "id": 2, "name": "Dr. Euler", "department_id": 2, "salary": 90000 },
+    { "id": 3, "name": "Dr. Newton", "department_id": 3, "salary": 92000 }
+  ]
+}
