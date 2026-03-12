@@ -23,7 +23,9 @@ import {
   Sparkles,
   Table2,
   Plus,
+  History,
 } from 'lucide-react';
+import Link from 'next/link';
 
 import universityData from '@/../seed/datasets/university.json';
 import bankingData from '@/../seed/datasets/banking.json';
@@ -64,16 +66,20 @@ const DATASETS = [
 
 const UNIVERSITY_EXAMPLES = [
   { label: 'Select high GPA', expr: 'σ[gpa > 3.5](students)' },
-  { label: 'Project name & GPA', expr: 'π[name, gpa](students)' },
   { label: 'Filter + project', expr: 'π[name](σ[gpa > 3.5](students))' },
-  { label: 'Cartesian product', expr: 'students × departments' },
+  { label: 'Natural join', expr: 'students ⋈ enrollments' },
+  { label: 'Left join', expr: 'students ⟕ enrollments' },
+  { label: 'Intersection', expr: 'π[dept](students) ∩ π[name](departments)' },
+  { label: 'Sort by GPA', expr: 'τ[gpa DESC](students)' },
+  { label: 'Count by dept', expr: 'γ[department_id; COUNT(*) AS total](students)' },
 ];
 
 const BANKING_EXAMPLES = [
-  { label: 'High balance accounts', expr: 'σ[balance > 5000](accounts)' },
+  { label: 'High balance', expr: 'σ[balance > 5000](accounts)' },
   { label: 'Customer contacts', expr: 'π[name, email](customers)' },
-  { label: 'Large transactions', expr: 'σ[amount > 500](transactions)' },
-  { label: 'Cartesian product', expr: 'accounts × branches' },
+  { label: 'Customers ⋈ Accounts', expr: 'customers ⋈ accounts' },
+  { label: 'Anti-join', expr: 'customers ▷ accounts' },
+  { label: 'Sum balances', expr: 'γ[customer_id; SUM(balance) AS total](accounts)' },
 ];
 
 export default function AlgebraPage() {
@@ -107,8 +113,30 @@ export default function AlgebraPage() {
       evaluateAlgebra(tree, ctx, steps);
       store.setSteps(steps);
       store.setActiveStepIndex(steps.length - 1);
+      const finalResult = steps[steps.length - 1]?.result;
+      store.addToHistory({
+        expression: store.expression,
+        success: true,
+        sqlEquivalent: algebraToSQL(tree),
+        stepCount: steps.length,
+        result: finalResult
+          ? {
+              columns: finalResult.columns,
+              rows: finalResult.rows.slice(0, 50),
+              rowCount: finalResult.rows.length,
+            }
+          : undefined,
+      });
     } catch (e) {
-      store.setError(e instanceof Error ? e.message : String(e));
+      const errMsg = e instanceof Error ? e.message : String(e);
+      store.setError(errMsg);
+      store.addToHistory({
+        expression: store.expression,
+        success: false,
+        sqlEquivalent: '',
+        stepCount: 0,
+        error: errMsg,
+      });
     }
   }, [store, tables, execute]);
 
@@ -189,6 +217,25 @@ export default function AlgebraPage() {
           </div>
         </div>
 
+        {/* History button */}
+        {store.history.length > 0 && (
+          <Link
+            href="/algebra/history"
+            className="flex items-center gap-2.5 rounded-xl border border-zinc-700/50 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-violet-500/30 hover:bg-zinc-800/40"
+          >
+            <History className="h-4 w-4 text-violet-400" />
+            <div className="min-w-0 flex-1">
+              <span className="text-sm font-medium text-zinc-200">Expression History</span>
+              <p className="text-[11px] text-zinc-500">
+                {store.history.length} expression{store.history.length === 1 ? '' : 's'} evaluated
+              </p>
+            </div>
+            <span className="rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-bold text-violet-400">
+              {store.history.length}
+            </span>
+          </Link>
+        )}
+
         {/* ── Engine Status ──────────────────── */}
         {!isReady && (
           <div className="flex items-center gap-3 rounded-xl border border-zinc-700/50 bg-zinc-800/40 px-4 py-3">
@@ -237,6 +284,7 @@ export default function AlgebraPage() {
           value={store.expression}
           onChange={store.setExpression}
           onEvaluate={handleEvaluate}
+          tableNames={tables.map((t) => t.name)}
         />
 
         {/* ── Error ──────────────────────────── */}

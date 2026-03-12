@@ -6,7 +6,7 @@ import { useSandboxStore } from '@/stores/sandbox-store';
 import { useSessionPersistence } from '@/hooks/use-session-persistence';
 import { SqlEditor } from '@/components/sandbox/sql-editor';
 import { SchemaBrowser } from '@/components/sandbox/schema-browser';
-import { QueryHistory } from '@/components/sandbox/query-history';
+
 import { DataGeneratorDialog } from '@/components/sandbox/data-generator-dialog';
 import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import { ResultPanel } from '@/components/visual/result-panel';
@@ -25,7 +25,9 @@ import {
   CheckCircle2,
   XCircle,
   Table2,
+  History,
 } from 'lucide-react';
+import Link from 'next/link';
 
 import universityData from '@/../seed/datasets/university.json';
 import bankingData from '@/../seed/datasets/banking.json';
@@ -303,11 +305,21 @@ export default function SandboxPage() {
           {/* Sidebar */}
           <div className="flex flex-col gap-3 overflow-auto">
             <SchemaBrowser tables={tables} />
-            <QueryHistory
-              history={store.queryHistory}
-              onSelect={store.setQuery}
-              onClear={store.clearHistory}
-            />
+            <Link
+              href="/sandbox/history"
+              className="flex items-center gap-2.5 rounded-xl border border-zinc-700/50 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-violet-500/30 hover:bg-zinc-800/40"
+            >
+              <History className="h-4 w-4 text-violet-400" />
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-medium text-zinc-200">Query History</span>
+                {historyCount > 0 && (
+                  <p className="text-[11px] text-zinc-500">{historyCount} quer{historyCount === 1 ? 'y' : 'ies'} recorded</p>
+                )}
+              </div>
+              <span className="rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-bold text-violet-400">
+                {historyCount}
+              </span>
+            </Link>
           </div>
         </div>
       </div>

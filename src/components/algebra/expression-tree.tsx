@@ -93,16 +93,25 @@ function flattenLayout(layout: TreeLayout): TreeLayout[] {
 /* ── Operation metadata ───────────────────────────────── */
 
 const OP_META: Record<AlgebraOperationType, { symbol: string; color: string }> = {
-  selection:    { symbol: 'σ',  color: '#f59e0b' },
-  projection:   { symbol: 'π',  color: '#3b82f6' },
-  natural_join:  { symbol: '⋈',  color: '#10b981' },
-  equi_join:     { symbol: '⋈',  color: '#10b981' },
-  theta_join:    { symbol: '⋈θ', color: '#14b8a6' },
-  union:         { symbol: '∪',  color: '#8b5cf6' },
-  difference:    { symbol: '−',  color: '#ef4444' },
-  cartesian:     { symbol: '×',  color: '#f97316' },
-  rename:        { symbol: 'ρ',  color: '#06b6d4' },
-  relation:      { symbol: '▪',  color: '#71717a' },
+  selection:        { symbol: 'σ',  color: '#f59e0b' },
+  projection:       { symbol: 'π',  color: '#3b82f6' },
+  natural_join:     { symbol: '⋈',  color: '#10b981' },
+  equi_join:        { symbol: '⋈',  color: '#10b981' },
+  theta_join:       { symbol: '⋈θ', color: '#14b8a6' },
+  left_outer_join:  { symbol: '⟕',  color: '#22d3ee' },
+  right_outer_join: { symbol: '⟖',  color: '#22d3ee' },
+  full_outer_join:  { symbol: '⟗',  color: '#06b6d4' },
+  semi_join:        { symbol: '⋉',  color: '#34d399' },
+  anti_join:        { symbol: '▷',  color: '#f43f5e' },
+  union:            { symbol: '∪',  color: '#8b5cf6' },
+  intersection:     { symbol: '∩',  color: '#a78bfa' },
+  difference:       { symbol: '−',  color: '#ef4444' },
+  division:         { symbol: '÷',  color: '#e879f9' },
+  cartesian:        { symbol: '×',  color: '#f97316' },
+  rename:           { symbol: 'ρ',  color: '#06b6d4' },
+  aggregation:      { symbol: 'γ',  color: '#f472b6' },
+  sort:             { symbol: 'τ',  color: '#fb923c' },
+  relation:         { symbol: '▪',  color: '#71717a' },
 };
 
 /* ── Component ────────────────────────────────────────── */

@@ -140,6 +140,270 @@ export function evaluateAlgebra(
       break;
     }
 
+    case 'intersection': {
+      const left = evaluateAlgebra(node.children[0], ctx, steps);
+      const right = evaluateAlgebra(node.children[1], ctx, steps);
+      const rightKeys = new Set(right.rows.map((r) => JSON.stringify(r)));
+      result = {
+        columns: left.columns,
+        rows: left.rows.filter((r) => rightKeys.has(JSON.stringify(r))),
+      };
+      break;
+    }
+
+    case 'left_outer_join': {
+      const left = evaluateAlgebra(node.children[0], ctx, steps);
+      const right = evaluateAlgebra(node.children[1], ctx, steps);
+      const common = node.condition ? [] : left.columns.filter((c) => right.columns.includes(c));
+      const allCols = [...left.columns, ...right.columns.filter((c) => !left.columns.includes(c))];
+      const rows: Row[] = [];
+      for (const lr of left.rows) {
+        let matched = false;
+        for (const rr of right.rows) {
+          const merged = { ...lr, ...rr };
+          const condOk = node.condition
+            ? evalCondition(node.condition, merged)
+            : common.every((c) => lr[c] === rr[c]);
+          if (condOk) {
+            rows.push(merged);
+            matched = true;
+          }
+        }
+        if (!matched) {
+          const nullRow: Row = { ...lr };
+          for (const c of right.columns) {
+            if (!(c in nullRow)) nullRow[c] = null;
+          }
+          rows.push(nullRow);
+        }
+      }
+      result = { columns: allCols, rows };
+      break;
+    }
+
+    case 'right_outer_join': {
+      const left = evaluateAlgebra(node.children[0], ctx, steps);
+      const right = evaluateAlgebra(node.children[1], ctx, steps);
+      const common = node.condition ? [] : left.columns.filter((c) => right.columns.includes(c));
+      const allCols = [...left.columns, ...right.columns.filter((c) => !left.columns.includes(c))];
+      const rows: Row[] = [];
+      for (const rr of right.rows) {
+        let matched = false;
+        for (const lr of left.rows) {
+          const merged = { ...lr, ...rr };
+          const condOk = node.condition
+            ? evalCondition(node.condition, merged)
+            : common.every((c) => lr[c] === rr[c]);
+          if (condOk) {
+            rows.push(merged);
+            matched = true;
+          }
+        }
+        if (!matched) {
+          const nullRow: Row = { ...rr };
+          for (const c of left.columns) {
+            if (!(c in nullRow)) nullRow[c] = null;
+          }
+          rows.push(nullRow);
+        }
+      }
+      result = { columns: allCols, rows };
+      break;
+    }
+
+    case 'full_outer_join': {
+      const left = evaluateAlgebra(node.children[0], ctx, steps);
+      const right = evaluateAlgebra(node.children[1], ctx, steps);
+      const common = node.condition ? [] : left.columns.filter((c) => right.columns.includes(c));
+      const allCols = [...left.columns, ...right.columns.filter((c) => !left.columns.includes(c))];
+      const rows: Row[] = [];
+      const matchedRight = new Set<number>();
+      for (const lr of left.rows) {
+        let matched = false;
+        for (let ri = 0; ri < right.rows.length; ri++) {
+          const rr = right.rows[ri];
+          const merged = { ...lr, ...rr };
+          const condOk = node.condition
+            ? evalCondition(node.condition, merged)
+            : common.every((c) => lr[c] === rr[c]);
+          if (condOk) {
+            rows.push(merged);
+            matched = true;
+            matchedRight.add(ri);
+          }
+        }
+        if (!matched) {
+          const nullRow: Row = { ...lr };
+          for (const c of right.columns) {
+            if (!(c in nullRow)) nullRow[c] = null;
+          }
+          rows.push(nullRow);
+        }
+      }
+      for (let ri = 0; ri < right.rows.length; ri++) {
+        if (!matchedRight.has(ri)) {
+          const nullRow: Row = { ...right.rows[ri] };
+          for (const c of left.columns) {
+            if (!(c in nullRow)) nullRow[c] = null;
+          }
+          rows.push(nullRow);
+        }
+      }
+      result = { columns: allCols, rows };
+      break;
+    }
+
+    case 'semi_join': {
+      const left = evaluateAlgebra(node.children[0], ctx, steps);
+      const right = evaluateAlgebra(node.children[1], ctx, steps);
+      const common = node.condition ? [] : left.columns.filter((c) => right.columns.includes(c));
+      const rows = left.rows.filter((lr) =>
+        right.rows.some((rr) => {
+          const merged = { ...lr, ...rr };
+          return node.condition
+            ? evalCondition(node.condition, merged)
+            : common.every((c) => lr[c] === rr[c]);
+        }),
+      );
+      result = { columns: left.columns, rows };
+      break;
+    }
+
+    case 'anti_join': {
+      const left = evaluateAlgebra(node.children[0], ctx, steps);
+      const right = evaluateAlgebra(node.children[1], ctx, steps);
+      const common = node.condition ? [] : left.columns.filter((c) => right.columns.includes(c));
+      const rows = left.rows.filter(
+        (lr) =>
+          !right.rows.some((rr) => {
+            const merged = { ...lr, ...rr };
+            return node.condition
+              ? evalCondition(node.condition, merged)
+              : common.every((c) => lr[c] === rr[c]);
+          }),
+      );
+      result = { columns: left.columns, rows };
+      break;
+    }
+
+    case 'division': {
+      const left = evaluateAlgebra(node.children[0], ctx, steps);
+      const right = evaluateAlgebra(node.children[1], ctx, steps);
+      // R ÷ S: find tuples in R whose projection onto S-cols matches ALL tuples in S
+      const sCols = right.columns;
+      const rOnlyCols = left.columns.filter((c) => !sCols.includes(c));
+      if (rOnlyCols.length === 0) throw new Error('Division requires R to have columns not in S');
+      const rows: Row[] = [];
+      // Group R rows by rOnlyCols
+      const groups = new Map<string, Row[]>();
+      for (const lr of left.rows) {
+        const key = JSON.stringify(rOnlyCols.map((c) => lr[c]));
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(lr);
+      }
+      for (const [, groupRows] of groups) {
+        // Check if this group contains ALL of S
+        const hasAll = right.rows.every((sr) =>
+          groupRows.some((gr) => sCols.every((c) => gr[c] === sr[c])),
+        );
+        if (hasAll) {
+          const row: Row = {};
+          rOnlyCols.forEach((c) => {
+            row[c] = groupRows[0][c];
+          });
+          rows.push(row);
+        }
+      }
+      result = { columns: rOnlyCols, rows };
+      break;
+    }
+
+    case 'aggregation': {
+      const child = evaluateAlgebra(node.children[0], ctx, steps);
+      const groupCols = node.groupColumns ?? [];
+      const aggs = node.aggregates ?? [];
+      const outCols = [...groupCols, ...aggs.map((a) => a.alias)];
+
+      // Group rows
+      const groups = new Map<string, Row[]>();
+      for (const row of child.rows) {
+        const key = groupCols.length > 0 ? JSON.stringify(groupCols.map((c) => row[c])) : '__all__';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(row);
+      }
+
+      const rows: Row[] = [];
+      for (const [, groupRows] of groups) {
+        const row: Row = {};
+        groupCols.forEach((c) => {
+          row[c] = groupRows[0][c];
+        });
+        for (const agg of aggs) {
+          const vals =
+            agg.col === '*'
+              ? groupRows
+              : groupRows.map((r) => r[agg.col]).filter((v) => v !== null && v !== undefined);
+          switch (agg.func) {
+            case 'COUNT':
+              row[agg.alias] = agg.col === '*' ? groupRows.length : vals.length;
+              break;
+            case 'SUM':
+              row[agg.alias] = (vals as number[]).reduce((a, b) => Number(a) + Number(b), 0);
+              break;
+            case 'AVG': {
+              const numVals = vals as number[];
+              row[agg.alias] =
+                numVals.length > 0
+                  ? Number(
+                      (numVals.reduce((a, b) => Number(a) + Number(b), 0) / numVals.length).toFixed(
+                        2,
+                      ),
+                    )
+                  : null;
+              break;
+            }
+            case 'MIN':
+              row[agg.alias] =
+                vals.length > 0
+                  ? (vals as number[]).reduce((a, b) => (Number(a) < Number(b) ? a : b))
+                  : null;
+              break;
+            case 'MAX':
+              row[agg.alias] =
+                vals.length > 0
+                  ? (vals as number[]).reduce((a, b) => (Number(a) > Number(b) ? a : b))
+                  : null;
+              break;
+            default:
+              row[agg.alias] = null;
+          }
+        }
+        rows.push(row);
+      }
+      result = { columns: outCols, rows };
+      break;
+    }
+
+    case 'sort': {
+      const child = evaluateAlgebra(node.children[0], ctx, steps);
+      const sortCols = node.sortColumns ?? [];
+      const sorted = [...child.rows].sort((a, b) => {
+        for (const { col, dir } of sortCols) {
+          const av = a[col];
+          const bv = b[col];
+          if (av === bv) continue;
+          const cmp =
+            typeof av === 'number' && typeof bv === 'number'
+              ? av - bv
+              : String(av ?? '').localeCompare(String(bv ?? ''));
+          return dir === 'DESC' ? -cmp : cmp;
+        }
+        return 0;
+      });
+      result = { columns: child.columns, rows: sorted };
+      break;
+    }
+
     default:
       throw new Error(`Unsupported operation: ${node.operation}`);
   }

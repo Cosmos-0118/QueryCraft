@@ -4,10 +4,19 @@ import type { AlgebraNode, AlgebraOperationType } from '@/types/algebra';
 type TokenType =
   | 'SIGMA'
   | 'PI'
+  | 'GAMMA'
+  | 'TAU'
   | 'JOIN'
   | 'NATURAL_JOIN'
+  | 'LEFT_OUTER_JOIN'
+  | 'RIGHT_OUTER_JOIN'
+  | 'FULL_OUTER_JOIN'
+  | 'SEMI_JOIN'
+  | 'ANTI_JOIN'
   | 'UNION'
+  | 'INTERSECTION'
   | 'DIFFERENCE'
+  | 'DIVISION'
   | 'CARTESIAN'
   | 'RENAME'
   | 'LPAREN'
@@ -28,34 +37,90 @@ interface Token {
 
 // ── Tokenizer ──
 const SYMBOLS: [string, TokenType][] = [
+  // Multi-char text keywords first (longest match)
+  ['FULL OUTER JOIN', 'FULL_OUTER_JOIN'],
+  ['full outer join', 'FULL_OUTER_JOIN'],
+  ['LEFT OUTER JOIN', 'LEFT_OUTER_JOIN'],
+  ['left outer join', 'LEFT_OUTER_JOIN'],
+  ['RIGHT OUTER JOIN', 'RIGHT_OUTER_JOIN'],
+  ['right outer join', 'RIGHT_OUTER_JOIN'],
+  ['LEFT JOIN', 'LEFT_OUTER_JOIN'],
+  ['left join', 'LEFT_OUTER_JOIN'],
+  ['RIGHT JOIN', 'RIGHT_OUTER_JOIN'],
+  ['right join', 'RIGHT_OUTER_JOIN'],
+  ['FULL JOIN', 'FULL_OUTER_JOIN'],
+  ['full join', 'FULL_OUTER_JOIN'],
+  ['SEMIJOIN', 'SEMI_JOIN'],
+  ['semijoin', 'SEMI_JOIN'],
+  ['SEMI JOIN', 'SEMI_JOIN'],
+  ['semi join', 'SEMI_JOIN'],
+  ['ANTIJOIN', 'ANTI_JOIN'],
+  ['antijoin', 'ANTI_JOIN'],
+  ['ANTI JOIN', 'ANTI_JOIN'],
+  ['anti join', 'ANTI_JOIN'],
+  // Unicode symbols
   ['σ', 'SIGMA'],
-  ['sigma', 'SIGMA'],
   ['π', 'PI'],
-  ['pi', 'PI'],
-  ['project', 'PI'],
+  ['γ', 'GAMMA'],
+  ['τ', 'TAU'],
   ['⋈', 'NATURAL_JOIN'],
-  ['JOIN', 'JOIN'],
-  ['join', 'JOIN'],
+  ['⟕', 'LEFT_OUTER_JOIN'],
+  ['⟖', 'RIGHT_OUTER_JOIN'],
+  ['⟗', 'FULL_OUTER_JOIN'],
+  ['⋉', 'SEMI_JOIN'],
+  ['▷', 'ANTI_JOIN'],
+  ['⊳', 'ANTI_JOIN'],
   ['∪', 'UNION'],
-  ['UNION', 'UNION'],
-  ['union', 'UNION'],
+  ['∩', 'INTERSECTION'],
   ['−', 'DIFFERENCE'],
-  ['-', 'DIFFERENCE'],
-  ['MINUS', 'DIFFERENCE'],
-  ['minus', 'DIFFERENCE'],
+  ['÷', 'DIVISION'],
   ['×', 'CARTESIAN'],
-  ['CROSS', 'CARTESIAN'],
-  ['cross', 'CARTESIAN'],
   ['ρ', 'RENAME'],
-  ['rho', 'RENAME'],
-  ['rename', 'RENAME'],
   ['←', 'ARROW'],
   ['<-', 'ARROW'],
+  // Text aliases
+  ['sigma', 'SIGMA'],
+  ['select', 'SIGMA'],
+  ['pi', 'PI'],
+  ['project', 'PI'],
+  ['gamma', 'GAMMA'],
+  ['agg', 'GAMMA'],
+  ['aggregate', 'GAMMA'],
+  ['tau', 'TAU'],
+  ['sort', 'TAU'],
+  ['orderby', 'TAU'],
+  ['JOIN', 'JOIN'],
+  ['join', 'JOIN'],
+  ['NJOIN', 'NATURAL_JOIN'],
+  ['njoin', 'NATURAL_JOIN'],
+  ['LJOIN', 'LEFT_OUTER_JOIN'],
+  ['ljoin', 'LEFT_OUTER_JOIN'],
+  ['RJOIN', 'RIGHT_OUTER_JOIN'],
+  ['rjoin', 'RIGHT_OUTER_JOIN'],
+  ['FJOIN', 'FULL_OUTER_JOIN'],
+  ['fjoin', 'FULL_OUTER_JOIN'],
+  ['UNION', 'UNION'],
+  ['union', 'UNION'],
+  ['INTERSECT', 'INTERSECTION'],
+  ['intersect', 'INTERSECTION'],
+  ['MINUS', 'DIFFERENCE'],
+  ['minus', 'DIFFERENCE'],
+  ['DIFF', 'DIFFERENCE'],
+  ['diff', 'DIFFERENCE'],
+  ['DIV', 'DIVISION'],
+  ['div', 'DIVISION'],
+  ['CROSS', 'CARTESIAN'],
+  ['cross', 'CARTESIAN'],
+  ['rho', 'RENAME'],
+  ['rename', 'RENAME'],
+  ['-', 'DIFFERENCE'],
 ];
 
 export function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
+  // Sort symbols by length descending for longest-match-first
+  const sortedSymbols = [...SYMBOLS].sort((a, b) => b[0].length - a[0].length);
 
   while (i < input.length) {
     if (/\s/.test(input[i])) {
@@ -92,7 +157,7 @@ export function tokenize(input: string): Token[] {
 
     // Try matching symbols (longest first)
     let matched = false;
-    for (const [sym, type] of SYMBOLS) {
+    for (const [sym, type] of sortedSymbols) {
       if (input.slice(i, i + sym.length) === sym) {
         // Ensure word-boundary for alphabetic symbols
         if (
@@ -258,6 +323,68 @@ function parseUnary(): AlgebraNode {
     };
   }
 
+  // γ[groupCols; aggFunc(col) AS alias, ...](R)
+  if (t.type === 'GAMMA') {
+    advance();
+    const spec = parseConditionArg(); // read everything inside [...]
+    const parts = spec.split(';').map((s) => s.trim());
+    const groupColumns = parts[0]
+      ? parts[0].split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+    const aggregates: { func: string; col: string; alias: string }[] = [];
+    if (parts[1]) {
+      const aggParts = parts[1].split(',').map((s) => s.trim());
+      for (const ap of aggParts) {
+        // e.g. SUM(amount) AS total  or  COUNT(*)
+        const m = ap.match(/^(\w+)\(([^)]*)\)(?:\s+[Aa][Ss]\s+(\w+))?$/);
+        if (m) {
+          const func = m[1].toUpperCase();
+          const col = m[2].trim() || '*';
+          const alias = m[3] || `${func}_${col}`.replace('*', 'all');
+          aggregates.push({ func, col, alias });
+        }
+      }
+    }
+    expect('LPAREN');
+    const child = parseExpr();
+    expect('RPAREN');
+    const label = `γ[${groupColumns.join(',')}; ${aggregates.map((a) => `${a.func}(${a.col})`).join(',')}]`;
+    return {
+      id: nextId(),
+      operation: 'aggregation',
+      label,
+      groupColumns,
+      aggregates,
+      children: [child],
+    };
+  }
+
+  // τ[col ASC, col2 DESC](R)
+  if (t.type === 'TAU') {
+    advance();
+    const spec = parseConditionArg();
+    const sortColumns: { col: string; dir: 'ASC' | 'DESC' }[] = spec
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => {
+        const parts = s.split(/\s+/);
+        const col = parts[0];
+        const dir = parts[1]?.toUpperCase() === 'DESC' ? 'DESC' as const : 'ASC' as const;
+        return { col, dir };
+      });
+    expect('LPAREN');
+    const child = parseExpr();
+    expect('RPAREN');
+    return {
+      id: nextId(),
+      operation: 'sort',
+      label: `τ[${sortColumns.map((s) => `${s.col} ${s.dir}`).join(',')}]`,
+      sortColumns,
+      children: [child],
+    };
+  }
+
   if (t.type === 'LPAREN') {
     advance();
     const inner = parseExpr();
@@ -281,18 +408,32 @@ function parseUnary(): AlgebraNode {
 
 const BINARY_OPS: Record<string, AlgebraOperationType> = {
   UNION: 'union',
+  INTERSECTION: 'intersection',
   DIFFERENCE: 'difference',
+  DIVISION: 'division',
   CARTESIAN: 'cartesian',
   JOIN: 'theta_join',
   NATURAL_JOIN: 'natural_join',
+  LEFT_OUTER_JOIN: 'left_outer_join',
+  RIGHT_OUTER_JOIN: 'right_outer_join',
+  FULL_OUTER_JOIN: 'full_outer_join',
+  SEMI_JOIN: 'semi_join',
+  ANTI_JOIN: 'anti_join',
 };
 
 const OP_LABELS: Record<string, string> = {
   UNION: '∪',
+  INTERSECTION: '∩',
   DIFFERENCE: '−',
+  DIVISION: '÷',
   CARTESIAN: '×',
   JOIN: '⋈θ',
   NATURAL_JOIN: '⋈',
+  LEFT_OUTER_JOIN: '⟕',
+  RIGHT_OUTER_JOIN: '⟖',
+  FULL_OUTER_JOIN: '⟗',
+  SEMI_JOIN: '⋉',
+  ANTI_JOIN: '▷',
 };
 
 function parseExpr(): AlgebraNode {
@@ -301,7 +442,12 @@ function parseExpr(): AlgebraNode {
   while (peek().type in BINARY_OPS) {
     const op = advance();
     let condition: string | undefined;
-    if (op.type === 'JOIN' && (peek().type === 'LBRACKET' || peek().type === 'CONDITION')) {
+    // Joins can have an optional condition in brackets
+    if (
+      (op.type === 'JOIN' || op.type === 'LEFT_OUTER_JOIN' || op.type === 'RIGHT_OUTER_JOIN' ||
+       op.type === 'FULL_OUTER_JOIN' || op.type === 'SEMI_JOIN' || op.type === 'ANTI_JOIN') &&
+      (peek().type === 'LBRACKET' || peek().type === 'CONDITION')
+    ) {
       condition = parseConditionArg();
     }
     const right = parseUnary();
@@ -340,15 +486,42 @@ export function algebraToSQL(node: AlgebraNode): string {
       return `SELECT * FROM (${algebraToSQL(node.children[0])}) AS "${node.newName}"`;
     case 'union':
       return `(${algebraToSQL(node.children[0])}) UNION (${algebraToSQL(node.children[1])})`;
+    case 'intersection':
+      return `(${algebraToSQL(node.children[0])}) INTERSECT (${algebraToSQL(node.children[1])})`;
     case 'difference':
       return `(${algebraToSQL(node.children[0])}) EXCEPT (${algebraToSQL(node.children[1])})`;
     case 'cartesian':
       return `SELECT * FROM (${algebraToSQL(node.children[0])}) AS _l, (${algebraToSQL(node.children[1])}) AS _r`;
     case 'natural_join':
       return `SELECT * FROM (${algebraToSQL(node.children[0])}) AS _l NATURAL JOIN (${algebraToSQL(node.children[1])}) AS _r`;
+    case 'left_outer_join':
+      return `SELECT * FROM (${algebraToSQL(node.children[0])}) AS _l LEFT JOIN (${algebraToSQL(node.children[1])}) AS _r${node.condition ? ` ON ${node.condition}` : ''}`;
+    case 'right_outer_join':
+      return `SELECT * FROM (${algebraToSQL(node.children[0])}) AS _l RIGHT JOIN (${algebraToSQL(node.children[1])}) AS _r${node.condition ? ` ON ${node.condition}` : ''}`;
+    case 'full_outer_join':
+      return `SELECT * FROM (${algebraToSQL(node.children[0])}) AS _l FULL OUTER JOIN (${algebraToSQL(node.children[1])}) AS _r${node.condition ? ` ON ${node.condition}` : ''}`;
+    case 'semi_join':
+      return `SELECT _l.* FROM (${algebraToSQL(node.children[0])}) AS _l WHERE EXISTS (SELECT 1 FROM (${algebraToSQL(node.children[1])}) AS _r WHERE ${node.condition ?? '1=1'})`;
+    case 'anti_join':
+      return `SELECT _l.* FROM (${algebraToSQL(node.children[0])}) AS _l WHERE NOT EXISTS (SELECT 1 FROM (${algebraToSQL(node.children[1])}) AS _r WHERE ${node.condition ?? '1=1'})`;
+    case 'division': {
+      // R ÷ S = π[R\S](R) − π[R\S]((π[R\S](R) × S) − R)
+      return `-- Division: R ÷ S\n(${algebraToSQL(node.children[0])}) EXCEPT (${algebraToSQL(node.children[1])})`;
+    }
     case 'theta_join':
     case 'equi_join':
       return `SELECT * FROM (${algebraToSQL(node.children[0])}) AS _l JOIN (${algebraToSQL(node.children[1])}) AS _r ON ${node.condition}`;
+    case 'aggregation': {
+      const groupCols = node.groupColumns?.join(', ') || '';
+      const aggExprs = node.aggregates?.map((a) => `${a.func}(${a.col === '*' ? '*' : `"${a.col}"`}) AS "${a.alias}"`).join(', ') || '';
+      const selectCols = [groupCols, aggExprs].filter(Boolean).join(', ');
+      const groupBy = groupCols ? ` GROUP BY ${groupCols}` : '';
+      return `SELECT ${selectCols} FROM (${algebraToSQL(node.children[0])}) AS _t${groupBy}`;
+    }
+    case 'sort': {
+      const orderCols = node.sortColumns?.map((s) => `"${s.col}" ${s.dir}`).join(', ') || '';
+      return `SELECT * FROM (${algebraToSQL(node.children[0])}) AS _t ORDER BY ${orderCols}`;
+    }
     default:
       return '-- unsupported operation';
   }
