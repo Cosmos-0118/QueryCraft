@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useRef, useState, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useThemeStore, type AppearanceMode, type ColorTheme } from '@/stores/theme-store';
+import { useLoadingStore } from '@/stores/loading-store';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
   Settings, Sun, Moon, Monitor, Palette, Sparkles,
@@ -70,6 +71,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const redirected = useRef(false);
+  const { start: startLoading, stop: stopLoading } = useLoadingStore();
 
   useEffect(() => {
     if (mounted && !isAuthenticated && !redirected.current) {
@@ -78,12 +80,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [mounted, isAuthenticated, router]);
 
+  // Show loading overlay while hydrating / checking auth
+  useEffect(() => {
+    if (!mounted || !isAuthenticated) {
+      startLoading('Authenticating…');
+    } else {
+      stopLoading();
+    }
+  }, [mounted, isAuthenticated, startLoading, stopLoading]);
+
   if (!mounted || !isAuthenticated) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
+    return null;
   }
 
   return (

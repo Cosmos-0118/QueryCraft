@@ -1,8 +1,51 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { cn } from '@/lib/utils/helpers';
 import { Code2, Copy, Check } from 'lucide-react';
+
+// ── Compact SQL formatter ──────────────────────────────────
+function formatSQL(raw: string): string {
+  const sql = raw.replace(/\s+/g, ' ').trim();
+
+  // If short enough, just return as-is
+  if (sql.length <= 60) return sql;
+
+  // Only break before top-level clause keywords (not inside parentheses)
+  const CLAUSE_KW = /\b(SELECT|FROM|WHERE|ORDER BY|GROUP BY|HAVING|LIMIT|UNION|INTERSECT|EXCEPT)\b/gi;
+
+  let depth = 0;
+  let result = '';
+  let i = 0;
+
+  while (i < sql.length) {
+    if (sql[i] === '(') {
+      depth++;
+      result += '(';
+      i++;
+    } else if (sql[i] === ')') {
+      depth--;
+      result += ')';
+      i++;
+    } else if (depth === 0) {
+      // Check for clause keyword at current position
+      const rest = sql.slice(i);
+      const match = rest.match(CLAUSE_KW);
+      if (match && rest.indexOf(match[0]) === 0 && i > 0) {
+        result += '\n' + match[0];
+        i += match[0].length;
+      } else {
+        result += sql[i];
+        i++;
+      }
+    } else {
+      result += sql[i];
+      i++;
+    }
+  }
+
+  return result.trim();
+}
 
 interface AlgebraToSqlProps {
   sql: string;
@@ -11,9 +54,10 @@ interface AlgebraToSqlProps {
 
 export function AlgebraToSql({ sql, className }: AlgebraToSqlProps) {
   const [copied, setCopied] = useState(false);
+  const formatted = useMemo(() => (sql ? formatSQL(sql) : ''), [sql]);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(sql);
+    navigator.clipboard.writeText(formatted);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -52,8 +96,8 @@ export function AlgebraToSql({ sql, className }: AlgebraToSqlProps) {
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="overflow-auto p-4 font-mono text-sm leading-relaxed text-emerald-300/90">
-        {sql}
+      <pre className="overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-sm leading-relaxed text-emerald-300/90">
+        {formatted}
       </pre>
     </div>
   );

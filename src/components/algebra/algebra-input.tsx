@@ -133,12 +133,18 @@ export function AlgebraInput({ value, onChange, onEvaluate, tableNames = [] }: A
       while (wordStart > 0 && /[\w]/.test(value[wordStart - 1])) {
         wordStart--;
       }
-      const newVal = value.slice(0, wordStart) + item.insert + value.slice(cursor);
+      // Trim leading space if at start or already preceded by a space
+      let text = item.insert;
+      const charBefore = wordStart > 0 ? value[wordStart - 1] : '';
+      if (charBefore === '' || charBefore === ' ') {
+        text = text.replace(/^ /, '');
+      }
+      const newVal = value.slice(0, wordStart) + text + value.slice(cursor);
       onChange(newVal);
       setShowComplete(false);
       requestAnimationFrame(() => {
         el.focus();
-        const pos = wordStart + item.insert.length;
+        const pos = wordStart + text.length;
         el.setSelectionRange(pos, pos);
       });
     },

@@ -3,22 +3,27 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { SqlExecutor } from '@/lib/engine/sql-executor';
 import type { QueryResult, TableSchema } from '@/types/database';
+import { useLoadingStore } from '@/stores/loading-store';
 
 export function useSqlEngine() {
   const executorRef = useRef<SqlExecutor | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [tables, setTables] = useState<TableSchema[]>([]);
+  const { start: startLoading, stop: stopLoading } = useLoadingStore();
 
   useEffect(() => {
+    startLoading('Initializing SQL engine…');
     const executor = new SqlExecutor();
     executorRef.current = executor;
     executor.init().then(() => {
       setIsReady(true);
       setTables(executor.getTables());
+      stopLoading();
     });
     return () => {
       executor.reset();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const execute = useCallback((sql: string): QueryResult => {

@@ -17,7 +17,6 @@ import {
   CopySlash,
   Layers,
   GitFork,
-  Sparkles,
 } from 'lucide-react';
 
 interface ERToolbarProps {
@@ -325,320 +324,181 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
         </button>
       </div>
 
-      {/* ── Add Form Card ────────────────────────────────── */}
+      {/* ── Compact Inline Add Form ─────────────────────── */}
       {mode && (
         <div
-          className="relative overflow-hidden rounded-xl border border-zinc-800/60"
-          style={{
-            background: 'linear-gradient(180deg, rgba(24,24,27,0.95) 0%, rgba(18,18,21,0.98) 100%)',
-            backdropFilter: 'blur(16px)',
-          }}
+          className="flex items-center gap-2 rounded-xl border border-zinc-800/60 px-3 py-2"
+          style={{ background: 'linear-gradient(180deg, rgba(24,24,27,0.9) 0%, rgba(18,18,21,0.95) 100%)', backdropFilter: 'blur(12px)' }}
         >
-          {/* Accent top bar */}
+          {/* Mode indicator dot */}
           <div
-            className="h-0.5"
+            className="h-1.5 w-1.5 shrink-0 rounded-full"
             style={{
-              background:
-                mode === 'entity'
-                  ? 'linear-gradient(90deg, #8b5cf6 0%, #6d28d9 100%)'
-                  : mode === 'attribute'
-                  ? 'linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%)'
-                  : 'linear-gradient(90deg, #8b5cf6 0%, #ec4899 100%)',
+              background: mode === 'entity' ? '#8b5cf6' : mode === 'attribute' ? '#3b82f6' : '#ec4899',
             }}
           />
 
-          <div className="p-4">
-            {/* Header row */}
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div
-                  className="flex h-7 w-7 items-center justify-center rounded-lg"
-                  style={{
-                    background:
-                      mode === 'entity'
-                        ? 'rgba(139,92,246,0.12)'
-                        : mode === 'attribute'
-                        ? 'rgba(59,130,246,0.12)'
-                        : 'rgba(236,72,153,0.12)',
-                  }}
-                >
-                  {mode === 'entity' && <Box className="h-3.5 w-3.5 text-violet-400" />}
-                  {mode === 'attribute' && <Circle className="h-3.5 w-3.5 text-blue-400" />}
-                  {mode === 'relationship' && <Diamond className="h-3.5 w-3.5 text-pink-400" />}
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-zinc-200">
-                    Add {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                  </h3>
-                  <p className="text-[10px] text-zinc-500">
-                    {mode === 'entity' && 'Create a new entity in the diagram'}
-                    {mode === 'attribute' && 'Add an attribute to an entity'}
-                    {mode === 'relationship' && 'Connect two entities'}
-                  </p>
-                </div>
-              </div>
+          {/* ── Entity Form ──────────────────────── */}
+          {mode === 'entity' && (
+            <>
+              <input
+                ref={inputRef}
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                className="min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/40"
+                placeholder="Entity name…"
+              />
               <button
-                onClick={() => { setMode(null); setName(''); }}
-                className="rounded-lg p-1.5 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-400"
+                type="button"
+                onClick={() => setIsWeak(!isWeak)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[10px] font-medium transition-all ${
+                  isWeak
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+                    : 'border-zinc-800 text-zinc-500 hover:text-zinc-400'
+                }`}
               >
-                <X className="h-4 w-4" />
+                <div
+                  className={`h-2.5 w-2.5 rounded-sm border transition-all ${
+                    isWeak ? 'border-amber-400 bg-amber-400' : 'border-zinc-600'
+                  }`}
+                />
+                Weak
               </button>
-            </div>
+            </>
+          )}
 
-            {/* ── Entity Form ──────────────────────── */}
-            {mode === 'entity' && (
-              <div className="space-y-3">
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                      Entity Name
-                    </label>
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                      className="w-full rounded-lg border border-zinc-800 bg-zinc-900/80 px-3.5 py-2 text-sm text-zinc-200 outline-none transition-all placeholder:text-zinc-600 focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20"
-                      placeholder="e.g. Student, Course, Department"
-                    />
-                  </div>
-                  <div className="flex flex-col justify-end">
+          {/* ── Attribute Form ───────────────────── */}
+          {mode === 'attribute' && store.entities.length === 0 && (
+            <p className="flex-1 text-[11px] text-zinc-500">Add an entity first</p>
+          )}
+          {mode === 'attribute' && store.entities.length > 0 && (
+            <>
+              <input
+                ref={inputRef}
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                className="min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/40"
+                placeholder="Attribute name…"
+              />
+              <select
+                value={attrEntity}
+                onChange={(e) => setAttrEntity(e.target.value)}
+                className="shrink-0 rounded-md border border-zinc-800 bg-zinc-900/80 px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500/40"
+              >
+                {store.entities.map((e) => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
+              </select>
+              <div className="flex shrink-0 gap-0.5">
+                {ATTR_KINDS.map((k) => {
+                  const Icon = k.icon;
+                  const active = attrKind === k.value;
+                  return (
                     <button
-                      type="button"
-                      onClick={() => setIsWeak(!isWeak)}
-                      className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-medium transition-all duration-150 ${
-                        isWeak
-                          ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
-                          : 'border-zinc-800 bg-zinc-900/60 text-zinc-500 hover:border-zinc-700 hover:text-zinc-400'
+                      key={k.value}
+                      onClick={() => setAttrKind(k.value)}
+                      title={k.label}
+                      className={`rounded-md border p-1.5 transition-all ${
+                        active
+                          ? `${k.bg} ${k.color}`
+                          : 'border-zinc-800/60 text-zinc-600 hover:text-zinc-400'
                       }`}
                     >
-                      <div
-                        className={`h-3 w-3 rounded-sm border-2 transition-all ${
-                          isWeak ? 'border-amber-400 bg-amber-400' : 'border-zinc-600 bg-transparent'
-                        }`}
-                      >
-                        {isWeak && (
-                          <svg className="h-full w-full text-zinc-900" viewBox="0 0 12 12"><path d="M3 6l2 2 4-4" stroke="currentColor" strokeWidth="2" fill="none" /></svg>
-                        )}
-                      </div>
-                      Weak Entity
+                      <Icon className="h-3 w-3" />
                     </button>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  <p className="text-[10px] text-zinc-600">
-                    <Sparkles className="mr-1 inline h-3 w-3" />
-                    Auto-placed on canvas grid
-                  </p>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* ── Relationship Form ────────────────── */}
+          {mode === 'relationship' && store.entities.length < 2 && (
+            <p className="flex-1 text-[11px] text-zinc-500">Need at least 2 entities</p>
+          )}
+          {mode === 'relationship' && store.entities.length >= 2 && (
+            <>
+              <input
+                ref={inputRef}
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                className="min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/40"
+                placeholder="Relationship name…"
+              />
+              <select
+                value={relEntity1}
+                onChange={(e) => setRelEntity1(e.target.value)}
+                className="shrink-0 rounded-md border border-zinc-800 bg-zinc-900/80 px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500/40"
+              >
+                {store.entities.map((e) => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
+              </select>
+              <div className="flex shrink-0 gap-0.5">
+                {CARDINALITIES.map((c) => (
                   <button
-                    onClick={handleAdd}
-                    disabled={!name.trim()}
-                    className="inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-30 disabled:shadow-none"
-                    style={{
-                      background: name.trim()
-                        ? 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)'
-                        : 'rgba(63,63,70,0.5)',
-                    }}
+                    key={c.value}
+                    onClick={() => setCardinality(c.value)}
+                    title={c.desc}
+                    className={`rounded-md border px-2 py-1 text-[10px] font-bold tabular-nums transition-all ${
+                      cardinality === c.value
+                        ? 'border-violet-500/40 bg-violet-500/15 text-violet-300'
+                        : 'border-zinc-800 text-zinc-500 hover:text-zinc-400'
+                    }`}
                   >
-                    <Plus className="h-3.5 w-3.5" />
-                    Add Entity
+                    {c.label}
                   </button>
-                </div>
+                ))}
               </div>
-            )}
+              <select
+                value={relEntity2}
+                onChange={(e) => setRelEntity2(e.target.value)}
+                className="shrink-0 rounded-md border border-zinc-800 bg-zinc-900/80 px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500/40"
+              >
+                {store.entities.map((e) => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
+              </select>
+              {relEntity1 === relEntity2 && (
+                <span className="shrink-0 text-[10px] text-amber-400/80">⚠ Same</span>
+              )}
+            </>
+          )}
 
-            {/* ── Attribute Form ───────────────────── */}
-            {mode === 'attribute' && (
-              <div className="space-y-3">
-                {store.entities.length === 0 ? (
-                  <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/40 p-4 text-center">
-                    <Box className="mx-auto mb-2 h-5 w-5 text-zinc-600" />
-                    <p className="text-xs text-zinc-500">No entities yet. Add an entity first.</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                          Attribute Name
-                        </label>
-                        <input
-                          ref={inputRef}
-                          type="text"
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                          className="w-full rounded-lg border border-zinc-800 bg-zinc-900/80 px-3.5 py-2 text-sm text-zinc-200 outline-none transition-all placeholder:text-zinc-600 focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20"
-                          placeholder="e.g. student_id, name"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                          Belongs To
-                        </label>
-                        <select
-                          value={attrEntity}
-                          onChange={(e) => setAttrEntity(e.target.value)}
-                          className="w-full rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-300 outline-none transition-all focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20"
-                        >
-                          {store.entities.map((e) => (
-                            <option key={e.id} value={e.id}>{e.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                        Attribute Kind
-                      </label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {ATTR_KINDS.map((k) => {
-                          const Icon = k.icon;
-                          const active = attrKind === k.value;
-                          return (
-                            <button
-                              key={k.value}
-                              onClick={() => setAttrKind(k.value)}
-                              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150 ${
-                                active
-                                  ? `${k.bg} ${k.color}`
-                                  : 'border-zinc-800/60 bg-zinc-900/40 text-zinc-500 hover:border-zinc-700 hover:text-zinc-400'
-                              }`}
-                            >
-                              <Icon className="h-3 w-3" />
-                              {k.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between pt-1">
-                      <p className="text-[10px] text-zinc-600">
-                        <Sparkles className="mr-1 inline h-3 w-3" />
-                        Fanned outward from entity
-                      </p>
-                      <button
-                        onClick={handleAdd}
-                        disabled={!name.trim() || !attrEntity}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-30 disabled:shadow-none"
-                        style={{
-                          background: name.trim() && attrEntity
-                            ? 'linear-gradient(135deg, #3b82f6 0%, #6d28d9 100%)'
-                            : 'rgba(63,63,70,0.5)',
-                        }}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        Add Attribute
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* ── Relationship Form ────────────────── */}
-            {mode === 'relationship' && (
-              <div className="space-y-3">
-                {store.entities.length < 2 ? (
-                  <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/40 p-4 text-center">
-                    <Box className="mx-auto mb-2 h-5 w-5 text-zinc-600" />
-                    <p className="text-xs text-zinc-500">Need at least 2 entities to create a relationship.</p>
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                        Relationship Name
-                      </label>
-                      <input
-                        ref={inputRef}
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                        className="w-full rounded-lg border border-zinc-800 bg-zinc-900/80 px-3.5 py-2 text-sm text-zinc-200 outline-none transition-all placeholder:text-zinc-600 focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20"
-                        placeholder="e.g. enrolls, belongs_to"
-                      />
-                    </div>
-                    <div className="flex items-end gap-2">
-                      <div className="flex-1">
-                        <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                          Entity 1
-                        </label>
-                        <select
-                          value={relEntity1}
-                          onChange={(e) => setRelEntity1(e.target.value)}
-                          className="w-full rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-300 outline-none transition-all focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20"
-                        >
-                          {store.entities.map((e) => (
-                            <option key={e.id} value={e.id}>{e.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex flex-col items-center gap-1 pb-0.5">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-600">Card.</span>
-                        <div className="flex gap-1">
-                          {CARDINALITIES.map((c) => (
-                            <button
-                              key={c.value}
-                              onClick={() => setCardinality(c.value)}
-                              title={c.desc}
-                              className={`rounded-md border px-2.5 py-1.5 text-[11px] font-bold tabular-nums transition-all duration-150 ${
-                                cardinality === c.value
-                                  ? 'border-violet-500/40 bg-violet-500/15 text-violet-300'
-                                  : 'border-zinc-800 bg-zinc-900/60 text-zinc-500 hover:border-zinc-700 hover:text-zinc-400'
-                              }`}
-                            >
-                              {c.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                          Entity 2
-                        </label>
-                        <select
-                          value={relEntity2}
-                          onChange={(e) => setRelEntity2(e.target.value)}
-                          className="w-full rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-300 outline-none transition-all focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20"
-                        >
-                          {store.entities.map((e) => (
-                            <option key={e.id} value={e.id}>{e.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    {relEntity1 && relEntity2 && relEntity1 === relEntity2 && (
-                      <p className="text-[10px] text-amber-400/80">
-                        ⚠ Both entities are the same — pick different entities for a relationship.
-                      </p>
-                    )}
-                    <div className="flex items-center justify-between pt-1">
-                      <p className="text-[10px] text-zinc-600">
-                        <Sparkles className="mr-1 inline h-3 w-3" />
-                        Placed between selected entities
-                      </p>
-                      <button
-                        onClick={handleAdd}
-                        disabled={!name.trim() || !relEntity1 || !relEntity2 || relEntity1 === relEntity2}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-30 disabled:shadow-none"
-                        style={{
-                          background: name.trim() && relEntity1 && relEntity2 && relEntity1 !== relEntity2
-                            ? 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)'
-                            : 'rgba(63,63,70,0.5)',
-                        }}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        Add Relationship
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+          {/* Add button + close — shared by all modes */}
+          <button
+            onClick={handleAdd}
+            disabled={
+              !name.trim() ||
+              (mode === 'attribute' && (!attrEntity || store.entities.length === 0)) ||
+              (mode === 'relationship' && (!relEntity1 || !relEntity2 || relEntity1 === relEntity2 || store.entities.length < 2))
+            }
+            className="inline-flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-semibold text-white transition-all disabled:opacity-30"
+            style={{
+              background: name.trim()
+                ? mode === 'entity'
+                  ? 'linear-gradient(135deg, #7c3aed, #6d28d9)'
+                  : mode === 'attribute'
+                  ? 'linear-gradient(135deg, #3b82f6, #6d28d9)'
+                  : 'linear-gradient(135deg, #8b5cf6, #ec4899)'
+                : 'rgba(63,63,70,0.5)',
+            }}
+          >
+            <Plus className="h-3 w-3" />
+            Add
+          </button>
+          <button
+            onClick={() => { setMode(null); setName(''); }}
+            className="shrink-0 rounded-md p-1 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-400"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
     </div>
