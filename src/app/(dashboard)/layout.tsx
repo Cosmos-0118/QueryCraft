@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useThemeStore, type AppearanceMode, type ColorTheme } from '@/stores/theme-store';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
-  Settings, Sun, Moon, Monitor, Palette,
+  Settings, Sun, Moon, Monitor, Palette, Sparkles,
 } from 'lucide-react';
 
 const emptySubscribe = () => () => {};
@@ -23,6 +23,7 @@ const NAV_ITEMS: { label: string; href: string; icon: ReactNode }[] = [
   { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={18} /> },
   { label: 'Learn', href: '/learn', icon: <BookOpen size={18} /> },
   { label: 'SQL Sandbox', href: '/sandbox', icon: <Terminal size={18} /> },
+  { label: 'Table Generator', href: '/generator', icon: <Sparkles size={18} /> },
   { label: 'Algebra', href: '/algebra', icon: <Sigma size={18} /> },
   { label: 'ER Builder', href: '/er-builder', icon: <PenTool size={18} /> },
   { label: 'Normalizer', href: '/normalizer', icon: <RefreshCw size={18} /> },
@@ -86,7 +87,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen bg-background">
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 border-r border-border bg-card lg:flex lg:flex-col">
         <div className="flex h-16 items-center border-b border-border px-6">
@@ -120,7 +121,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{user?.displayName || 'Guest'}</p>
-              <p className="truncate text-xs text-muted-foreground">{user?.email || ''}</p>
             </div>
           </div>
         </div>
@@ -253,7 +253,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-border bg-card py-1 shadow-lg">
                   <div className="border-b border-border px-4 py-2">
                     <p className="truncate text-sm font-medium">{user?.displayName || 'Guest'}</p>
-                    <p className="truncate text-xs text-muted-foreground">{user?.email || ''}</p>
                   </div>
                   <Link
                     href="/settings"
@@ -275,7 +274,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto p-6 lg:p-8">{children}</main>
+        <main className="min-h-0 flex-1 overflow-auto">{children}</main>
       </div>
     </div>
   );

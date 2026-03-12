@@ -19,7 +19,7 @@ const COLOR_THEMES: { value: ColorTheme; label: string; swatch: string; desc: st
 ];
 
 export default function SettingsPage() {
-  const { user, accessToken } = useAuth();
+  const { user, updateName, changePassword } = useAuth();
   const { appearance, colorTheme, setAppearance, setColorTheme } = useThemeStore();
 
   const [displayName, setDisplayName] = useState(user?.displayName || '');
@@ -27,62 +27,32 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [profileMsg, setProfileMsg] = useState('');
   const [passwordMsg, setPasswordMsg] = useState('');
-  const [saving, setSaving] = useState(false);
 
-  const updateProfile = async (e: React.FormEvent) => {
+  const handleUpdateProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
     setProfileMsg('');
-    try {
-      const res = await fetch('/api/users/me', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ displayName }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed');
-      }
-      setProfileMsg('Profile updated!');
-    } catch (err) {
-      setProfileMsg(err instanceof Error ? err.message : 'Error');
-    } finally {
-      setSaving(false);
-    }
+    const name = displayName.trim();
+    if (!name) { setProfileMsg('Name cannot be empty'); return; }
+    updateName(name);
+    setProfileMsg('Profile updated!');
   };
 
-  const changePassword = async (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
     setPasswordMsg('');
+    if (newPassword.length < 4) { setPasswordMsg('New password must be at least 4 characters'); return; }
     try {
-      const res = await fetch('/api/users/me', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed');
-      }
+      await changePassword(currentPassword, newPassword);
       setPasswordMsg('Password changed!');
       setCurrentPassword('');
       setNewPassword('');
     } catch (err) {
       setPasswordMsg(err instanceof Error ? err.message : 'Error');
-    } finally {
-      setSaving(false);
     }
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="mx-auto max-w-2xl space-y-8 p-6 lg:p-8">
       <div>
         <h1 className="text-3xl font-bold">Settings</h1>
         <p className="mt-2 text-muted-foreground">
@@ -93,17 +63,7 @@ export default function SettingsPage() {
       {/* Profile */}
       <section className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-lg font-semibold">Profile</h2>
-        <form onSubmit={updateProfile} className="mt-4 space-y-4">
-          <div>
-            <label htmlFor="settingsEmail" className="block text-sm font-medium">Email</label>
-            <input
-              id="settingsEmail"
-              type="email"
-              disabled
-              value={user?.email || ''}
-              className="mt-1 w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
-            />
-          </div>
+        <form onSubmit={handleUpdateProfile} className="mt-4 space-y-4">
           <div>
             <label htmlFor="settingsName" className="block text-sm font-medium">Display Name</label>
             <input
@@ -123,8 +83,7 @@ export default function SettingsPage() {
           )}
           <button
             type="submit"
-            disabled={saving}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
           >
             Save Profile
           </button>
@@ -134,7 +93,7 @@ export default function SettingsPage() {
       {/* Password */}
       <section className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-lg font-semibold">Change Password</h2>
-        <form onSubmit={changePassword} className="mt-4 space-y-4">
+        <form onSubmit={handleChangePassword} className="mt-4 space-y-4">
           <div>
             <label htmlFor="curPwd" className="block text-sm font-medium">Current Password</label>
             <input
@@ -165,8 +124,7 @@ export default function SettingsPage() {
           )}
           <button
             type="submit"
-            disabled={saving}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
           >
             Change Password
           </button>

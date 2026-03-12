@@ -57,12 +57,6 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <Link
               href="/login"
-              className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Log in
-            </Link>
-            <Link
-              href="/register"
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
               Get Started
@@ -87,7 +81,7 @@ export default function Home() {
           </p>
           <div className="mt-10 flex items-center justify-center gap-4">
             <Link
-              href="/register"
+              href="/login"
               className="rounded-lg bg-primary px-8 py-3 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
             >
               Start Learning Free
@@ -161,10 +155,10 @@ export default function Home() {
           Ready to See Databases Come Alive?
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-          Create your free account and start learning DBMS the visual way. No credit card required.
+          No server needed — all accounts are stored locally on this device.
         </p>
         <Link
-          href="/register"
+          href="/login"
           className="mt-8 inline-block rounded-lg bg-primary px-8 py-3 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
         >
           Get Started Now

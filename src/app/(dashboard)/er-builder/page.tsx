@@ -123,7 +123,7 @@ export default function ERBuilderPage() {
 
   return (
     <ReactFlowProvider>
-      <div className="flex h-[calc(100vh-7rem)] flex-col gap-3">
+      <div className="flex h-full flex-col gap-3 p-6 lg:p-8">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">

@@ -7,10 +7,8 @@ import { useSessionPersistence } from '@/hooks/use-session-persistence';
 import { SqlEditor } from '@/components/sandbox/sql-editor';
 import { SchemaBrowser } from '@/components/sandbox/schema-browser';
 
-import { DataGeneratorDialog } from '@/components/sandbox/data-generator-dialog';
 import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import { ResultPanel } from '@/components/visual/result-panel';
-import { generateSampleDataSQL } from '@/lib/engine/data-generator';
 import { cn } from '@/lib/utils/helpers';
 import type { QueryResult } from '@/types/database';
 import {
@@ -20,7 +18,7 @@ import {
   Play,
   Download,
   Plus,
-  Sparkles,
+  ClipboardPaste,
   RotateCcw,
   CheckCircle2,
   XCircle,
@@ -65,8 +63,9 @@ export default function SandboxPage() {
   const { isReady, execute, loadSQL, reset, exportCSV, tables, refreshTables } = useSqlEngine();
   const store = useSandboxStore();
   const [result, setResult] = useState<QueryResult | null>(null);
-  const [genOpen, setGenOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importSql, setImportSql] = useState('');
+  const [showImport, setShowImport] = useState(false);
   const [activeDataset, setActiveDataset] = useState<string | null>(null);
 
   // Auto-save session
@@ -97,17 +96,20 @@ export default function SandboxPage() {
     [loadSQL, store],
   );
 
-  const handleGenerate = useCallback(
-    (tableName: string, columns: { name: string; type: 'integer' | 'text' | 'real' | 'date' | 'boolean'; primaryKey: boolean }[], rowCount: number) => {
-      const sql = generateSampleDataSQL(tableName, columns, rowCount);
-      const res = loadSQL(sql);
-      setResult(res);
-      if (!res.error) {
-        store.setQuery(`SELECT * FROM "${tableName}" LIMIT 20;`);
+  const handleImportSQL = useCallback(() => {
+    const sql = importSql.trim();
+    if (!sql) return;
+    const res = loadSQL(sql);
+    setResult(res);
+    if (!res.error) {
+      setShowImport(false);
+      setImportSql('');
+      const tableMatch = sql.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/i);
+      if (tableMatch) {
+        store.setQuery(`SELECT * FROM "${tableMatch[1]}" LIMIT 20;`);
       }
-    },
-    [loadSQL, store],
-  );
+    }
+  }, [importSql, loadSQL, store]);
 
   const handleExportCSV = useCallback(() => {
     if (!result || result.columns.length === 0) return;
@@ -126,7 +128,7 @@ export default function SandboxPage() {
 
   return (
     <>
-      <div className="flex h-[calc(100vh-7rem)] flex-col gap-3">
+      <div className="flex h-full flex-col gap-3 p-6 lg:p-8">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
@@ -187,14 +189,14 @@ export default function SandboxPage() {
               Create Table
             </button>
 
-            {/* Generate Data */}
+            {/* Import SQL */}
             <button
-              onClick={() => setGenOpen(true)}
+              onClick={() => setShowImport(!showImport)}
               disabled={!isReady}
               className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40"
             >
-              <Sparkles className="h-3.5 w-3.5" />
-              Generate Data
+              <ClipboardPaste className="h-3.5 w-3.5" />
+              Import SQL
             </button>
 
             {/* Reset */}
@@ -207,6 +209,39 @@ export default function SandboxPage() {
             </button>
           </div>
         </div>
+
+        {/* Import SQL Panel */}
+        {showImport && (
+          <div className="rounded-xl border border-violet-500/30 bg-zinc-900/80 p-4 backdrop-blur-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-zinc-200">Import SQL</h3>
+              <p className="text-[11px] text-zinc-500">Paste CREATE TABLE / INSERT statements from Table Generator</p>
+            </div>
+            <textarea
+              value={importSql}
+              onChange={(e) => setImportSql(e.target.value)}
+              placeholder={'-- Paste your SQL here\nCREATE TABLE "students" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);'}
+              className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/60 px-4 py-3 font-mono text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
+              rows={6}
+            />
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={handleImportSQL}
+                disabled={!importSql.trim()}
+                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-violet-500/20 transition-all hover:bg-violet-500 disabled:opacity-40"
+              >
+                <ClipboardPaste className="h-3.5 w-3.5" />
+                Run Import
+              </button>
+              <button
+                onClick={() => { setShowImport(false); setImportSql(''); }}
+                className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Engine Status */}
         {!isReady && (
@@ -325,11 +360,6 @@ export default function SandboxPage() {
       </div>
 
       {/* Modals */}
-      <DataGeneratorDialog
-        open={genOpen}
-        onClose={() => setGenOpen(false)}
-        onGenerate={handleGenerate}
-      />
       <CreateTableModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}

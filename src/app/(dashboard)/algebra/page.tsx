@@ -151,7 +151,7 @@ export default function AlgebraPage() {
 
   return (
     <>
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5 p-6 lg:p-8">
         {/* ── Header ──────────────────────────── */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">

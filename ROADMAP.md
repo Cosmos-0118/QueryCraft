@@ -43,8 +43,6 @@ A web platform with **two primary modes**:
 - **ER Diagram Builder** — Drag-and-drop entities, relationships, attributes. Auto-converts to relational tables.
 - **Normalization Wizard** — Feed in a table with functional dependencies. Watch it decompose: 1NF → 2NF → 3NF → BCNF, with anomalies demonstrated at each stage.
 - **Session Persistence** — Close the browser, come back tomorrow, continue exactly where you left off.
-- **Progress Tracking** — Track completion across all 5 units, earn badges, see weak areas.
-- **Practice Exercises** — Auto-graded problems per topic with instant feedback.
 
 ---
 
@@ -100,21 +98,10 @@ A web platform with **two primary modes**:
 - At each stage, demonstrates the anomaly that the normal form fixes (insert, update, delete anomalies)
 - Shows the dependency diagram at each level
 
-### 2.7 Practice & Exercises
+### 2.7 Session Management
 
-- Exercise bank per topic (SQL, relational algebra, normalization, ER diagrams)
-- Auto-grading: compares student output against expected result (set comparison for SQL, structure comparison for normalization)
-- Hints system (3 hints per exercise, progressively more specific)
-- Difficulty levels: Easy, Medium, Hard
-
-### 2.8 Progress & Session Management
-
-- Per-topic completion percentage
-- Unit-level and overall progress bars
 - Resume-from-where-you-left-off for every lesson and sandbox
 - Sandbox state persistence (tables, data, query history)
-- Activity heatmap (GitHub-style contribution grid)
-- Badges/achievements for milestones
 
 ---
 
@@ -130,7 +117,7 @@ A web platform with **two primary modes**:
 | **Client SQL Engine**  | sql.js (SQLite WASM)                          | Execute SQL in-browser, zero server cost, instant results   |
 | **State Management**   | Zustand                                       | Minimal boilerplate, great for sandbox state                |
 | **Forms & Validation** | React Hook Form + Zod                         | Type-safe validation on client and server                   |
-| **Database**           | PostgreSQL (Aiven)                            | Application data: users, progress, sessions, exercises      |
+| **Database**           | PostgreSQL (Aiven)                            | Application data: users, auth, sessions                     |
 | **ORM**                | Drizzle ORM                                   | Type-safe, lightweight, great migration support             |
 | **Auth Hashing**       | Argon2id (via argon2 npm)                     | Memory-hard hashing, OWASP recommended                      |
 | **Rate Limiting**      | Custom token-bucket (in-memory + DB fallback) | Prevent brute force, no Redis dependency needed initially   |
@@ -162,13 +149,13 @@ A web platform with **two primary modes**:
 │  └──────────────────────────────────────────────────────────┘   │
 │                                                                 │
 └─────────────────────────────┬───────────────────────────────────┘
-                              │ HTTPS (Auth, Progress, Sessions)
+                              │ HTTPS (Auth, Sessions)
 ┌─────────────────────────────▼───────────────────────────────────┐
 │                     SERVER (Next.js API Routes)                 │
 │                                                                 │
-│  ┌────────────┐  ┌──────────────┐  ┌────────────────────────┐   │
-│  │  Auth API  │  │ Progress API │  │  Session Persistence   │   │
-│  │  (Argon2)  │  │  (CRUD)      │  │  (Save/Load State)     │   │
+│  ┌────────────┐  ┌────────────────────────┐                     │
+│  │  Auth API  │  │  Session Persistence   │                     │
+│  │  (Argon2)  │  │  (Save/Load State)     │                     │
 │  └─────┬──────┘  └──────┬───────┘  └───────────┬────────────┘   │
 │        │                │                      │                │
 │  ┌─────▼────────────────▼──────────────────────▼────────────┐   │
@@ -184,8 +171,6 @@ A web platform with **two primary modes**:
                     │                 │
                     │  users          │
                     │  sessions       │
-                    │  progress       │
-                    │  exercise_logs  │
                     │  sandbox_states │
                     └─────────────────┘
 ```
@@ -196,7 +181,7 @@ A web platform with **two primary modes**:
 - No server load for student queries
 - Instant execution (no network round-trip)
 - Each student gets a fully isolated environment
-- The Aiven PostgreSQL database is used **only** for application data (users, auth, progress, sessions)
+- The Aiven PostgreSQL database is used **only** for application data (users, auth, sessions)
 
 ---
 
@@ -227,7 +212,7 @@ QueryCraft/
 │   │   ├── (dashboard)/                      # ── Protected Pages ──
 │   │   │   ├── layout.tsx                    # Sidebar + header layout, auth guard
 │   │   │   ├── dashboard/
-│   │   │   │   └── page.tsx                  # Home dashboard (progress overview, resume, quick actions)
+│   │   │   │   └── page.tsx                  # Home dashboard (quick actions)
 │   │   │   │
 │   │   │   ├── learn/                        # ── Guided Learning ──
 │   │   │   │   ├── page.tsx                  # Unit/topic selection grid
@@ -248,14 +233,6 @@ QueryCraft/
 │   │   │   ├── normalizer/                   # ── Normalization Wizard ──
 │   │   │   │   └── page.tsx                  # FD input + step-by-step decomposition
 │   │   │   │
-│   │   │   ├── practice/                     # ── Practice Exercises ──
-│   │   │   │   ├── page.tsx                  # Exercise list by topic + difficulty
-│   │   │   │   └── [exerciseId]/
-│   │   │   │       └── page.tsx              # Individual exercise with auto-grading
-│   │   │   │
-│   │   │   ├── progress/                     # ── Progress Tracking ──
-│   │   │   │   └── page.tsx                  # Unit completion, badges, activity heatmap
-│   │   │   │
 │   │   │   └── settings/                     # ── User Settings ──
 │   │   │       └── page.tsx                  # Profile, password change, theme, data export
 │   │   │
@@ -272,17 +249,10 @@ QueryCraft/
 │   │       ├── users/
 │   │       │   └── me/
 │   │       │       └── route.ts              # GET/PATCH — current user profile
-│   │       ├── progress/
-│   │       │   └── route.ts                  # GET/POST — read/update topic progress
-│   │       ├── sessions/
-│   │       │   ├── route.ts                  # GET/POST — list/create saved sessions
-│   │       │   └── [sessionId]/
-│   │       │       └── route.ts              # GET/PUT/DELETE — manage a saved session
-│   │       └── exercises/
-│   │           ├── route.ts                  # GET — list exercises (filterable)
-│   │           └── [exerciseId]/
-│   │               └── submit/
-│   │                   └── route.ts          # POST — submit answer, get grading result
+│   │       └── sessions/
+│   │           ├── route.ts                  # GET/POST — list/create saved sessions
+│   │           └── [sessionId]/
+│   │               └── route.ts              # GET/PUT/DELETE — manage a saved session
 │   │
 │   ├── components/                           # ── React Components ──
 │   │   ├── ui/                               # shadcn/ui primitives (auto-generated)
@@ -352,16 +322,7 @@ QueryCraft/
 │   │   │   ├── data-generator-dialog.tsx     # Dialog: table name, rows, cols, auto/manual
 │   │   │   └── query-history.tsx             # Scrollable list of past queries
 │   │   │
-│   │   ├── practice/                         # ── Exercise Components ──
-│   │   │   ├── exercise-card.tsx             # Exercise preview card
-│   │   │   ├── exercise-workspace.tsx        # Split view: prompt + editor
-│   │   │   ├── grading-result.tsx            # Pass/fail with diff
-│   │   │   └── hint-drawer.tsx               # Progressive hint system
-│   │   │
 │   │   ├── dashboard/                        # ── Dashboard Components ──
-│   │   │   ├── progress-overview.tsx         # Unit completion rings
-│   │   │   ├── recent-activity.tsx           # Recent lessons/exercises
-│   │   │   ├── resume-card.tsx               # "Continue where you left off"
 │   │   │   └── quick-actions.tsx             # Shortcut buttons to tools
 │   │   │
 │   │   └── shared/                           # ── Shared/Utility Components ──
@@ -374,7 +335,7 @@ QueryCraft/
 │   ├── lib/                                  # ── Core Libraries & Business Logic ──
 │   │   ├── db/                               # Database layer
 │   │   │   ├── index.ts                      # Drizzle client initialization (Aiven connection)
-│   │   │   ├── schema.ts                     # All table definitions (users, sessions, progress...)
+│   │   │   ├── schema.ts                     # All table definitions (users, sessions, rate limits)
 │   │   │   └── migrations/                   # Auto-generated migration SQL files
 │   │   │       └── 0000_initial.sql
 │   │   │
@@ -434,17 +395,9 @@ QueryCraft/
 │   │   │           ├── concurrency.ts        # Lost update, dirty read, phantom — visualized
 │   │   │           └── nosql-intro.ts        # Document, key-value, column, graph overview
 │   │   │
-│   │   ├── exercises/                        # ── Exercise System ──
-│   │   │   ├── validator.ts                  # Compares student output vs expected (set-based)
-│   │   │   └── bank/                         # Exercise definitions
-│   │   │       ├── sql-exercises.ts          # SQL query exercises
-│   │   │       ├── algebra-exercises.ts      # Relational algebra exercises
-│   │   │       ├── normalization-exercises.ts# Normalize this table exercises
-│   │   │       └── er-exercises.ts           # ER diagram exercises
-│   │   │
 │   │   └── utils/                            # General utilities
 │   │       ├── constants.ts                  # App-wide constants
-│   │       ├── validators.ts                 # Zod schemas (auth, exercise submission, etc.)
+│   │       ├── validators.ts                 # Zod schemas (auth, etc.)
 │   │       └── helpers.ts                    # Misc shared helpers
 │   │
 │   ├── hooks/                                # ── Custom React Hooks ──
@@ -452,7 +405,6 @@ QueryCraft/
 │   │   ├── use-sql-engine.ts                 # Initialize sql.js, execute queries
 │   │   ├── use-lesson.ts                     # Lesson playback state and controls
 │   │   ├── use-session-persistence.ts        # Auto-save and restore sandbox/lesson state
-│   │   ├── use-progress.ts                   # Fetch and update progress
 │   │   └── use-debounce.ts                   # Debounce utility hook
 │   │
 │   ├── stores/                               # ── Zustand Stores ──
@@ -466,7 +418,6 @@ QueryCraft/
 │   ├── types/                                # ── TypeScript Type Definitions ──
 │   │   ├── auth.ts                           # User, LoginRequest, RegisterRequest, TokenPair
 │   │   ├── lesson.ts                         # Lesson, Step, LessonMeta, StepType
-│   │   ├── exercise.ts                       # Exercise, Submission, GradingResult
 │   │   ├── algebra.ts                        # AlgebraExpression, AlgebraNode, Operation
 │   │   ├── er-diagram.ts                     # Entity, Relationship, Attribute, ERDiagram
 │   │   ├── normalizer.ts                     # FunctionalDependency, NormalForm, Decomposition
@@ -483,9 +434,6 @@ QueryCraft/
 │   │   ├── ecommerce.json                    # Products, orders, customers, categories
 │   │   ├── library.json                      # Books, members, loans, authors
 │   │   └── hospital.json                     # Patients, doctors, appointments, departments
-│   └── exercises/
-│       └── seed-exercises.ts                 # Populate exercise bank into DB
-│
 ├── tests/                                    # ── Test Suite ──
 │   ├── unit/
 │   │   ├── algebra-parser.test.ts
@@ -497,13 +445,11 @@ QueryCraft/
 │   │   └── validators.test.ts
 │   ├── integration/
 │   │   ├── auth-api.test.ts
-│   │   ├── progress-api.test.ts
 │   │   └── sessions-api.test.ts
 │   └── e2e/
 │       ├── auth-flow.spec.ts
 │       ├── sandbox.spec.ts
-│       ├── guided-lesson.spec.ts
-│       └── exercise.spec.ts
+│       └── guided-lesson.spec.ts
 │
 ├── docs/                                     # ── Documentation ──
 │   ├── SECURITY.md                           # Security model documentation
@@ -559,21 +505,6 @@ CREATE TABLE refresh_tokens (
 
 CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id);
 
--- ==================== TOPIC PROGRESS ====================
-CREATE TABLE progress (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID REFERENCES users(id) ON DELETE CASCADE,
-    topic_slug      VARCHAR(100) NOT NULL,            -- e.g., "unit3/joins"
-    lesson_slug     VARCHAR(100),                     -- e.g., "inner-join"
-    current_step    INT DEFAULT 0,                    -- Step index in lesson
-    completed       BOOLEAN DEFAULT FALSE,
-    completed_at    TIMESTAMPTZ,
-    updated_at      TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, topic_slug, lesson_slug)
-);
-
-CREATE INDEX idx_progress_user ON progress(user_id);
-
 -- ==================== SAVED SESSIONS ====================
 CREATE TABLE saved_sessions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -586,20 +517,6 @@ CREATE TABLE saved_sessions (
 );
 
 CREATE INDEX idx_sessions_user ON saved_sessions(user_id);
-
--- ==================== EXERCISE SUBMISSIONS ====================
-CREATE TABLE exercise_submissions (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID REFERENCES users(id) ON DELETE CASCADE,
-    exercise_id     VARCHAR(100) NOT NULL,            -- References exercise bank ID
-    submitted_answer TEXT NOT NULL,
-    is_correct      BOOLEAN NOT NULL,
-    attempt_number  INT NOT NULL DEFAULT 1,
-    submitted_at    TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_submissions_user ON exercise_submissions(user_id);
-CREATE INDEX idx_submissions_exercise ON exercise_submissions(exercise_id);
 
 -- ==================== RATE LIMITING ====================
 CREATE TABLE rate_limit_log (
@@ -649,12 +566,11 @@ Refresh Token
 
 ### 7.3 Rate Limiting
 
-| Endpoint                      | Limit        | Window              |
-| ----------------------------- | ------------ | ------------------- |
-| POST /api/auth/login          | 5 requests   | 15 minutes (per IP) |
-| POST /api/auth/register       | 3 requests   | 1 hour (per IP)     |
-| POST /api/exercises/\*/submit | 30 requests  | 1 minute (per user) |
-| All other API routes          | 100 requests | 1 minute (per user) |
+| Endpoint                | Limit        | Window              |
+| ----------------------- | ------------ | ------------------- |
+| POST /api/auth/login    | 5 requests   | 15 minutes (per IP) |
+| POST /api/auth/register | 3 requests   | 1 hour (per IP)     |
+| All other API routes    | 100 requests | 1 minute (per user) |
 
 ### 7.4 Input Validation & Sanitization
 
@@ -678,14 +594,6 @@ Permissions-Policy: camera=(), microphone=(), geolocation=()
 ```
 
 Note: `'wasm-unsafe-eval'` is required for sql.js (WebAssembly) to function.
-
-### 7.6 Anti-Cheat Measures
-
-- Exercise answers validated server-side (client submits query, server verifies result)
-- Exercise grading uses **set comparison** (result sets must match regardless of row order)
-- No answer key is ever sent to the client
-- Each submission logged with timestamp for anomaly detection
-- Progress updates require valid auth token and are validated against lesson structure
 
 ---
 
@@ -821,7 +729,7 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 > Build the dashboard layout, sidebar, routing structure.
 
 - [x] Create dashboard layout (`(dashboard)/layout.tsx`) with sidebar + header
-- [x] Build sidebar with navigation links (Learn, Sandbox, Algebra, ER Builder, Normalizer, Practice, Progress, Settings)
+- [x] Build sidebar with navigation links (Learn, Sandbox, Algebra, ER Builder, Normalizer, Settings)
 - [x] Build header with user menu, theme toggle, breadcrumbs
 - [x] Build mobile navigation (responsive)
 - [x] Create dashboard home page (placeholder cards for now)
@@ -967,59 +875,23 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 
 ---
 
-### Phase 9 — Practice Exercises & Grading
+### Phase 9 — Session Persistence
 
-> Build the exercise system with auto-grading.
+> Save/restore all user state.
 
-- [x] Define exercise format (prompt, setup SQL, expected result, hints, difficulty)
-- [x] Build exercise bank — minimum 50 exercises across all topics:
-  - 15 SQL exercises (easy to hard)
-  - 10 relational algebra exercises
-  - 10 normalization exercises
-  - 10 ER diagram exercises
-  - 5 mixed/challenge exercises
-- [x] Build exercise validator (`lib/exercises/validator.ts`)
-  - SQL: execute student query + expected query, compare result sets
-  - Algebra: evaluate student expression, compare result sets
-  - Normalization: compare decomposition structure
-- [x] Build exercise list page (`practice/page.tsx`) — filterable by topic, difficulty
-- [x] Build exercise workspace (`practice/[exerciseId]/page.tsx`) — prompt + editor + submit
-- [x] Build grading result component — pass/fail, expected vs actual diff
-- [x] Build hint system — 3 progressive hints per exercise
-- [x] Build `POST /api/exercises/[id]/submit` endpoint — server-side grading
-- [x] Build `GET /api/exercises` endpoint — list exercises with user's past results
-- [x] Write grading logic tests
-
-**Output:** Students can practice with 50+ exercises, get instant graded feedback.
-
----
-
-### Phase 10 — Progress & Session Persistence
-
-> Track learning progress and save/restore all user state.
-
-- [x] Build `POST/GET /api/progress` — save and retrieve per-topic progress
 - [x] Build `POST/GET/PUT/DELETE /api/sessions` — CRUD for saved sessions
-- [x] Build progress overview page (`progress/page.tsx`):
-  - Unit completion ring charts
-  - Per-topic progress bars
-  - Activity heatmap (GitHub-style)
-  - Badges earned
-- [x] Build resume card on dashboard — "Continue where you left off" with last session
 - [x] Implement session auto-save:
   - Sandbox: save tables, data, query history every 30s
   - Lessons: save current step on every step change
   - Algebra/Normalizer: save current state on every change
 - [x] Build `useSessionPersistence` hook — auto-save + restore on mount
-- [x] Build `useProgress` hook — fetch and update progress
-- [x] Define badge/achievement system (e.g., "SQL Beginner", "Join Master", "Normalization Expert")
 - [x] Write session persistence tests
 
-**Output:** Full progress tracking, session persistence, and gamification.
+**Output:** Full session persistence across all tools.
 
 ---
 
-### Phase 11 — Polish, Testing & Deployment
+### Phase 10 — Polish, Testing & Deployment
 
 > Harden the app, write comprehensive tests, and deploy.
 
@@ -1030,7 +902,7 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 - [ ] Loading states — skeleton loaders for all async content
 - [ ] SEO — meta tags, Open Graph, structured data for landing page
 - [ ] Write remaining unit tests (target 80%+ coverage on engines)
-- [ ] Write E2E tests — auth flow, sandbox flow, lesson flow, exercise flow
+- [ ] Write E2E tests — auth flow, sandbox flow, lesson flow
 - [ ] Set up CI/CD — GitHub Actions: lint → type-check → test → build
 - [ ] Deploy to Vercel
 - [ ] Configure custom domain
@@ -1044,23 +916,19 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 
 ## 11. API Endpoints
 
-| Method | Endpoint                    | Description                                  | Auth   |
-| ------ | --------------------------- | -------------------------------------------- | ------ |
-| POST   | `/api/auth/register`        | Create account                               | No     |
-| POST   | `/api/auth/login`           | Authenticate, return tokens                  | No     |
-| POST   | `/api/auth/logout`          | Revoke refresh token                         | Yes    |
-| POST   | `/api/auth/refresh`         | Get new access token                         | Cookie |
-| GET    | `/api/users/me`             | Get current user profile                     | Yes    |
-| PATCH  | `/api/users/me`             | Update profile / password                    | Yes    |
-| GET    | `/api/progress`             | Get all progress for current user            | Yes    |
-| POST   | `/api/progress`             | Update progress for a topic/lesson           | Yes    |
-| GET    | `/api/sessions`             | List saved sessions                          | Yes    |
-| POST   | `/api/sessions`             | Create/save a session                        | Yes    |
-| GET    | `/api/sessions/:id`         | Get specific saved session                   | Yes    |
-| PUT    | `/api/sessions/:id`         | Update a saved session                       | Yes    |
-| DELETE | `/api/sessions/:id`         | Delete a saved session                       | Yes    |
-| GET    | `/api/exercises`            | List exercises (filter by topic, difficulty) | Yes    |
-| POST   | `/api/exercises/:id/submit` | Submit exercise answer for grading           | Yes    |
+| Method | Endpoint             | Description                 | Auth   |
+| ------ | -------------------- | --------------------------- | ------ |
+| POST   | `/api/auth/register` | Create account              | No     |
+| POST   | `/api/auth/login`    | Authenticate, return tokens | No     |
+| POST   | `/api/auth/logout`   | Revoke refresh token        | Yes    |
+| POST   | `/api/auth/refresh`  | Get new access token        | Cookie |
+| GET    | `/api/users/me`      | Get current user profile    | Yes    |
+| PATCH  | `/api/users/me`      | Update profile / password   | Yes    |
+| GET    | `/api/sessions`      | List saved sessions         | Yes    |
+| POST   | `/api/sessions`      | Create/save a session       | Yes    |
+| GET    | `/api/sessions/:id`  | Get specific saved session  | Yes    |
+| PUT    | `/api/sessions/:id`  | Update a saved session      | Yes    |
+| DELETE | `/api/sessions/:id`  | Delete a saved session      | Yes    |
 
 ---
 
