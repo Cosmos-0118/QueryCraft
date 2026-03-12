@@ -1,15 +1,31 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSqlEngine } from '@/hooks/use-sql-engine';
 import { useSandboxStore } from '@/stores/sandbox-store';
+import { useSessionPersistence } from '@/hooks/use-session-persistence';
 import { SqlEditor } from '@/components/sandbox/sql-editor';
 import { SchemaBrowser } from '@/components/sandbox/schema-browser';
 import { QueryHistory } from '@/components/sandbox/query-history';
 import { DataGeneratorDialog } from '@/components/sandbox/data-generator-dialog';
+import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import { ResultPanel } from '@/components/visual/result-panel';
 import { generateSampleDataSQL } from '@/lib/engine/data-generator';
+import { cn } from '@/lib/utils/helpers';
 import type { QueryResult } from '@/types/database';
+import {
+  Terminal,
+  GraduationCap,
+  Landmark,
+  Play,
+  Download,
+  Plus,
+  Sparkles,
+  RotateCcw,
+  CheckCircle2,
+  XCircle,
+  Table2,
+} from 'lucide-react';
 
 import universityData from '@/../seed/datasets/university.json';
 import bankingData from '@/../seed/datasets/banking.json';
@@ -38,16 +54,24 @@ function jsonToSQL(data: Record<string, Record<string, unknown>[]>): string {
   return statements.join('\n');
 }
 
-const DATASETS: { name: string; data: Record<string, unknown> }[] = [
-  { name: 'University', data: universityData },
-  { name: 'Banking', data: bankingData },
+const DATASETS = [
+  { name: 'University', icon: GraduationCap, data: universityData as Record<string, unknown> },
+  { name: 'Banking', icon: Landmark, data: bankingData as Record<string, unknown> },
 ];
 
 export default function SandboxPage() {
-  const { isReady, execute, loadSQL, reset, exportCSV, tables } = useSqlEngine();
+  const { isReady, execute, loadSQL, reset, exportCSV, tables, refreshTables } = useSqlEngine();
   const store = useSandboxStore();
   const [result, setResult] = useState<QueryResult | null>(null);
   const [genOpen, setGenOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [activeDataset, setActiveDataset] = useState<string | null>(null);
+
+  // Auto-save session
+  const { save } = useSessionPersistence();
+  useEffect(() => {
+    save({ lastPage: 'sandbox' });
+  }, [save]);
 
   const handleExecute = useCallback(() => {
     const q = store.query.trim();
@@ -55,14 +79,15 @@ export default function SandboxPage() {
     const res = execute(q);
     setResult(res);
     store.setResults(res);
-    store.addToHistory(q, !res.error);
+    store.addToHistory(q, !res.error, res);
   }, [execute, store]);
 
   const handleLoadDataset = useCallback(
-    (data: Record<string, unknown>) => {
+    (name: string, data: Record<string, unknown>) => {
       const sql = jsonToSQL(data as Record<string, Record<string, unknown>[]>);
       const res = loadSQL(sql);
       setResult(res);
+      setActiveDataset(name);
       if (!res.error) {
         store.setQuery('-- Dataset loaded! Try:\nSELECT * FROM ' + Object.keys(data)[0] + ' LIMIT 10;');
       }
@@ -94,113 +119,211 @@ export default function SandboxPage() {
     URL.revokeObjectURL(url);
   }, [result, exportCSV]);
 
+  const tableCount = tables.length;
+  const historyCount = store.queryHistory.length;
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">SQL Sandbox</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Write and execute SQL queries in your browser — powered by SQLite (WASM).
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {DATASETS.map((ds) => (
-            <button
-              key={ds.name}
-              onClick={() => handleLoadDataset(ds.data)}
-              disabled={!isReady}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+    <>
+      <div className="flex h-[calc(100vh-7rem)] flex-col gap-3">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div
+              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ring-emerald-500/25"
+              style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.04) 100%)' }}
             >
-              Load {ds.name}
-            </button>
-          ))}
-          <button
-            onClick={() => setGenOpen(true)}
-            disabled={!isReady}
-            className="rounded-lg border border-primary/30 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
-          >
-            Generate Data
-          </button>
-          <button
-            onClick={reset}
-            className="rounded-lg border border-red-400/30 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-400/10"
-          >
-            Reset DB
-          </button>
-        </div>
-      </div>
+              <Terminal className="h-5 w-5 text-emerald-400" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-zinc-100">SQL Sandbox</h1>
+              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-500">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  {tableCount} table{tableCount !== 1 ? 's' : ''}
+                </span>
+                <span className="text-zinc-700">&middot;</span>
+                <span>{historyCount} queries run</span>
+                <span className="text-zinc-700">&middot;</span>
+                <span className="text-zinc-600">MySQL-compatible</span>
+              </div>
+            </div>
+          </div>
 
-      {!isReady && (
-        <div className="rounded-lg border border-border bg-muted/50 p-4 text-center text-sm text-muted-foreground">
-          Initializing SQL engine…
-        </div>
-      )}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Dataset presets */}
+            <div className="flex items-center gap-0.5 rounded-xl border border-zinc-800/60 bg-zinc-900/60 p-1 backdrop-blur-sm">
+              {DATASETS.map((ds) => {
+                const Icon = ds.icon;
+                return (
+                  <button
+                    key={ds.name}
+                    onClick={() => handleLoadDataset(ds.name, ds.data)}
+                    disabled={!isReady}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all duration-150 disabled:opacity-40',
+                      activeDataset === ds.name
+                        ? 'bg-zinc-800/80 text-emerald-300'
+                        : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {ds.name}
+                  </button>
+                );
+              })}
+            </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-        <div className="lg:col-span-3 flex flex-col gap-4">
-          <SqlEditor
-            value={store.query}
-            onChange={store.setQuery}
-            onExecute={handleExecute}
-            tables={tables}
-          />
+            <div className="mx-0.5 h-5 w-px bg-zinc-700/50" />
 
-          <div className="flex gap-2">
+            {/* Create Table */}
             <button
-              onClick={handleExecute}
+              onClick={() => setCreateOpen(true)}
               disabled={!isReady}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-300 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20 disabled:opacity-40"
             >
-              Run Query
+              <Plus className="h-3.5 w-3.5" />
+              Create Table
             </button>
-            {result && result.columns.length > 0 && (
+
+            {/* Generate Data */}
+            <button
+              onClick={() => setGenOpen(true)}
+              disabled={!isReady}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Generate Data
+            </button>
+
+            {/* Reset */}
+            <button
+              onClick={() => { reset(); setActiveDataset(null); setResult(null); }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* Engine Status */}
+        {!isReady && (
+          <div className="flex items-center gap-3 rounded-xl border border-zinc-700/50 bg-zinc-800/40 px-4 py-3">
+            <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+            <span className="text-sm text-zinc-400">Initializing SQL engine…</span>
+          </div>
+        )}
+
+        {/* Available Tables */}
+        {tables.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-zinc-500">Tables:</span>
+            {tables.map((t) => (
               <button
-                onClick={handleExportCSV}
-                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted"
+                key={t.name}
+                onClick={() => store.setQuery(`SELECT * FROM "${t.name}" LIMIT 20;`)}
+                title={`Query "${t.name}"`}
+                className="group inline-flex items-center gap-1 rounded-md border border-zinc-700/40 bg-zinc-800/50 px-2.5 py-1 font-mono text-xs text-zinc-300 transition-all hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300"
               >
-                Export CSV
+                <Table2 className="h-3 w-3 text-zinc-500 transition-colors group-hover:text-emerald-400" />
+                {t.name}
               </button>
+            ))}
+          </div>
+        )}
+
+        {/* Main content */}
+        <div className="grid flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-4">
+          {/* Editor + Results */}
+          <div className="flex flex-col gap-3 overflow-auto lg:col-span-3">
+            <SqlEditor
+              value={store.query}
+              onChange={store.setQuery}
+              onExecute={handleExecute}
+              tables={tables}
+            />
+
+            {/* Run bar */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExecute}
+                disabled={!isReady}
+                className="inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/15 transition-all duration-200 hover:shadow-emerald-500/25 disabled:opacity-40 disabled:shadow-none"
+                style={{
+                  background: isReady
+                    ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
+                    : 'rgba(63,63,70,0.5)',
+                }}
+              >
+                <Play className="h-4 w-4" />
+                Run Query
+              </button>
+              {result && result.columns.length > 0 && (
+                <button
+                  onClick={handleExportCSV}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-700/50 px-4 py-2 text-sm font-medium text-zinc-400 transition-all hover:border-zinc-600 hover:bg-zinc-800/60 hover:text-zinc-200"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export CSV
+                </button>
+              )}
+            </div>
+
+            {/* Error */}
+            {result?.error && (
+              <div className="flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{result.error}</span>
+              </div>
+            )}
+
+            {/* Results table */}
+            {result && !result.error && result.columns.length > 0 && (
+              <ResultPanel
+                columns={result.columns}
+                rows={result.rows}
+                rowCount={result.rowCount}
+                executionTimeMs={result.executionTimeMs}
+              />
+            )}
+
+            {/* Success message (no columns) */}
+            {result && !result.error && result.columns.length === 0 && (
+              <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>
+                  Query executed successfully.{' '}
+                  {result.rowCount > 0 ? `${result.rowCount} row(s) affected.` : 'No rows returned.'}{' '}
+                  ({result.executionTimeMs.toFixed(1)}ms)
+                </span>
+              </div>
             )}
           </div>
 
-          {result?.error && (
-            <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-400">
-              {result.error}
-            </div>
-          )}
-
-          {result && !result.error && result.columns.length > 0 && (
-            <ResultPanel
-              columns={result.columns}
-              rows={result.rows}
-              rowCount={result.rowCount}
-              executionTimeMs={result.executionTimeMs}
+          {/* Sidebar */}
+          <div className="flex flex-col gap-3 overflow-auto">
+            <SchemaBrowser tables={tables} />
+            <QueryHistory
+              history={store.queryHistory}
+              onSelect={store.setQuery}
+              onClear={store.clearHistory}
             />
-          )}
-
-          {result && !result.error && result.columns.length === 0 && (
-            <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-600">
-              Query executed successfully. {result.rowCount > 0 ? `${result.rowCount} row(s) affected.` : 'No rows returned.'}{' '}
-              ({result.executionTimeMs.toFixed(1)}ms)
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <SchemaBrowser tables={tables} />
-          <QueryHistory
-            history={store.queryHistory}
-            onSelect={store.setQuery}
-            onClear={store.clearHistory}
-          />
+          </div>
         </div>
       </div>
 
+      {/* Modals */}
       <DataGeneratorDialog
         open={genOpen}
         onClose={() => setGenOpen(false)}
         onGenerate={handleGenerate}
       />
-    </div>
+      <CreateTableModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        execute={execute}
+        onCreated={refreshTables}
+      />
+    </>
   );
 }

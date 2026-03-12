@@ -947,20 +947,20 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 
 > Build the lesson infrastructure and author content for all 5 units.
 
-- [ ] Build lesson runner (`lib/lessons/lesson-runner.ts`) — loads content, manages state
-- [ ] Build step builder (`lib/lessons/step-builder.ts`) — converts lesson content to visual steps
-- [ ] Build lesson content registry (`lib/lessons/content/index.ts`)
-- [ ] Define lesson content format (TypeScript objects with step arrays)
-- [ ] Build topic selection page (`learn/page.tsx`) — grid of units + topics
-- [ ] Build topic overview page (`learn/[topicSlug]/page.tsx`) — lesson list + progress
-- [ ] Build lesson player page (`learn/[topicSlug]/[lessonSlug]/page.tsx`)
-- [ ] Build Zustand lesson store
-- [ ] Build `useLesson` hook
-- [ ] Author Unit 1 lessons (4 lessons: intro, data models, architecture, ER diagrams)
-- [ ] Author Unit 2 lessons (3 lessons: ER→relational, algebra operations, relational calculus)
-- [ ] Author Unit 3 lessons (9 lessons: DDL, DML, SELECT, constraints, joins, set ops, subqueries, PL/SQL, triggers)
-- [ ] Author Unit 4 lessons (6 lessons: why normalize, 1NF, 2NF, 3NF, BCNF, 4NF/5NF)
-- [ ] Author Unit 5 lessons (3 lessons: transactions, concurrency, NoSQL)
+- [x] Build lesson runner (`lib/lessons/lesson-runner.ts`) — loads content, manages state
+- [x] Build step builder (`lib/lessons/step-builder.ts`) — converts lesson content to visual steps
+- [x] Build lesson content registry (`lib/lessons/content/index.ts`)
+- [x] Define lesson content format (TypeScript objects with step arrays)
+- [x] Build topic selection page (`learn/page.tsx`) — grid of units + topics
+- [x] Build topic overview page (`learn/[topicSlug]/page.tsx`) — lesson list + progress
+- [x] Build lesson player page (`learn/[topicSlug]/[lessonSlug]/page.tsx`)
+- [x] Build Zustand lesson store
+- [x] Build `useLesson` hook
+- [x] Author Unit 1 lessons (4 lessons: intro, data models, architecture, ER diagrams)
+- [x] Author Unit 2 lessons (3 lessons: ER→relational, algebra operations, relational calculus)
+- [x] Author Unit 3 lessons (9 lessons: DDL, DML, SELECT, constraints, joins, set ops, subqueries, PL/SQL, triggers)
+- [x] Author Unit 4 lessons (6 lessons: why normalize, 1NF, 2NF, 3NF, BCNF, 4NF/5NF)
+- [x] Author Unit 5 lessons (3 lessons: transactions, concurrency, NoSQL)
 - [ ] Test all lessons end-to-end
 
 **Output:** All 25 guided lessons playable with step-by-step visual execution.
@@ -971,24 +971,24 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 
 > Build the exercise system with auto-grading.
 
-- [ ] Define exercise format (prompt, setup SQL, expected result, hints, difficulty)
-- [ ] Build exercise bank — minimum 50 exercises across all topics:
+- [x] Define exercise format (prompt, setup SQL, expected result, hints, difficulty)
+- [x] Build exercise bank — minimum 50 exercises across all topics:
   - 15 SQL exercises (easy to hard)
   - 10 relational algebra exercises
   - 10 normalization exercises
   - 10 ER diagram exercises
   - 5 mixed/challenge exercises
-- [ ] Build exercise validator (`lib/exercises/validator.ts`)
+- [x] Build exercise validator (`lib/exercises/validator.ts`)
   - SQL: execute student query + expected query, compare result sets
   - Algebra: evaluate student expression, compare result sets
   - Normalization: compare decomposition structure
-- [ ] Build exercise list page (`practice/page.tsx`) — filterable by topic, difficulty
-- [ ] Build exercise workspace (`practice/[exerciseId]/page.tsx`) — prompt + editor + submit
-- [ ] Build grading result component — pass/fail, expected vs actual diff
-- [ ] Build hint system — 3 progressive hints per exercise
-- [ ] Build `POST /api/exercises/[id]/submit` endpoint — server-side grading
-- [ ] Build `GET /api/exercises` endpoint — list exercises with user's past results
-- [ ] Write grading logic tests
+- [x] Build exercise list page (`practice/page.tsx`) — filterable by topic, difficulty
+- [x] Build exercise workspace (`practice/[exerciseId]/page.tsx`) — prompt + editor + submit
+- [x] Build grading result component — pass/fail, expected vs actual diff
+- [x] Build hint system — 3 progressive hints per exercise
+- [x] Build `POST /api/exercises/[id]/submit` endpoint — server-side grading
+- [x] Build `GET /api/exercises` endpoint — list exercises with user's past results
+- [x] Write grading logic tests
 
 **Output:** Students can practice with 50+ exercises, get instant graded feedback.
 
@@ -998,22 +998,22 @@ Each dataset comes with **50–200 rows per table**, generated via Faker.js with
 
 > Track learning progress and save/restore all user state.
 
-- [ ] Build `POST/GET /api/progress` — save and retrieve per-topic progress
-- [ ] Build `POST/GET/PUT/DELETE /api/sessions` — CRUD for saved sessions
-- [ ] Build progress overview page (`progress/page.tsx`):
+- [x] Build `POST/GET /api/progress` — save and retrieve per-topic progress
+- [x] Build `POST/GET/PUT/DELETE /api/sessions` — CRUD for saved sessions
+- [x] Build progress overview page (`progress/page.tsx`):
   - Unit completion ring charts
   - Per-topic progress bars
   - Activity heatmap (GitHub-style)
   - Badges earned
-- [ ] Build resume card on dashboard — "Continue where you left off" with last session
-- [ ] Implement session auto-save:
+- [x] Build resume card on dashboard — "Continue where you left off" with last session
+- [x] Implement session auto-save:
   - Sandbox: save tables, data, query history every 30s
   - Lessons: save current step on every step change
   - Algebra/Normalizer: save current state on every change
-- [ ] Build `useSessionPersistence` hook — auto-save + restore on mount
-- [ ] Build `useProgress` hook — fetch and update progress
-- [ ] Define badge/achievement system (e.g., "SQL Beginner", "Join Master", "Normalization Expert")
-- [ ] Write session persistence tests
+- [x] Build `useSessionPersistence` hook — auto-save + restore on mount
+- [x] Build `useProgress` hook — fetch and update progress
+- [x] Define badge/achievement system (e.g., "SQL Beginner", "Join Master", "Normalization Expert")
+- [x] Write session persistence tests
 
 **Output:** Full progress tracking, session persistence, and gamification.
 

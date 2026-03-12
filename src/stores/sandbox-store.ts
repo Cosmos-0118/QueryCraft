@@ -2,10 +2,17 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { QueryResult } from '@/types/database';
 
-interface HistoryEntry {
+export interface HistoryEntry {
   query: string;
   timestamp: number;
   success: boolean;
+  result: {
+    columns: string[];
+    rows: Record<string, unknown>[];
+    rowCount: number;
+    executionTimeMs: number;
+    error?: string;
+  };
 }
 
 interface SandboxStore {
@@ -15,7 +22,7 @@ interface SandboxStore {
   activeTab: 'results' | 'schema' | 'history';
   setQuery: (query: string) => void;
   setResults: (results: QueryResult | null) => void;
-  addToHistory: (query: string, success: boolean) => void;
+  addToHistory: (query: string, success: boolean, result: QueryResult) => void;
   clearHistory: () => void;
   setActiveTab: (tab: 'results' | 'schema' | 'history') => void;
 }
@@ -29,12 +36,23 @@ export const useSandboxStore = create<SandboxStore>()(
       activeTab: 'results',
       setQuery: (query) => set({ query }),
       setResults: (results) => set({ results }),
-      addToHistory: (query, success) =>
+      addToHistory: (query, success, result) =>
         set((state) => ({
-          queryHistory: [{ query, timestamp: Date.now(), success }, ...state.queryHistory].slice(
-            0,
-            100,
-          ),
+          queryHistory: [
+            {
+              query,
+              timestamp: Date.now(),
+              success,
+              result: {
+                columns: result.columns,
+                rows: result.rows.slice(0, 50),
+                rowCount: result.rowCount,
+                executionTimeMs: result.executionTimeMs,
+                error: result.error,
+              },
+            },
+            ...state.queryHistory,
+          ].slice(0, 100),
         })),
       clearHistory: () => set({ queryHistory: [] }),
       setActiveTab: (activeTab) => set({ activeTab }),

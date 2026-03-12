@@ -37,3 +37,20 @@ export interface LessonMeta {
   stepCount: number;
   estimatedMinutes: number;
 }
+
+export interface Topic {
+  slug: string;
+  title: string;
+  description: string;
+  unitNumber: number;
+  icon: string;
+  lessons: LessonMeta[];
+}
+
+export interface Unit {
+  number: number;
+  title: string;
+  description: string;
+  color: string;
+  topics: Topic[];
+}

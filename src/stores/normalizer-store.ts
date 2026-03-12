@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { NormalForm, FunctionalDependency, Decomposition } from '@/types/normalizer';
 
 interface NormalizerStore {
@@ -14,6 +15,7 @@ interface NormalizerStore {
   setColumns: (columns: string[]) => void;
   addFD: (fd: FunctionalDependency) => void;
   removeFD: (index: number) => void;
+  setFDs: (fds: FunctionalDependency[]) => void;
   setCurrentNF: (nf: NormalForm | null) => void;
   setTargetNF: (nf: NormalForm) => void;
   setDecomposition: (d: Decomposition | null) => void;
@@ -21,30 +23,44 @@ interface NormalizerStore {
   clear: () => void;
 }
 
-export const useNormalizerStore = create<NormalizerStore>((set) => ({
-  tableName: 'R',
-  columns: [],
-  fds: [],
-  currentNF: null,
-  targetNF: 'BCNF',
-  decomposition: null,
-  activeStep: 0,
-
-  setTableName: (tableName) => set({ tableName }),
-  setColumns: (columns) => set({ columns }),
-  addFD: (fd) => set((s) => ({ fds: [...s.fds, fd] })),
-  removeFD: (index) => set((s) => ({ fds: s.fds.filter((_, i) => i !== index) })),
-  setCurrentNF: (currentNF) => set({ currentNF }),
-  setTargetNF: (targetNF) => set({ targetNF }),
-  setDecomposition: (decomposition) => set({ decomposition }),
-  setActiveStep: (activeStep) => set({ activeStep }),
-  clear: () =>
-    set({
+export const useNormalizerStore = create<NormalizerStore>()(
+  persist(
+    (set) => ({
       tableName: 'R',
       columns: [],
       fds: [],
       currentNF: null,
+      targetNF: 'BCNF',
       decomposition: null,
       activeStep: 0,
+
+      setTableName: (tableName) => set({ tableName }),
+      setColumns: (columns) => set({ columns }),
+      addFD: (fd) => set((s) => ({ fds: [...s.fds, fd] })),
+      removeFD: (index) => set((s) => ({ fds: s.fds.filter((_, i) => i !== index) })),
+      setFDs: (fds) => set({ fds }),
+      setCurrentNF: (currentNF) => set({ currentNF }),
+      setTargetNF: (targetNF) => set({ targetNF }),
+      setDecomposition: (decomposition) => set({ decomposition }),
+      setActiveStep: (activeStep) => set({ activeStep }),
+      clear: () =>
+        set({
+          tableName: 'R',
+          columns: [],
+          fds: [],
+          currentNF: null,
+          decomposition: null,
+          activeStep: 0,
+        }),
     }),
-}));
+    {
+      name: 'querycraft-normalizer',
+      partialize: (state) => ({
+        tableName: state.tableName,
+        columns: state.columns,
+        fds: state.fds,
+        targetNF: state.targetNF,
+      }),
+    },
+  ),
+);

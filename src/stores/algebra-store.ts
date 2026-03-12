@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { AlgebraNode } from '@/types/algebra';
 import type { StepResult } from '@/lib/engine/algebra-evaluator';
 
@@ -18,26 +19,34 @@ interface AlgebraStore {
   clear: () => void;
 }
 
-export const useAlgebraStore = create<AlgebraStore>((set) => ({
-  expression: '',
-  parsedTree: null,
-  steps: [],
-  activeStepIndex: -1,
-  error: null,
-  sqlEquivalent: '',
-  setExpression: (expression) => set({ expression }),
-  setParsedTree: (parsedTree) => set({ parsedTree }),
-  setSteps: (steps) => set({ steps }),
-  setActiveStepIndex: (activeStepIndex) => set({ activeStepIndex }),
-  setError: (error) => set({ error }),
-  setSqlEquivalent: (sqlEquivalent) => set({ sqlEquivalent }),
-  clear: () =>
-    set({
+export const useAlgebraStore = create<AlgebraStore>()(
+  persist(
+    (set) => ({
       expression: '',
       parsedTree: null,
       steps: [],
       activeStepIndex: -1,
       error: null,
       sqlEquivalent: '',
+      setExpression: (expression) => set({ expression }),
+      setParsedTree: (parsedTree) => set({ parsedTree }),
+      setSteps: (steps) => set({ steps }),
+      setActiveStepIndex: (activeStepIndex) => set({ activeStepIndex }),
+      setError: (error) => set({ error }),
+      setSqlEquivalent: (sqlEquivalent) => set({ sqlEquivalent }),
+      clear: () =>
+        set({
+          expression: '',
+          parsedTree: null,
+          steps: [],
+          activeStepIndex: -1,
+          error: null,
+          sqlEquivalent: '',
+        }),
     }),
-}));
+    {
+      name: 'querycraft-algebra',
+      partialize: (state) => ({ expression: state.expression }),
+    },
+  ),
+);
