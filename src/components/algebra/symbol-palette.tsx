@@ -1,13 +1,13 @@
 'use client';
 
 const SYMBOLS = [
-  { symbol: 'σ', label: 'Selection', template: 'σ[condition](' },
-  { symbol: 'π', label: 'Projection', template: 'π[col1,col2](' },
-  { symbol: '⋈', label: 'Natural Join', template: ' ⋈ ' },
-  { symbol: '∪', label: 'Union', template: ' ∪ ' },
-  { symbol: '−', label: 'Difference', template: ' − ' },
-  { symbol: '×', label: 'Cartesian', template: ' × ' },
-  { symbol: 'ρ', label: 'Rename', template: 'ρ[newName](' },
+  { symbol: 'σ', label: 'Selection', desc: 'Filter rows by condition', template: 'σ[condition](' },
+  { symbol: 'π', label: 'Projection', desc: 'Pick specific columns', template: 'π[col1,col2](' },
+  { symbol: '⋈', label: 'Natural Join', desc: 'Join on shared columns', template: ' ⋈ ' },
+  { symbol: '∪', label: 'Union', desc: 'Combine rows from two sets', template: ' ∪ ' },
+  { symbol: '−', label: 'Difference', desc: 'Subtract rows of one set', template: ' − ' },
+  { symbol: '×', label: 'Cartesian', desc: 'Cross product of sets', template: ' × ' },
+  { symbol: 'ρ', label: 'Rename', desc: 'Rename a relation', template: 'ρ[newName](' },
 ];
 
 interface SymbolPaletteProps {
@@ -16,13 +16,13 @@ interface SymbolPaletteProps {
 
 export function SymbolPalette({ onInsert }: SymbolPaletteProps) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1">
       {SYMBOLS.map((s) => (
         <button
           key={s.symbol}
           onClick={() => onInsert(s.template)}
-          title={s.label}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-lg font-bold transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+          title={`${s.label} — ${s.desc}`}
+          className="group relative flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-700/40 text-base font-bold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-violet-300 hover:shadow-sm hover:shadow-violet-500/10"
         >
           {s.symbol}
         </button>
