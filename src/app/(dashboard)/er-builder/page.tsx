@@ -58,21 +58,21 @@ const BANKING_DIAGRAM: ERDiagram = {
     { id: 'e3', name: 'Branch', isWeak: false, position: { x: 400, y: 480 } },
   ],
   attributes: [
-    /* Customer attrs — fanned upper-left */
-    { id: 'a1', name: 'cust_id', kind: 'key', entityId: 'e1', position: { x: -70, y: 50 } },
-    { id: 'a2', name: 'name', kind: 'regular', entityId: 'e1', position: { x: -100, y: 150 } },
-    { id: 'a3', name: 'phone', kind: 'multivalued', entityId: 'e1', position: { x: -70, y: 250 } },
-    /* Account attrs — fanned upper-right */
-    { id: 'a4', name: 'acct_no', kind: 'key', entityId: 'e2', position: { x: 980, y: 70 } },
-    { id: 'a5', name: 'balance', kind: 'regular', entityId: 'e2', position: { x: 990, y: 180 } },
-    /* Branch attrs — fanned downward */
-    { id: 'a6', name: 'branch_id', kind: 'key', entityId: 'e3', position: { x: 260, y: 560 } },
-    { id: 'a7', name: 'branch_name', kind: 'regular', entityId: 'e3', position: { x: 420, y: 620 } },
-    { id: 'a8', name: 'city', kind: 'regular', entityId: 'e3', position: { x: 580, y: 560 } },
+    /* Customer: outward angle ≈ upper-left */
+    { id: 'a1', name: 'cust_id', kind: 'key', entityId: 'e1', position: { x: -60, y: 103 } },
+    { id: 'a2', name: 'name', kind: 'regular', entityId: 'e1', position: { x: -58, y: 230 } },
+    { id: 'a3', name: 'phone', kind: 'multivalued', entityId: 'e1', position: { x: 21, y: 0 } },
+    /* Account: outward angle ≈ upper-right */
+    { id: 'a4', name: 'acct_no', kind: 'key', entityId: 'e2', position: { x: 1000, y: 105 } },
+    { id: 'a5', name: 'balance', kind: 'regular', entityId: 'e2', position: { x: 922, y: 2 } },
+    /* Branch: outward angle ≈ straight down */
+    { id: 'a6', name: 'branch_id', kind: 'key', entityId: 'e3', position: { x: 423, y: 690 } },
+    { id: 'a7', name: 'branch_name', kind: 'regular', entityId: 'e3', position: { x: 549, y: 658 } },
+    { id: 'a8', name: 'city', kind: 'regular', entityId: 'e3', position: { x: 305, y: 636 } },
   ],
   relationships: [
     { id: 'r1', name: 'has', cardinality: '1:N', entities: ['e1', 'e2'], position: { x: 430, y: 110 } },
-    { id: 'r2', name: 'maintained_at', cardinality: '1:N', entities: ['e3', 'e2'], position: { x: 640, y: 330 } },
+    { id: 'r2', name: 'maintained_at', cardinality: '1:N', entities: ['e3', 'e2'], position: { x: 620, y: 320 } },
   ],
 };
 

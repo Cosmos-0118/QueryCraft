@@ -29,12 +29,12 @@ export const EntityNode = memo(function EntityNode({ data, selected }: NodeProps
       )}
 
       <div
-        className={`relative overflow-hidden rounded-xl transition-all duration-200 ${
+        className={`relative overflow-hidden rounded-xl border transition-all duration-200 ${
           selected
             ? isWeak
-              ? 'ring-2 ring-amber-400/60 shadow-lg shadow-amber-500/10'
-              : 'ring-2 ring-violet-400/60 shadow-lg shadow-violet-500/10'
-            : 'shadow-md shadow-black/20 hover:shadow-lg hover:shadow-black/25'
+              ? 'border-amber-400/50 shadow-lg shadow-amber-500/10'
+              : 'border-violet-400/50 shadow-lg shadow-violet-500/10'
+            : 'border-zinc-800/60 shadow-md shadow-black/20 hover:shadow-lg hover:shadow-black/25'
         }`}
       >
         {/* Header */}
@@ -62,11 +62,11 @@ export const EntityNode = memo(function EntityNode({ data, selected }: NodeProps
         </div>
       </div>
 
-      {/* Handles with better styling */}
-      <Handle type="source" position={Position.Right} className={`!h-2 !w-2 !rounded-full !border-[1.5px] !border-[#18181b] ${isWeak ? '!bg-amber-400' : '!bg-violet-400'}`} />
-      <Handle type="target" position={Position.Left} className={`!h-2 !w-2 !rounded-full !border-[1.5px] !border-[#18181b] ${isWeak ? '!bg-amber-400' : '!bg-violet-400'}`} />
-      <Handle type="source" position={Position.Bottom} id="bottom" className={`!h-2 !w-2 !rounded-full !border-[1.5px] !border-[#18181b] ${isWeak ? '!bg-amber-400' : '!bg-violet-400'}`} />
-      <Handle type="target" position={Position.Top} id="top" className={`!h-2 !w-2 !rounded-full !border-[1.5px] !border-[#18181b] ${isWeak ? '!bg-amber-400' : '!bg-violet-400'}`} />
+      {/* Handles — small dots for edge connections */}
+      <Handle type="source" position={Position.Right} className={`!h-1.5 !w-1.5 !rounded-full !border-0 ${isWeak ? '!bg-amber-400/60' : '!bg-violet-400/60'}`} />
+      <Handle type="target" position={Position.Left} className={`!h-1.5 !w-1.5 !rounded-full !border-0 ${isWeak ? '!bg-amber-400/60' : '!bg-violet-400/60'}`} />
+      <Handle type="source" position={Position.Bottom} id="bottom" className={`!h-1.5 !w-1.5 !rounded-full !border-0 ${isWeak ? '!bg-amber-400/60' : '!bg-violet-400/60'}`} />
+      <Handle type="target" position={Position.Top} id="top" className={`!h-1.5 !w-1.5 !rounded-full !border-0 ${isWeak ? '!bg-amber-400/60' : '!bg-violet-400/60'}`} />
     </div>
   );
 });

@@ -5,7 +5,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   type Node,
   type Edge,
   type NodeChange,
@@ -78,18 +77,18 @@ export function ERCanvas() {
 
   const edges = useMemo<Edge[]>(() => {
     const e: Edge[] = [];
-    // Attribute → Entity — subtle, thin
+    // Attribute → Entity — subtle straight lines
     for (const attr of store.attributes) {
       e.push({
         id: `attr-${attr.id}-${attr.entityId}`,
         source: attr.entityId,
         target: attr.id,
-        type: 'smoothstep',
-        style: { stroke: 'rgba(113,113,122,0.35)', strokeWidth: 1.2 },
+        type: 'straight',
+        style: { stroke: 'rgba(113,113,122,0.3)', strokeWidth: 1 },
         animated: false,
       });
     }
-    // Relationship → Entities — prominent, with labels
+    // Relationship → Entities — prominent straight lines with labels
     for (const rel of store.relationships) {
       const [e1, e2] = rel.entities;
       const labelParts = rel.cardinality.split(':');
@@ -97,25 +96,25 @@ export function ERCanvas() {
         id: `rel-${rel.id}-${e1}`,
         source: e1,
         target: rel.id,
-        type: 'smoothstep',
+        type: 'straight',
         label: labelParts[0],
-        labelBgPadding: [8, 4] as [number, number],
-        labelBgBorderRadius: 6,
+        labelBgPadding: [6, 3] as [number, number],
+        labelBgBorderRadius: 4,
         labelStyle: { fontWeight: 700, fontSize: 10, fill: '#d4d4d8', fontFamily: 'system-ui' },
-        labelBgStyle: { fill: '#27272a', stroke: 'rgba(63,63,70,0.5)', strokeWidth: 1 },
-        style: { stroke: 'rgba(139,92,246,0.45)', strokeWidth: 1.5 },
+        labelBgStyle: { fill: '#1c1c1f', stroke: 'rgba(63,63,70,0.4)', strokeWidth: 1 },
+        style: { stroke: 'rgba(139,92,246,0.4)', strokeWidth: 1.5 },
       });
       e.push({
         id: `rel-${rel.id}-${e2}`,
         source: rel.id,
         target: e2,
-        type: 'smoothstep',
+        type: 'straight',
         label: labelParts[1],
-        labelBgPadding: [8, 4] as [number, number],
-        labelBgBorderRadius: 6,
+        labelBgPadding: [6, 3] as [number, number],
+        labelBgBorderRadius: 4,
         labelStyle: { fontWeight: 700, fontSize: 10, fill: '#d4d4d8', fontFamily: 'system-ui' },
-        labelBgStyle: { fill: '#27272a', stroke: 'rgba(63,63,70,0.5)', strokeWidth: 1 },
-        style: { stroke: 'rgba(139,92,246,0.45)', strokeWidth: 1.5 },
+        labelBgStyle: { fill: '#1c1c1f', stroke: 'rgba(63,63,70,0.4)', strokeWidth: 1 },
+        style: { stroke: 'rgba(139,92,246,0.4)', strokeWidth: 1.5 },
       });
     }
     return e;
@@ -149,6 +148,22 @@ export function ERCanvas() {
       className="er-canvas-wrapper h-full w-full overflow-hidden rounded-xl border border-zinc-800/80"
       style={{ background: 'linear-gradient(180deg, #0c0c0f 0%, #111114 100%)' }}
     >
+      {/* Hide React Flow's default node selection outlines / bounding boxes */}
+      <style>{`
+        .react-flow__node.selected > div,
+        .react-flow__node:focus > div,
+        .react-flow__node:focus-visible > div {
+          outline: none !important;
+          box-shadow: none !important;
+        }
+        .react-flow__node {
+          outline: none !important;
+        }
+        .react-flow__node.selected {
+          outline: none !important;
+          box-shadow: none !important;
+        }
+      `}</style>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -172,16 +187,6 @@ export function ERCanvas() {
         <Controls
           showInteractive={false}
           className="!rounded-xl !border !border-zinc-800/60 !bg-zinc-900/90 !shadow-xl !shadow-black/20 !backdrop-blur-sm [&>button]:!border-zinc-800/40 [&>button]:!bg-transparent [&>button]:!text-zinc-400 [&>button:hover]:!bg-zinc-800/60"
-        />
-        <MiniMap
-          nodeStrokeWidth={2}
-          className="!rounded-xl !border !border-zinc-800/60 !bg-zinc-900/80 !shadow-xl !shadow-black/20 !backdrop-blur-sm"
-          maskColor="rgba(0,0,0,0.25)"
-          nodeColor={(node) => {
-            if (node.type === 'entity') return '#8b5cf6';
-            if (node.type === 'relationship') return '#7c3aed';
-            return '#71717a';
-          }}
         />
       </ReactFlow>
     </div>
