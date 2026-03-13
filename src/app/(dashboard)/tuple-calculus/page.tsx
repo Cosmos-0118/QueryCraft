@@ -1,32 +1,30 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAlgebraStore } from '@/stores/algebra-store';
+import { useCallback, useRef, useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useSqlEngine } from '@/hooks/use-sql-engine';
-import { parse, algebraToSQL } from '@/lib/engine/algebra-parser';
-import { evaluateAlgebra, buildContext } from '@/lib/engine/algebra-evaluator';
-import type { StepResult } from '@/lib/engine/algebra-evaluator';
-import { AlgebraInput } from '@/components/algebra/algebra-input';
-import { ExpressionTree } from '@/components/algebra/expression-tree';
-import { IntermediateResult } from '@/components/algebra/intermediate-result';
+import { useTrcStore } from '@/stores/trc-store';
+import { tupleCalculusToSQL } from '@/lib/engine/tuple-calculus';
+import { ResultPanel } from '@/components/visual/result-panel';
 import { AlgebraToSql } from '@/components/algebra/algebra-to-sql';
 import { TableBrowser } from '@/components/algebra/table-browser';
 import { CreateTableModal } from '@/components/algebra/create-table-modal';
-import type { QueryResult } from '@/types/database';
+import { TupleCalculusInput } from '@/components/tuple-calculus/tuple-calculus-input';
 import { cn } from '@/lib/utils/helpers';
 import {
+  FunctionSquare,
   GraduationCap,
   Landmark,
-  Database,
-  Trash2,
-  BookOpen,
-  Sparkles,
-  Table2,
-  Plus,
-  History,
   ClipboardPaste,
+  Database,
+  Plus,
+  Table2,
+  History,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  BookOpen,
 } from 'lucide-react';
-import Link from 'next/link';
 
 import universityData from '@/../seed/datasets/university.json';
 import bankingData from '@/../seed/datasets/banking.json';
@@ -38,12 +36,7 @@ function jsonToSQL(data: Record<string, Record<string, unknown>[]>): string {
     const cols = Object.keys(rows[0]);
     const colDefs = cols.map((c) => {
       const sample = rows[0][c];
-      const t =
-        typeof sample === 'number'
-          ? Number.isInteger(sample)
-            ? 'INTEGER'
-            : 'REAL'
-          : 'TEXT';
+      const t = typeof sample === 'number' ? (Number.isInteger(sample) ? 'INTEGER' : 'REAL') : 'TEXT';
       return `"${c}" ${t}${c === 'id' ? ' PRIMARY KEY' : ''}`;
     });
     statements.push(`CREATE TABLE IF NOT EXISTS "${table}" (${colDefs.join(', ')});`);
@@ -66,32 +59,35 @@ const DATASETS = [
 ];
 
 const UNIVERSITY_EXAMPLES = [
-  { label: 'Select high GPA', expr: 'σ[gpa > 3.5](students)' },
-  { label: 'Filter + project', expr: 'π[name](σ[gpa > 3.5](students))' },
-  { label: 'Natural join', expr: 'students ⋈ enrollments' },
-  { label: 'Left join', expr: 'students ⟕ enrollments' },
-  { label: 'Intersection', expr: 'π[dept](students) ∩ π[name](departments)' },
-  { label: 'Sort by GPA', expr: 'τ[gpa DESC](students)' },
-  { label: 'Count by dept', expr: 'γ[department_id; COUNT(*) AS total](students)' },
+  { label: 'All students', expr: '{ t | students(t) }' },
+  { label: 'High GPA names', expr: '{ <t.name, t.gpa> | students(t) ∧ t.gpa > 3.6 }' },
+  { label: 'Students with enrollments', expr: '{ t | students(t) ∧ ∃e (enrollments(e) ∧ e.student_id = t.id) }' },
+  { label: 'Students in all departments', expr: '{ t | students(t) ∧ ∀d (departments(d) ∨ d.id = t.department_id) }' },
 ];
 
 const BANKING_EXAMPLES = [
-  { label: 'High balance', expr: 'σ[balance > 5000](accounts)' },
-  { label: 'Customer contacts', expr: 'π[name, email](customers)' },
-  { label: 'Customers ⋈ Accounts', expr: 'customers ⋈ accounts' },
-  { label: 'Anti-join', expr: 'customers ▷ accounts' },
-  { label: 'Sum balances', expr: 'γ[customer_id; SUM(balance) AS total](accounts)' },
+  { label: 'All accounts', expr: '{ a | accounts(a) }' },
+  { label: 'Large balances', expr: '{ <a.account_id, a.balance> | accounts(a) ∧ a.balance > 5000 }' },
+  { label: 'Customers with account', expr: '{ c | customers(c) ∧ ∃a (accounts(a) ∧ a.customer_id = c.customer_id) }' },
 ];
 
-export default function AlgebraPage() {
+export default function TupleCalculusPage() {
   const { isReady, execute, loadSQL, tables, refreshTables } = useSqlEngine();
-  const store = useAlgebraStore();
+  const store = useTrcStore();
+
   const [browserOpen, setBrowserOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [activeDataset, setActiveDataset] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [importSql, setImportSql] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [activeDataset, setActiveDataset] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    columns: string[];
+    rows: Record<string, unknown>[];
+    rowCount: number;
+    executionTimeMs: number;
+    error?: string;
+  } | null>(null);
   const [inputFeedback, setInputFeedback] = useState<'idle' | 'success' | 'error'>('idle');
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -108,82 +104,85 @@ export default function AlgebraPage() {
 
   useEffect(() => {
     return () => {
-      if (feedbackTimeoutRef.current) {
-        clearTimeout(feedbackTimeoutRef.current);
-      }
+      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
     };
   }, []);
 
   const handleLoadDataset = useCallback(
     (name: string, data: Record<string, unknown>) => {
-      loadSQL(jsonToSQL(data as Record<string, Record<string, unknown>[]>));
+      const res = loadSQL(jsonToSQL(data as Record<string, Record<string, unknown>[]>));
+      if (res.error) {
+        setResult(res);
+        return;
+      }
       setActiveDataset(name);
+      setResult(res);
     },
     [loadSQL],
   );
 
   const handleEvaluate = useCallback(() => {
-    store.setError(null);
-    try {
-      const tree = parse(store.expression);
-      store.setParsedTree(tree);
-      store.setSqlEquivalent(algebraToSQL(tree));
+    const expr = store.expression.trim();
+    if (!expr) return;
 
-      const tableData: Record<string, QueryResult> = {};
-      for (const t of tables) {
-        tableData[t.name] = execute(`SELECT * FROM "${t.name}"`);
+    store.setError(null);
+
+    try {
+      const sql = tupleCalculusToSQL(expr);
+      store.setSqlEquivalent(sql);
+      const res = execute(sql);
+      setResult(res);
+
+      if (res.error) {
+        store.setError(res.error);
+        store.addToHistory({
+          expression: expr,
+          success: false,
+          sqlEquivalent: sql,
+          error: res.error,
+        });
+        triggerInputFeedback('error');
+        return;
       }
-      const ctx = buildContext(tableData);
-      const steps: StepResult[] = [];
-      evaluateAlgebra(tree, ctx, steps);
-      store.setSteps(steps);
-      store.setActiveStepIndex(steps.length - 1);
-      const finalResult = steps[steps.length - 1]?.result;
+
       store.addToHistory({
-        expression: store.expression,
+        expression: expr,
         success: true,
-        sqlEquivalent: algebraToSQL(tree),
-        stepCount: steps.length,
-        result: finalResult
-          ? {
-              columns: finalResult.columns,
-              rows: finalResult.rows.slice(0, 50),
-              rowCount: finalResult.rows.length,
-            }
-          : undefined,
+        sqlEquivalent: sql,
+        result: {
+          columns: res.columns,
+          rows: res.rows.slice(0, 50),
+          rowCount: res.rowCount,
+          executionTimeMs: res.executionTimeMs,
+        },
       });
       triggerInputFeedback('success');
       store.setExpression('');
     } catch (e) {
-      const errMsg = e instanceof Error ? e.message : String(e);
-      store.setError(errMsg);
+      const err = e instanceof Error ? e.message : String(e);
+      store.setError(err);
+      store.setSqlEquivalent('');
       store.addToHistory({
-        expression: store.expression,
+        expression: expr,
         success: false,
         sqlEquivalent: '',
-        stepCount: 0,
-        error: errMsg,
+        error: err,
       });
       triggerInputFeedback('error');
     }
-  }, [store, tables, execute, triggerInputFeedback]);
-
-  const handleInsertTable = useCallback(
-    (name: string) => {
-      store.setExpression(store.expression + name);
-    },
-    [store],
-  );
+  }, [execute, store, triggerInputFeedback]);
 
   const handleImportSQL = useCallback(() => {
     setImportError(null);
     const sql = importSql.trim();
     if (!sql) return;
+
     const res = loadSQL(sql);
     if (res.error) {
       setImportError(res.error);
       return;
     }
+
     setShowImport(false);
     setImportSql('');
     setActiveDataset(null);
@@ -194,21 +193,17 @@ export default function AlgebraPage() {
   return (
     <>
       <div className="flex flex-col gap-5 p-6 lg:p-8">
-        {/* ── Header ──────────────────────────── */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 ring-1 ring-violet-500/25">
-              <Sparkles className="h-5 w-5 text-violet-400" />
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 ring-1 ring-cyan-500/25">
+              <FunctionSquare className="h-5 w-5 text-cyan-300" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
-                Relational Algebra Playground
-              </h1>
-              <p className="mt-0.5 text-sm text-zinc-500">
-                Write relational algebra expressions and explore them step by step
-              </p>
+              <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Tuple Relational Calculus</h1>
+              <p className="mt-0.5 text-sm text-zinc-500">Write TRC expressions and execute them via SQL translation</p>
             </div>
           </div>
+
           <div className="flex flex-wrap items-center gap-2">
             {DATASETS.map((ds) => {
               const Icon = ds.icon;
@@ -220,7 +215,7 @@ export default function AlgebraPage() {
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all disabled:opacity-40',
                     activeDataset === ds.name
-                      ? 'border-violet-500/40 bg-violet-500/15 text-violet-300'
+                      ? 'border-cyan-500/40 bg-cyan-500/15 text-cyan-300'
                       : 'border-zinc-700/50 text-zinc-400 hover:border-zinc-600 hover:bg-zinc-800/60 hover:text-zinc-300',
                   )}
                 >
@@ -229,7 +224,9 @@ export default function AlgebraPage() {
                 </button>
               );
             })}
+
             <div className="mx-1 h-5 w-px bg-zinc-700/50" />
+
             <button
               onClick={() => setCreateOpen(true)}
               disabled={!isReady}
@@ -238,25 +235,29 @@ export default function AlgebraPage() {
               <Plus className="h-3.5 w-3.5" />
               Create Table
             </button>
+
             <button
               onClick={() => setShowImport(!showImport)}
               disabled={!isReady}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-300 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/20 disabled:opacity-40"
             >
               <ClipboardPaste className="h-3.5 w-3.5" />
               Import SQL
             </button>
+
             <button
               onClick={() => setBrowserOpen(true)}
               disabled={tables.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-300 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/20 disabled:opacity-40"
             >
               <Database className="h-3.5 w-3.5" />
               Browse Tables
             </button>
+
             <button
               onClick={() => {
                 store.clear();
+                setResult(null);
                 setActiveDataset(null);
               }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10"
@@ -267,9 +268,8 @@ export default function AlgebraPage() {
           </div>
         </div>
 
-        {/* ── Import SQL Panel ─────────────── */}
         {showImport && (
-          <div className="rounded-xl border border-violet-500/30 bg-zinc-900/80 p-4 backdrop-blur-sm">
+          <div className="rounded-xl border border-cyan-500/30 bg-zinc-900/80 p-4 backdrop-blur-sm">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-zinc-200">Import SQL</h3>
               <p className="text-[11px] text-zinc-500">Paste CREATE TABLE / INSERT statements</p>
@@ -280,9 +280,9 @@ export default function AlgebraPage() {
                 setImportSql(e.target.value);
                 if (importError) setImportError(null);
               }}
-              placeholder={'-- Paste your SQL here\nCREATE TABLE "students" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);'}
-              className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/60 px-4 py-3 font-mono text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
               rows={6}
+              placeholder={'-- Paste your SQL here\nCREATE TABLE "students" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);'}
+              className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/60 px-4 py-3 font-mono text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/15"
             />
             {importError && (
               <p className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
@@ -293,7 +293,7 @@ export default function AlgebraPage() {
               <button
                 onClick={handleImportSQL}
                 disabled={!importSql.trim()}
-                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-violet-500/20 transition-all hover:bg-violet-500 disabled:opacity-40"
+                className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-cyan-500 disabled:opacity-40"
               >
                 <ClipboardPaste className="h-3.5 w-3.5" />
                 Run Import
@@ -312,125 +312,104 @@ export default function AlgebraPage() {
           </div>
         )}
 
-        {/* History button */}
         {store.history.length > 0 && (
           <Link
-            href="/algebra/history"
-            className="flex items-center gap-2.5 rounded-xl border border-zinc-700/50 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-violet-500/30 hover:bg-zinc-800/40"
+            href="/tuple-calculus/history"
+            className="flex items-center gap-2.5 rounded-xl border border-zinc-700/50 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-cyan-500/30 hover:bg-zinc-800/40"
           >
-            <History className="h-4 w-4 text-violet-400" />
+            <History className="h-4 w-4 text-cyan-300" />
             <div className="min-w-0 flex-1">
-              <span className="text-sm font-medium text-zinc-200">Expression History</span>
-              <p className="text-[11px] text-zinc-500">
-                {store.history.length} expression{store.history.length === 1 ? '' : 's'} evaluated
-              </p>
+              <span className="text-sm font-medium text-zinc-200">TRC History</span>
+              <p className="text-[11px] text-zinc-500">{store.history.length} expression{store.history.length === 1 ? '' : 's'} evaluated</p>
             </div>
-            <span className="rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-bold text-violet-400">
-              {store.history.length}
-            </span>
+            <span className="rounded-md bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-bold text-cyan-300">{store.history.length}</span>
           </Link>
         )}
 
-        {/* ── Engine Status ──────────────────── */}
         {!isReady && (
           <div className="flex items-center gap-3 rounded-xl border border-zinc-700/50 bg-zinc-800/40 px-4 py-3">
-            <div className="h-2 w-2 animate-pulse rounded-full bg-violet-400" />
-            <span className="text-sm text-zinc-400">Initializing SQL engine…</span>
+            <div className="h-2 w-2 animate-pulse rounded-full bg-cyan-300" />
+            <span className="text-sm text-zinc-400">Initializing SQL engine...</span>
           </div>
         )}
 
-        {/* ── Available Tables ───────────────── */}
         {tables.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-zinc-500">Tables:</span>
             {tables.map((t) => (
               <button
                 key={t.name}
-                onClick={() => handleInsertTable(t.name)}
-                title={`Click to insert "${t.name}" into expression`}
-                className="group inline-flex items-center gap-1 rounded-md border border-zinc-700/40 bg-zinc-800/50 px-2.5 py-1 font-mono text-xs text-zinc-300 transition-all hover:border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
+                onClick={() => store.setExpression(`{ t | ${t.name}(t) }`)}
+                className="group inline-flex items-center gap-1 rounded-md border border-zinc-700/40 bg-zinc-800/50 px-2.5 py-1 font-mono text-xs text-zinc-300 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/10 hover:text-cyan-200"
               >
-                <Table2 className="h-3 w-3 text-zinc-500 transition-colors group-hover:text-violet-400" />
+                <Table2 className="h-3 w-3 text-zinc-500 transition-colors group-hover:text-cyan-300" />
                 {t.name}
               </button>
             ))}
           </div>
         )}
 
-        {/* ── Quick Examples ─────────────────── */}
         {tables.length > 0 && !store.expression && (
           <div className="flex flex-wrap items-center gap-2">
             <BookOpen className="h-3.5 w-3.5 text-zinc-600" />
             <span className="text-xs text-zinc-600">Try:</span>
-            {examples.map((ex) => (
+            {examples.map((example) => (
               <button
-                key={ex.label}
-                onClick={() => store.setExpression(ex.expr)}
-                className="rounded-md border border-dashed border-zinc-700/40 px-2.5 py-1 text-xs text-zinc-500 transition-all hover:border-violet-500/30 hover:bg-violet-500/5 hover:text-violet-300"
+                key={example.label}
+                onClick={() => store.setExpression(example.expr)}
+                className="rounded-md border border-dashed border-zinc-700/40 px-2.5 py-1 text-xs text-zinc-500 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/5 hover:text-cyan-300"
               >
-                {ex.label}
+                {example.label}
               </button>
             ))}
           </div>
         )}
 
-        {/* ── Expression Input ───────────────── */}
-        <AlgebraInput
+        <TupleCalculusInput
           value={store.expression}
           onChange={store.setExpression}
           onEvaluate={handleEvaluate}
           tables={tables}
-          tableNames={tables.map((t) => t.name)}
           executionFeedback={inputFeedback}
         />
 
-        {/* ── Error ──────────────────────────── */}
         {store.error && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             <span className="font-semibold">Error:</span> {store.error}
           </div>
         )}
 
-        {/* ── Tree + SQL ─────────────────────── */}
-        {(store.parsedTree || store.sqlEquivalent) && (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {store.parsedTree && (
-              <ExpressionTree
-                tree={store.parsedTree}
-                activeNodeId={store.steps[store.activeStepIndex]?.node.id}
-                onNodeClick={(id) => {
-                  const idx = store.steps.findIndex((s) => s.node.id === id);
-                  if (idx >= 0) store.setActiveStepIndex(idx);
-                }}
-              />
-            )}
-            {store.sqlEquivalent && <AlgebraToSql sql={store.sqlEquivalent} />}
+        {store.sqlEquivalent && <AlgebraToSql sql={store.sqlEquivalent} />}
+
+        {result?.error && (
+          <div className="flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{result.error}</span>
           </div>
         )}
 
-        {/* ── Step Results ────────────────────── */}
-        {store.steps.length > 0 && (
-          <IntermediateResult
-            steps={store.steps}
-            activeIndex={store.activeStepIndex}
-            onSelect={store.setActiveStepIndex}
+        {result && !result.error && result.columns.length > 0 && (
+          <ResultPanel
+            columns={result.columns}
+            rows={result.rows}
+            rowCount={result.rowCount}
+            executionTimeMs={result.executionTimeMs}
           />
+        )}
+
+        {result && !result.error && result.columns.length === 0 && (
+          <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>
+              Query executed successfully. {result.rowCount > 0 ? `${result.rowCount} row(s) affected.` : 'No rows returned.'}{' '}
+              ({result.executionTimeMs.toFixed(1)}ms)
+            </span>
+          </div>
         )}
       </div>
 
-      {/* ── Table Browser Modal ──────────── */}
-      <TableBrowser
-        open={browserOpen}
-        onClose={() => setBrowserOpen(false)}
-        tables={tables}
-        execute={execute}
-      />
-      <CreateTableModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        execute={execute}
-        onCreated={refreshTables}
-      />
+      <TableBrowser open={browserOpen} onClose={() => setBrowserOpen(false)} tables={tables} execute={execute} />
+      <CreateTableModal open={createOpen} onClose={() => setCreateOpen(false)} execute={execute} onCreated={refreshTables} />
     </>
   );
 }

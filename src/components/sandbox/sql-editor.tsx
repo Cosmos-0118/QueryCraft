@@ -540,13 +540,15 @@ interface SqlEditorProps {
   onChange: (value: string) => void;
   onExecute: () => void;
   tables?: TableSchema[];
+  executionFeedback?: 'idle' | 'success' | 'error';
   className?: string;
 }
 
-export function SqlEditor({ value, onChange, onExecute, tables = [], className }: SqlEditorProps) {
+export function SqlEditor({ value, onChange, onExecute, tables = [], executionFeedback = 'idle', className }: SqlEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onExecuteRef = useRef(onExecute);
+  const isApplyingExternalChangeRef = useRef(false);
   const [isMac] = useState(() =>
     typeof navigator !== 'undefined' ? /Mac|iPhone|iPad|iPod/.test(navigator.platform) : false,
   );
@@ -585,7 +587,7 @@ export function SqlEditor({ value, onChange, onExecute, tables = [], className }
           ...defaultKeymap,
         ]),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
+          if (update.docChanged && !isApplyingExternalChangeRef.current) {
             onChange(update.state.doc.toString());
           }
         }),
@@ -647,10 +649,31 @@ export function SqlEditor({ value, onChange, onExecute, tables = [], className }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tables.map((t) => t.name).join(',')]);
 
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+
+    const currentValue = view.state.doc.toString();
+    if (currentValue === value) return;
+
+    isApplyingExternalChangeRef.current = true;
+    view.dispatch({
+      changes: { from: 0, to: currentValue.length, insert: value },
+      selection: { anchor: value.length },
+    });
+    isApplyingExternalChangeRef.current = false;
+  }, [value]);
+
   return (
     <div className={className}>
       <div
-        className="overflow-hidden rounded-xl border border-zinc-700/50"
+        className={`overflow-hidden rounded-xl border border-zinc-700/50 ${
+          executionFeedback === 'success'
+            ? 'execute-feedback-success'
+            : executionFeedback === 'error'
+              ? 'execute-feedback-error'
+              : ''
+        }`}
         style={{ background: 'linear-gradient(180deg, rgba(24,24,27,0.95) 0%, rgba(18,18,21,0.98) 100%)' }}
         ref={editorRef}
       />

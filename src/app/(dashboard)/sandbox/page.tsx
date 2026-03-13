@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSqlEngine } from '@/hooks/use-sql-engine';
 import { useSandboxStore } from '@/stores/sandbox-store';
 import { useSessionPersistence } from '@/hooks/use-session-persistence';
@@ -65,14 +65,36 @@ export default function SandboxPage() {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [importSql, setImportSql] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [activeDataset, setActiveDataset] = useState<string | null>(null);
+  const [editorFeedback, setEditorFeedback] = useState<'idle' | 'success' | 'error'>('idle');
+  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerEditorFeedback = useCallback((feedback: 'success' | 'error') => {
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
+    }
+    setEditorFeedback(feedback);
+    feedbackTimeoutRef.current = setTimeout(() => {
+      setEditorFeedback('idle');
+      feedbackTimeoutRef.current = null;
+    }, 700);
+  }, []);
 
   // Auto-save session
   const { save } = useSessionPersistence();
   useEffect(() => {
     save({ lastPage: 'sandbox' });
   }, [save]);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleExecute = useCallback(() => {
     const q = store.query.trim();
@@ -81,7 +103,11 @@ export default function SandboxPage() {
     setResult(res);
     store.setResults(res);
     store.addToHistory(q, !res.error, res);
-  }, [execute, store]);
+    triggerEditorFeedback(res.error ? 'error' : 'success');
+    if (!res.error) {
+      store.setQuery('');
+    }
+  }, [execute, store, triggerEditorFeedback]);
 
   const handleLoadDataset = useCallback(
     (name: string, data: Record<string, unknown>) => {
@@ -97,17 +123,21 @@ export default function SandboxPage() {
   );
 
   const handleImportSQL = useCallback(() => {
+    setImportError(null);
     const sql = importSql.trim();
     if (!sql) return;
     const res = loadSQL(sql);
     setResult(res);
-    if (!res.error) {
-      setShowImport(false);
-      setImportSql('');
-      const tableMatch = sql.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/i);
-      if (tableMatch) {
-        store.setQuery(`SELECT * FROM "${tableMatch[1]}" LIMIT 20;`);
-      }
+    if (res.error) {
+      setImportError(res.error);
+      return;
+    }
+    setShowImport(false);
+    setImportSql('');
+    setActiveDataset(null);
+    const tableMatch = sql.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/i);
+    if (tableMatch) {
+      store.setQuery(`SELECT * FROM "${tableMatch[1]}" LIMIT 20;`);
     }
   }, [importSql, loadSQL, store]);
 
@@ -219,11 +249,19 @@ export default function SandboxPage() {
             </div>
             <textarea
               value={importSql}
-              onChange={(e) => setImportSql(e.target.value)}
+              onChange={(e) => {
+                setImportSql(e.target.value);
+                if (importError) setImportError(null);
+              }}
               placeholder={'-- Paste your SQL here\nCREATE TABLE "students" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);'}
               className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/60 px-4 py-3 font-mono text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
               rows={6}
             />
+            {importError && (
+              <p className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                Import failed: {importError}
+              </p>
+            )}
             <div className="mt-3 flex items-center gap-2">
               <button
                 onClick={handleImportSQL}
@@ -234,7 +272,11 @@ export default function SandboxPage() {
                 Run Import
               </button>
               <button
-                onClick={() => { setShowImport(false); setImportSql(''); }}
+                onClick={() => {
+                  setShowImport(false);
+                  setImportSql('');
+                  setImportError(null);
+                }}
                 className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
               >
                 Cancel
@@ -278,6 +320,7 @@ export default function SandboxPage() {
               onChange={store.setQuery}
               onExecute={handleExecute}
               tables={tables}
+              executionFeedback={editorFeedback}
             />
 
             {/* Run bar */}

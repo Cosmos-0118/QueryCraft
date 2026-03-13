@@ -3,13 +3,15 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { SymbolPalette, ALL_SYMBOLS, SHORTCUT_CODE_MAP } from './symbol-palette';
 import { Play, Keyboard } from 'lucide-react';
+import type { TableSchema } from '@/types/database';
+import { getTextareaCaretCoordinates } from '@/lib/utils/textarea-caret';
 
 // ── Autocomplete items ─────────────────────────────────────
 interface CompletionItem {
   label: string;
   insert: string;
   detail: string;
-  kind: 'operator' | 'keyword' | 'table' | 'function';
+  kind: 'operator' | 'keyword' | 'table' | 'function' | 'column';
 }
 
 const OPERATOR_COMPLETIONS: CompletionItem[] = [
@@ -80,26 +82,52 @@ interface AlgebraInputProps {
   value: string;
   onChange: (value: string) => void;
   onEvaluate: () => void;
+  tables?: TableSchema[];
   tableNames?: string[];
+  executionFeedback?: 'idle' | 'success' | 'error';
 }
 
-export function AlgebraInput({ value, onChange, onEvaluate, tableNames = [] }: AlgebraInputProps) {
+function rankCompletion(item: CompletionItem, query: string): number {
+  const q = query.trim().toLowerCase();
+  const haystack = `${item.label} ${item.detail}`.toLowerCase();
+  if (!q) return item.kind === 'operator' ? 10 : 30;
+  if (item.label.toLowerCase() === q) return 0;
+  if (item.label.toLowerCase().startsWith(q)) return 10;
+  if (haystack.startsWith(q)) return 20;
+  if (item.label.toLowerCase().includes(q)) return 30;
+  if (haystack.includes(q)) return 40;
+  return 999;
+}
+
+export function AlgebraInput({ value, onChange, onEvaluate, tables = [], tableNames = [], executionFeedback = 'idle' }: AlgebraInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [showComplete, setShowComplete] = useState(false);
   const [completions, setCompletions] = useState<CompletionItem[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ left: 0, top: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [isMac] = useState(() =>
     typeof navigator !== 'undefined' ? /Mac|iPhone|iPad|iPod/.test(navigator.platform) : false,
   );
 
-  // Build table completions dynamically
-  const tableCompletions: CompletionItem[] = tableNames.map((name) => ({
+  // Build table + column completions dynamically
+  const effectiveTableNames = tableNames.length > 0 ? tableNames : tables.map((table) => table.name);
+  const tableCompletions: CompletionItem[] = effectiveTableNames.map((name) => ({
     label: name,
     insert: name,
     detail: 'Table',
     kind: 'table' as const,
+  }));
+
+  const columnCompletions: CompletionItem[] = Array.from(
+    new Set(tables.flatMap((table) => table.columns.map((column) => column.name))),
+  ).map((column) => ({
+    label: column,
+    insert: column,
+    detail: 'Column',
+    kind: 'column' as const,
   }));
 
   const handleInsert = useCallback(
@@ -152,7 +180,7 @@ export function AlgebraInput({ value, onChange, onEvaluate, tableNames = [] }: A
   );
 
   // Update completions on value/cursor change
-  const updateCompletions = useCallback(() => {
+  const updateCompletions = useCallback((force = false) => {
     const el = inputRef.current;
     if (!el) return;
     const cursor = el.selectionStart;
@@ -163,24 +191,37 @@ export function AlgebraInput({ value, onChange, onEvaluate, tableNames = [] }: A
     }
     const word = value.slice(wordStart, cursor).toLowerCase();
 
-    if (word.length === 0) {
+    if (!force && word.length === 0) {
       setShowComplete(false);
       return;
     }
 
-    const allItems = [...ALL_COMPLETIONS, ...tableCompletions];
-    const filtered = allItems.filter((c) =>
-      c.label.toLowerCase().includes(word),
-    );
+    const allItems = [...ALL_COMPLETIONS, ...tableCompletions, ...columnCompletions];
+    const filtered = allItems
+      .map((item) => ({ item, rank: rankCompletion(item, word) }))
+      .filter((entry) => force || entry.rank < 999)
+      .sort((a, b) => a.rank - b.rank || a.item.label.localeCompare(b.item.label))
+      .slice(0, 8)
+      .map((entry) => entry.item);
 
     if (filtered.length > 0) {
-      setCompletions(filtered.slice(0, 12));
+      if (inputRef.current && containerRef.current) {
+        const caret = getTextareaCaretCoordinates(inputRef.current, inputRef.current.selectionStart);
+        const containerWidth = containerRef.current.clientWidth;
+        const desiredLeft = caret.left + 12;
+        const maxLeft = Math.max(12, containerWidth - 12 - 576);
+        setDropdownPos({
+          left: Math.min(desiredLeft, maxLeft),
+          top: caret.top + caret.lineHeight + 10,
+        });
+      }
+      setCompletions(filtered);
       setSelectedIdx(0);
       setShowComplete(true);
     } else {
       setShowComplete(false);
     }
-  }, [value, tableCompletions]);
+  }, [columnCompletions, tableCompletions, value]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -201,6 +242,13 @@ export function AlgebraInput({ value, onChange, onEvaluate, tableNames = [] }: A
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         e.preventDefault();
         onEvaluate();
+        return;
+      }
+
+      // Cmd/Ctrl+Space -> open suggestions explicitly
+      if ((e.metaKey || e.ctrlKey) && e.key === ' ') {
+        e.preventDefault();
+        updateCompletions(true);
         return;
       }
 
@@ -321,7 +369,7 @@ export function AlgebraInput({ value, onChange, onEvaluate, tableNames = [] }: A
         }
       }
     },
-    [showComplete, completions, selectedIdx, onEvaluate, handleInsert, applyCompletion, value, onChange],
+    [showComplete, completions, selectedIdx, onEvaluate, handleInsert, applyCompletion, value, onChange, updateCompletions],
   );
 
   // Close dropdown on outside click
@@ -340,23 +388,33 @@ export function AlgebraInput({ value, onChange, onEvaluate, tableNames = [] }: A
     keyword: 'text-sky-400',
     table: 'text-emerald-400',
     function: 'text-amber-400',
+    column: 'text-cyan-300',
   };
   const kindBg: Record<string, string> = {
     operator: 'bg-violet-500/15 text-violet-400',
     keyword: 'bg-sky-500/15 text-sky-400',
     table: 'bg-emerald-500/15 text-emerald-400',
     function: 'bg-amber-500/15 text-amber-400',
+    column: 'bg-cyan-500/15 text-cyan-300',
   };
 
   return (
-    <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/60">
+    <div
+      className={`rounded-xl border border-zinc-700/50 bg-zinc-900/60 ${
+        executionFeedback === 'success'
+          ? 'execute-feedback-success'
+          : executionFeedback === 'error'
+            ? 'execute-feedback-error'
+            : ''
+      }`}
+    >
       <div className="flex items-center justify-between rounded-t-xl border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-2.5">
         <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
           Expression
         </span>
         <SymbolPalette onInsert={handleInsert} />
       </div>
-      <div className="relative p-3">
+      <div ref={containerRef} className="relative p-3">
         <textarea
           ref={inputRef}
           value={value}
@@ -367,12 +425,15 @@ export function AlgebraInput({ value, onChange, onEvaluate, tableNames = [] }: A
           className="w-full resize-none rounded-lg border border-zinc-700/30 bg-zinc-950/50 p-3 font-mono text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20"
           autoComplete="off"
           spellCheck={false}
+          onClick={() => updateCompletions(showComplete)}
+          onKeyUp={() => updateCompletions(showComplete)}
         />
         {/* ── Autocomplete dropdown ─── */}
         {showComplete && completions.length > 0 && (
           <div
             ref={dropdownRef}
-            className="absolute left-3 right-3 top-[calc(100%-8px)] z-50 max-h-64 overflow-y-auto rounded-lg border border-zinc-700/60 bg-zinc-900/98 shadow-xl shadow-black/40 backdrop-blur-sm"
+            className="absolute left-3 top-[calc(100%-8px)] z-50 max-h-52 w-[min(92vw,36rem)] overflow-y-auto rounded-lg border border-zinc-700/70 bg-zinc-900/98 shadow-xl shadow-black/40 backdrop-blur-sm"
+            style={{ left: dropdownPos.left, top: dropdownPos.top }}
           >
             {completions.map((item, i) => (
               <button
@@ -382,17 +443,17 @@ export function AlgebraInput({ value, onChange, onEvaluate, tableNames = [] }: A
                   applyCompletion(item);
                 }}
                 onMouseEnter={() => setSelectedIdx(i)}
-                className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors ${
+                className={`flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors ${
                   i === selectedIdx ? 'bg-violet-500/15' : 'hover:bg-zinc-800/60'
                 }`}
               >
                 <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${kindBg[item.kind]}`}>
-                  {item.kind === 'operator' ? 'OP' : item.kind === 'keyword' ? 'KW' : item.kind === 'table' ? 'TBL' : 'FN'}
+                  {item.kind === 'operator' ? 'OP' : item.kind === 'keyword' ? 'KW' : item.kind === 'table' ? 'TBL' : item.kind === 'column' ? 'COL' : 'FN'}
                 </span>
-                <span className={`font-mono text-sm font-semibold ${kindColors[item.kind]}`}>
+                <span className={`font-mono text-[13px] font-semibold ${kindColors[item.kind]}`}>
                   {item.label}
                 </span>
-                <span className="ml-auto text-[11px] text-zinc-600">{item.detail}</span>
+                <span className="ml-auto hidden max-w-[45%] truncate text-[10px] text-zinc-600 md:block">{item.detail}</span>
               </button>
             ))}
           </div>
@@ -405,6 +466,12 @@ export function AlgebraInput({ value, onChange, onEvaluate, tableNames = [] }: A
                 {isMac ? '⌘' : 'Ctrl'} Enter
               </kbd>{' '}
               to evaluate
+            </span>
+            <span className="text-xs text-zinc-600">
+              <kbd className="rounded border border-zinc-700/50 bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+                {isMac ? '⌘' : 'Ctrl'} Space
+              </kbd>{' '}
+              suggestions
             </span>
             <button
               onClick={() => setShowShortcuts(!showShortcuts)}

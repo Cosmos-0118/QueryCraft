@@ -8,7 +8,7 @@ import { useThemeStore, type AppearanceMode, type ColorTheme } from '@/stores/th
 import { useLoadingStore } from '@/stores/loading-store';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
-  Settings, Sun, Moon, Monitor, Palette, Sparkles,
+  Settings, Sun, Moon, Monitor, Palette, Sparkles, FunctionSquare,
 } from 'lucide-react';
 
 const emptySubscribe = () => () => {};
@@ -26,6 +26,7 @@ const NAV_ITEMS: { label: string; href: string; icon: ReactNode }[] = [
   { label: 'SQL Sandbox', href: '/sandbox', icon: <Terminal size={18} /> },
   { label: 'Table Generator', href: '/generator', icon: <Sparkles size={18} /> },
   { label: 'Algebra', href: '/algebra', icon: <Sigma size={18} /> },
+  { label: 'Tuple Calculus', href: '/tuple-calculus', icon: <FunctionSquare size={18} /> },
   { label: 'ER Builder', href: '/er-builder', icon: <PenTool size={18} /> },
   { label: 'Normalizer', href: '/normalizer', icon: <RefreshCw size={18} /> },
   { label: 'Settings', href: '/settings', icon: <Settings size={18} /> },

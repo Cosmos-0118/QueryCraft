@@ -2,12 +2,14 @@
 
 import { useState } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Trash2, Download, Upload, Copy, Check } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get('next');
   const { accounts, login, removeAccount, exportAccount, importAccount } = useAuthStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [password, setPassword] = useState('');
@@ -26,6 +28,11 @@ export default function LoginPage() {
 
   const selected = accounts.find((a) => a.id === selectedId);
 
+  const redirectTo =
+    nextPath && nextPath.startsWith('/') && !nextPath.startsWith('//')
+      ? nextPath
+      : '/dashboard';
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedId) return;
@@ -33,7 +40,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(selectedId, password);
-      router.push('/dashboard');
+      router.push(redirectTo);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

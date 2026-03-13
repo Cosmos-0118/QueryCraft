@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import {
   BookOpen, Database, Terminal, Sigma, RefreshCw, Shield,
-  Search, Copy, Check,
+  Search, Copy, Check, Sparkles, Layers,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -721,46 +721,48 @@ const COLORS: Record<string, {
   code: string; tab: string; tabActive: string;
 }> = {
   blue: {
-    badge: 'bg-blue-500/10 text-blue-400',
-    border: 'border-blue-500/20',
-    text: 'text-blue-400',
-    code: 'bg-blue-500/8 border-blue-500/20 text-blue-300',
-    tab: 'text-zinc-400 hover:text-blue-400 hover:bg-blue-500/5',
-    tabActive: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+    badge: 'bg-blue-500/10 text-blue-500 dark:text-blue-300',
+    border: 'border-blue-500/25',
+    text: 'text-blue-600 dark:text-blue-300',
+    code: 'bg-blue-500/10 border-blue-500/25 text-blue-700 dark:text-blue-200',
+    tab: 'text-muted-foreground hover:text-blue-600 dark:hover:text-blue-300 hover:bg-blue-500/10',
+    tabActive: 'text-blue-600 dark:text-blue-300 bg-blue-500/12 border-blue-500/35',
   },
   violet: {
-    badge: 'bg-violet-500/10 text-violet-400',
-    border: 'border-violet-500/20',
-    text: 'text-violet-400',
-    code: 'bg-violet-500/8 border-violet-500/20 text-violet-300',
-    tab: 'text-zinc-400 hover:text-violet-400 hover:bg-violet-500/5',
-    tabActive: 'text-violet-400 bg-violet-500/10 border-violet-500/30',
+    badge: 'bg-violet-500/10 text-violet-600 dark:text-violet-300',
+    border: 'border-violet-500/25',
+    text: 'text-violet-600 dark:text-violet-300',
+    code: 'bg-violet-500/10 border-violet-500/25 text-violet-700 dark:text-violet-200',
+    tab: 'text-muted-foreground hover:text-violet-600 dark:hover:text-violet-300 hover:bg-violet-500/10',
+    tabActive: 'text-violet-600 dark:text-violet-300 bg-violet-500/12 border-violet-500/35',
   },
   emerald: {
-    badge: 'bg-emerald-500/10 text-emerald-400',
-    border: 'border-emerald-500/20',
-    text: 'text-emerald-400',
-    code: 'bg-emerald-500/8 border-emerald-500/20 text-emerald-300',
-    tab: 'text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/5',
-    tabActive: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+    badge: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
+    border: 'border-emerald-500/25',
+    text: 'text-emerald-600 dark:text-emerald-300',
+    code: 'bg-emerald-500/10 border-emerald-500/25 text-emerald-700 dark:text-emerald-200',
+    tab: 'text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-300 hover:bg-emerald-500/10',
+    tabActive: 'text-emerald-600 dark:text-emerald-300 bg-emerald-500/12 border-emerald-500/35',
   },
   amber: {
-    badge: 'bg-amber-500/10 text-amber-400',
-    border: 'border-amber-500/20',
-    text: 'text-amber-400',
-    code: 'bg-amber-500/8 border-amber-500/20 text-amber-300',
-    tab: 'text-zinc-400 hover:text-amber-400 hover:bg-amber-500/5',
-    tabActive: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
+    badge: 'bg-amber-500/10 text-amber-600 dark:text-amber-300',
+    border: 'border-amber-500/25',
+    text: 'text-amber-700 dark:text-amber-300',
+    code: 'bg-amber-500/10 border-amber-500/25 text-amber-700 dark:text-amber-200',
+    tab: 'text-muted-foreground hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-500/10',
+    tabActive: 'text-amber-700 dark:text-amber-300 bg-amber-500/12 border-amber-500/35',
   },
   rose: {
-    badge: 'bg-rose-500/10 text-rose-400',
-    border: 'border-rose-500/20',
-    text: 'text-rose-400',
-    code: 'bg-rose-500/8 border-rose-500/20 text-rose-300',
-    tab: 'text-zinc-400 hover:text-rose-400 hover:bg-rose-500/5',
-    tabActive: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
+    badge: 'bg-rose-500/10 text-rose-600 dark:text-rose-300',
+    border: 'border-rose-500/25',
+    text: 'text-rose-600 dark:text-rose-300',
+    code: 'bg-rose-500/10 border-rose-500/25 text-rose-700 dark:text-rose-200',
+    tab: 'text-muted-foreground hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-500/10',
+    tabActive: 'text-rose-600 dark:text-rose-300 bg-rose-500/12 border-rose-500/35',
   },
 };
+
+const TOTAL_COMMANDS = SECTIONS.reduce((sum, section) => sum + section.commands.length, 0);
 
 /* ──────────────────── Copy Button ──────────────────── */
 
@@ -776,10 +778,10 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="absolute right-2.5 top-2.5 rounded-md p-1 text-zinc-600 opacity-0 transition-all hover:text-zinc-300 group-hover/code:opacity-100"
+      className="absolute right-2.5 top-2.5 rounded-md p-1 text-muted-foreground opacity-0 transition-all hover:text-foreground group-hover/code:opacity-100"
       title="Copy"
     >
-      {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+      {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
     </button>
   );
 }
@@ -790,20 +792,20 @@ function CommandCard({ cmd, color }: { cmd: CommandEntry; color: string }) {
   const colors = COLORS[color] ?? COLORS.blue;
 
   return (
-    <div className="group rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-4 transition-colors hover:border-zinc-700/60">
+    <div className="group rounded-2xl border border-border bg-card/95 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
       {/* Command + Description */}
       <div className="mb-3 space-y-1.5">
         <code className={`inline-block rounded-md border px-2.5 py-1 text-xs font-bold tracking-wide ${colors.code}`}>
           {cmd.command}
         </code>
-        <p className="text-[13px] leading-relaxed text-zinc-400">
+        <p className="text-[13px] leading-relaxed text-muted-foreground">
           {cmd.description}
         </p>
       </div>
 
       {/* Example */}
       <div className="group/code relative">
-        <pre className="overflow-x-auto rounded-lg border border-zinc-800/50 bg-zinc-950/60 px-4 py-3 font-mono text-xs leading-relaxed text-zinc-300">
+        <pre className="overflow-x-auto rounded-lg border border-border/80 bg-muted/45 px-4 py-3 font-mono text-xs leading-relaxed text-foreground/90">
           <code>{cmd.example}</code>
         </pre>
         <CopyButton text={cmd.example} />
@@ -848,93 +850,98 @@ export default function LearnPage() {
     );
   }, [query]);
 
+  const totalInSearchScope = matchingTabIds
+    ? SECTIONS.filter((section) => matchingTabIds.has(section.id)).reduce((sum, section) => sum + section.commands.length, 0)
+    : TOTAL_COMMANDS;
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* ── Top Bar ── */}
-      <div className="shrink-0 border-b border-zinc-800/60 bg-zinc-950/30 px-6 pb-0 pt-5">
-        {/* Title row */}
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10">
-              <BookOpen size={18} className="text-emerald-400" />
-            </div>
+      <div className="shrink-0 border-b border-border bg-card/70 px-4 py-4 backdrop-blur sm:px-6">
+        <div className="mx-auto max-w-6xl rounded-2xl border border-border bg-background/60 p-4 shadow-sm sm:p-5">
+          <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
             <div>
-              <h1 className="text-lg font-semibold text-zinc-100">
-                Commands &amp; Syntax
-              </h1>
-              <p className="text-xs text-zinc-500">
-                {SECTIONS.length} categories &middot; {SECTIONS.reduce((s, sec) => s + sec.commands.length, 0)} commands
+              <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+                <Sparkles size={13} className="text-primary" />
+                SQL Reference Atlas
+              </div>
+              <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Commands &amp; Syntax</h1>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Browse by category, search examples instantly, and copy ready-to-run snippets.
               </p>
+
+              <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-muted-foreground">
+                  <Layers size={13} /> {SECTIONS.length} categories
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-muted-foreground">
+                  <BookOpen size={13} /> {TOTAL_COMMANDS} commands
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-muted-foreground">
+                  <Search size={13} /> {totalInSearchScope} in scope
+                </span>
+              </div>
+            </div>
+
+            <div className="relative">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search command, description, or example"
+                className="h-11 w-full rounded-xl border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary/40"
+              />
             </div>
           </div>
 
-          {/* Search */}
-          <div className="relative w-64">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="w-full rounded-lg border border-zinc-800/60 bg-zinc-900/50 py-1.5 pl-8 pr-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none transition-colors focus:border-zinc-600"
-            />
+          <div className="mt-4 -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+            {SECTIONS.map((section) => {
+              const colors = COLORS[section.color] ?? COLORS.blue;
+              const isActive = section.id === activeTab;
+              const hasMatch = matchingTabIds === null || matchingTabIds.has(section.id);
+
+              return (
+                <button
+                  key={section.id}
+                  onClick={() => setActiveTab(section.id)}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                    isActive
+                      ? colors.tabActive
+                      : `${colors.tab} border-border`
+                  } ${!hasMatch && !isActive ? 'opacity-35' : ''}`}
+                >
+                  {section.icon}
+                  <span>{section.shortTitle}</span>
+                </button>
+              );
+            })}
           </div>
-        </div>
-
-        {/* ── Tabs ── */}
-        <div className="-mb-px flex flex-wrap gap-1">
-          {SECTIONS.map((section) => {
-            const colors = COLORS[section.color] ?? COLORS.blue;
-            const isActive = section.id === activeTab;
-            const hasMatch = matchingTabIds === null || matchingTabIds.has(section.id);
-
-            return (
-              <button
-                key={section.id}
-                onClick={() => setActiveTab(section.id)}
-                className={`
-                  inline-flex shrink-0 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 py-2 text-xs font-medium transition-all
-                  ${isActive
-                    ? `${colors.tabActive} border-zinc-700/40`
-                    : `${colors.tab} border-transparent`
-                  }
-                  ${!hasMatch && !isActive ? 'opacity-30' : ''}
-                `}
-              >
-                {section.icon}
-                <span className="hidden sm:inline">{section.shortTitle}</span>
-              </button>
-            );
-          })}
         </div>
       </div>
 
-      {/* ── Content ── */}
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl px-6 py-6">
-          {/* Section Title */}
-          <div className="mb-5 flex items-center gap-3">
-            <div className={`rounded-lg p-2 ${activeColors.badge}`}>
-              {activeSection.icon}
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-zinc-100">{activeSection.title}</h2>
-              <p className="text-xs text-zinc-500">
-                {filteredCommands.length} command{filteredCommands.length !== 1 ? 's' : ''}
-                {query && ` matching "${search}"`}
-              </p>
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-7">
+          <div className={`mb-5 rounded-2xl border ${activeColors.border} bg-card p-4 shadow-sm sm:p-5`}>
+            <div className="flex items-start gap-3">
+              <div className={`rounded-xl p-2 ${activeColors.badge}`}>{activeSection.icon}</div>
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight">{activeSection.title}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {filteredCommands.length} command{filteredCommands.length !== 1 ? 's' : ''}
+                  {query && ` matching "${search}"`}
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Commands Grid */}
           {filteredCommands.length === 0 ? (
-            <div className="rounded-xl border border-zinc-800/50 bg-zinc-900/30 py-16 text-center">
-              <p className="text-sm text-zinc-500">
-                No commands match &ldquo;{search}&rdquo; in this category
+            <div className="rounded-2xl border border-border bg-card py-16 text-center shadow-sm">
+              <p className="text-sm text-muted-foreground">
+                No commands match &ldquo;{search}&rdquo; in this category.
               </p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-2">
               {filteredCommands.map((cmd) => (
                 <CommandCard key={cmd.command} cmd={cmd} color={activeSection.color} />
               ))}

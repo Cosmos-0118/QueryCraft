@@ -50,7 +50,7 @@ export default function HistoryPage() {
   const errorCount = history.filter((e) => !e.success).length;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto w-full max-w-[1100px] space-y-6 p-6 lg:p-8">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
@@ -208,7 +208,7 @@ function HistoryEntryCard({
             ) : (
               <XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" />
             )}
-            <button onClick={onLoad} className="min-w-0 flex-1 text-left" title="Load in editor">
+            <button onClick={onLoad} className="min-w-0 flex-1 text-left" aria-label="Load query in editor">
               <code className={cn(
                 'block font-mono text-[12px] leading-relaxed text-zinc-300',
                 !isExpanded && 'line-clamp-2',
@@ -248,7 +248,7 @@ function HistoryEntryCard({
           <button
             onClick={onCopy}
             className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-zinc-800/60 hover:text-zinc-300"
-            title="Copy query"
+            aria-label="Copy query"
           >
             {isCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
           </button>
@@ -256,7 +256,7 @@ function HistoryEntryCard({
             href="/sandbox"
             onClick={onLoad}
             className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-zinc-800/60 hover:text-zinc-300"
-            title="Load in editor"
+            aria-label="Load query in editor"
           >
             <CornerDownLeft className="h-3.5 w-3.5" />
           </Link>

@@ -68,7 +68,7 @@ export function QueryHistory({ history, onSelect, onClear, className }: QueryHis
         <button
           onClick={onClear}
           className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-red-400/70 transition-colors hover:bg-red-500/10 hover:text-red-400"
-          title="Clear history"
+          aria-label="Clear history"
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -108,7 +108,7 @@ export function QueryHistory({ history, onSelect, onClear, className }: QueryHis
                 <button
                   onClick={() => onSelect(entry.query)}
                   className="min-w-0 flex-1 text-left"
-                  title="Click to load query"
+                  aria-label="Load query in editor"
                 >
                   <code className="line-clamp-1 block font-mono text-[11px] text-zinc-300">
                     {entry.query}
@@ -117,7 +117,7 @@ export function QueryHistory({ history, onSelect, onClear, className }: QueryHis
                 <button
                   onClick={() => handleCopy(entry.query, i)}
                   className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-zinc-700 transition-colors hover:bg-zinc-800/60 hover:text-zinc-400"
-                  title="Copy query"
+                  aria-label="Copy query"
                 >
                   {isCopied ? (
                     <Check className="h-2.5 w-2.5 text-emerald-400" />
