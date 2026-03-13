@@ -2,6 +2,13 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AuthState, User, LocalAccount } from '@/types/auth';
 
+const AUTH_STORAGE_KEY = 'querycraft-auth';
+const SESSION_STORAGE_KEY = 'querycraft-session';
+
+interface SessionPayload {
+  user: User;
+}
+
 /* ── Simple password hashing (SHA-256, client-side only) ─────── */
 
 async function hashPassword(password: string): Promise<string> {
@@ -10,6 +17,39 @@ async function hashPassword(password: string): Promise<string> {
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+function loadSessionUser(): User | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SessionPayload;
+    if (!parsed?.user?.id || !parsed.user.displayName || !parsed.user.createdAt) {
+      return null;
+    }
+    return parsed.user;
+  } catch {
+    return null;
+  }
+}
+
+function saveSessionUser(user: User) {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ user } satisfies SessionPayload));
+  } catch {
+    // sessionStorage unavailable
+  }
+}
+
+function clearSessionUser() {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // sessionStorage unavailable
+  }
 }
 
 /* ── Store ─────────────────────────────────────────────────── */
@@ -38,8 +78,8 @@ interface AuthStore extends AuthState {
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
-      user: null,
-      isAuthenticated: false,
+      user: loadSessionUser(),
+      isAuthenticated: !!loadSessionUser(),
       accounts: [],
 
       addAccount: async (name, password) => {
@@ -64,18 +104,24 @@ export const useAuthStore = create<AuthStore>()(
           createdAt: account.createdAt,
         };
         set({ user, isAuthenticated: true });
+        saveSessionUser(user);
       },
 
-      logout: () => set({ user: null, isAuthenticated: false }),
+      logout: () => {
+        set({ user: null, isAuthenticated: false });
+        clearSessionUser();
+      },
 
       updateName: (newName) => {
         const { user, accounts } = get();
         if (!user) return;
         const trimmed = newName.trim();
+        const updatedUser: User = { ...user, displayName: trimmed };
         set({
-          user: { ...user, displayName: trimmed },
+          user: updatedUser,
           accounts: accounts.map((a) => (a.id === user.id ? { ...a, displayName: trimmed } : a)),
         });
+        saveSessionUser(updatedUser);
       },
 
       changePassword: async (currentPassword, newPassword) => {
@@ -93,6 +139,9 @@ export const useAuthStore = create<AuthStore>()(
 
       removeAccount: (id) => {
         const { user } = get();
+        if (user?.id === id) {
+          clearSessionUser();
+        }
         set((s) => ({
           accounts: s.accounts.filter((a) => a.id !== id),
           ...(user?.id === id ? { user: null, isAuthenticated: false } : {}),
@@ -134,6 +183,16 @@ export const useAuthStore = create<AuthStore>()(
         return account.displayName;
       },
     }),
-    { name: 'querycraft-auth' },
+    {
+      name: AUTH_STORAGE_KEY,
+      version: 2,
+      partialize: (state) => ({ accounts: state.accounts }),
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<AuthStore> | undefined;
+        return {
+          accounts: Array.isArray(state?.accounts) ? state.accounts : [],
+        };
+      },
+    },
   ),
 );

@@ -24,6 +24,7 @@ import {
   Table2,
   Plus,
   History,
+  ClipboardPaste,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -88,6 +89,8 @@ export default function AlgebraPage() {
   const [browserOpen, setBrowserOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [activeDataset, setActiveDataset] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importSql, setImportSql] = useState('');
 
   const handleLoadDataset = useCallback(
     (name: string, data: Record<string, unknown>) => {
@@ -147,6 +150,15 @@ export default function AlgebraPage() {
     [store],
   );
 
+  const handleImportSQL = useCallback(() => {
+    const sql = importSql.trim();
+    if (!sql) return;
+    loadSQL(sql);
+    setShowImport(false);
+    setImportSql('');
+    setActiveDataset(null);
+  }, [importSql, loadSQL]);
+
   const examples = activeDataset === 'Banking' ? BANKING_EXAMPLES : UNIVERSITY_EXAMPLES;
 
   return (
@@ -197,6 +209,14 @@ export default function AlgebraPage() {
               Create Table
             </button>
             <button
+              onClick={() => setShowImport(!showImport)}
+              disabled={!isReady}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40"
+            >
+              <ClipboardPaste className="h-3.5 w-3.5" />
+              Import SQL
+            </button>
+            <button
               onClick={() => setBrowserOpen(true)}
               disabled={tables.length === 0}
               className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40"
@@ -216,6 +236,42 @@ export default function AlgebraPage() {
             </button>
           </div>
         </div>
+
+        {/* ── Import SQL Panel ─────────────── */}
+        {showImport && (
+          <div className="rounded-xl border border-violet-500/30 bg-zinc-900/80 p-4 backdrop-blur-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-zinc-200">Import SQL</h3>
+              <p className="text-[11px] text-zinc-500">Paste CREATE TABLE / INSERT statements</p>
+            </div>
+            <textarea
+              value={importSql}
+              onChange={(e) => setImportSql(e.target.value)}
+              placeholder={'-- Paste your SQL here\nCREATE TABLE "students" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);'}
+              className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/60 px-4 py-3 font-mono text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
+              rows={6}
+            />
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={handleImportSQL}
+                disabled={!importSql.trim()}
+                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-violet-500/20 transition-all hover:bg-violet-500 disabled:opacity-40"
+              >
+                <ClipboardPaste className="h-3.5 w-3.5" />
+                Run Import
+              </button>
+              <button
+                onClick={() => {
+                  setShowImport(false);
+                  setImportSql('');
+                }}
+                className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* History button */}
         {store.history.length > 0 && (

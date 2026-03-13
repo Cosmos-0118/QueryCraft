@@ -7,6 +7,7 @@ export type ColumnType = 'integer' | 'text' | 'real' | 'date' | 'boolean';
 export type SemanticHint =
   | 'auto'
   | 'id'
+  | 'register_number'
   | 'name'
   | 'first_name'
   | 'last_name'
@@ -67,6 +68,12 @@ export interface GeneratorTableDef {
 
 const HINT_PATTERNS: [RegExp, SemanticHint, ColumnType][] = [
   [/^id$|_id$/i, 'id', 'integer'],
+  [
+    /(^|_)(ra|reg|register|registration|roll|enrollment|enrolment|admission|matric)(_|$)(no|num|number|id)($|_)/i,
+    'register_number',
+    'text',
+  ],
+  [/^(ra|reg)(no|num|number)$/i, 'register_number', 'text'],
   [/cgpa/i, 'cgpa', 'real'],
   [/\bgpa\b/i, 'gpa', 'real'],
   [/^email$|_email$/i, 'email', 'text'],
@@ -108,9 +115,18 @@ const HINT_PATTERNS: [RegExp, SemanticHint, ColumnType][] = [
   [/^(is_|has_|can_|enabled|active|verified|published)/i, 'boolean', 'boolean'],
 ];
 
+function normalizeColumnName(columnName: string): string {
+  return columnName
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 export function detectHint(columnName: string): { hint: SemanticHint; suggestedType: ColumnType } {
+  const normalizedName = normalizeColumnName(columnName);
   for (const [pattern, hint, type] of HINT_PATTERNS) {
-    if (pattern.test(columnName)) {
+    if (pattern.test(normalizedName)) {
       return { hint, suggestedType: type };
     }
   }
@@ -162,6 +178,19 @@ const COURSE_NAMES = [
   'Quantum Mechanics',
 ];
 
+function generateRegisterNumber(rowIndex: number): string {
+  const serial = String(rowIndex + 1).padStart(4, '0');
+  const year = 2023 + (rowIndex % 4);
+  const styles = [
+    `RA${year}${serial}`,
+    `RA-${year}-${serial}`,
+    `REG${year}${serial}`,
+    `ROLL-${year}-${serial}`,
+    `ENR${year}${serial}`,
+  ];
+  return styles[rowIndex % styles.length];
+}
+
 function generateSmartValue(
   hint: SemanticHint,
   type: ColumnType,
@@ -170,6 +199,8 @@ function generateSmartValue(
   switch (hint) {
     case 'id':
       return rowIndex + 1;
+    case 'register_number':
+      return generateRegisterNumber(rowIndex);
     case 'name':
       return faker.person.fullName();
     case 'first_name':
@@ -356,6 +387,7 @@ export const TABLE_TEMPLATES: TableTemplate[] = [
         rowCount: 15,
         columns: [
           { name: 'id', type: 'integer', primaryKey: true, hint: 'id' },
+          { name: 'register_no', type: 'text', primaryKey: false, hint: 'register_number' },
           { name: 'name', type: 'text', primaryKey: false, hint: 'name' },
           { name: 'email', type: 'text', primaryKey: false, hint: 'email' },
           { name: 'age', type: 'integer', primaryKey: false, hint: 'age' },
@@ -434,6 +466,7 @@ export const TABLE_TEMPLATES: TableTemplate[] = [
         rowCount: 15,
         columns: [
           { name: 'student_id', type: 'integer', primaryKey: true, hint: 'id' },
+          { name: 'ra_no', type: 'text', primaryKey: false, hint: 'register_number' },
           { name: 'name', type: 'text', primaryKey: false, hint: 'name' },
           { name: 'gpa', type: 'real', primaryKey: false, hint: 'gpa' },
           {

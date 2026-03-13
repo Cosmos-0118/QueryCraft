@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useGeneratorStore } from '@/stores/generator-store';
 import {
   TABLE_TEMPLATES,
@@ -17,8 +17,6 @@ import {
   ChevronDown,
   ChevronUp,
   Database,
-  ArrowRight,
-  ClipboardPaste,
   RotateCcw,
   GraduationCap,
   Building2,
@@ -27,9 +25,9 @@ import {
   Users,
   Table2,
   Wand2,
-  FileCode,
+  Eye,
+  X,
 } from 'lucide-react';
-import Link from 'next/link';
 
 /* ── Constants ───────────────────────────────────────────── */
 
@@ -44,6 +42,7 @@ const TYPE_OPTIONS: { value: ColumnType; label: string; color: string }[] = [
 const HINT_OPTIONS: { value: SemanticHint; label: string; group: string }[] = [
   { value: 'auto', label: 'Auto-detect', group: 'General' },
   { value: 'id', label: 'ID (1, 2, 3…)', group: 'General' },
+  { value: 'register_number', label: 'Register No (RA20240001)', group: 'General' },
   { value: 'uuid', label: 'UUID', group: 'General' },
   { value: 'boolean', label: 'Boolean', group: 'General' },
   { value: 'name', label: 'Full Name', group: 'Person' },
@@ -90,18 +89,43 @@ const TEMPLATE_ICONS: Record<string, typeof GraduationCap> = {
   hospital: Stethoscope,
 };
 
+type OpenMenu = {
+  tableIndex: number;
+  colIndex: number;
+  kind: 'type' | 'hint';
+} | null;
+
 /* ── Page ─────────────────────────────────────────────────── */
 
 export default function GeneratorPage() {
   const store = useGeneratorStore();
   const [copied, setCopied] = useState(false);
-  const [showSQL, setShowSQL] = useState(false);
+  const [showSqlModal, setShowSqlModal] = useState(false);
   const [expandedTables, setExpandedTables] = useState<Set<number>>(new Set([0]));
-  const sqlRef = useRef<HTMLPreElement>(null);
+  const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
+
+  const groupedHints = useMemo(() => {
+    const groups: Record<string, typeof HINT_OPTIONS> = {};
+    HINT_OPTIONS.forEach((h) => {
+      (groups[h.group] ??= []).push(h);
+    });
+    return Object.entries(groups);
+  }, []);
+
+  useEffect(() => {
+    const onDocumentClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('[data-popup-root="true"]')) {
+        setOpenMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', onDocumentClick);
+    return () => document.removeEventListener('mousedown', onDocumentClick);
+  }, []);
 
   const handleGenerate = useCallback(() => {
     store.generate();
-    setShowSQL(true);
+    setShowSqlModal(true);
   }, [store]);
 
   const handleCopy = useCallback(() => {
@@ -129,7 +153,7 @@ export default function GeneratorPage() {
   const handleLoadTemplate = (template: typeof TABLE_TEMPLATES[number]) => {
     store.loadTemplate(template.tables);
     setExpandedTables(new Set(template.tables.map((_, i) => i)));
-    setShowSQL(false);
+    setShowSqlModal(false);
   };
 
   return (
@@ -177,7 +201,7 @@ export default function GeneratorPage() {
 
           {/* Clear */}
           <button
-            onClick={() => { store.clear(); setShowSQL(false); }}
+            onClick={() => { store.clear(); setShowSqlModal(false); }}
             className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10"
           >
             <RotateCcw className="h-3.5 w-3.5" />
@@ -206,9 +230,7 @@ export default function GeneratorPage() {
       </div>
 
       {/* Main Area */}
-      <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-2">
-        {/* Left: Table Definitions */}
-        <div className="flex flex-col gap-3 overflow-auto">
+      <div className="flex flex-1 flex-col gap-3 overflow-auto">
           {store.tables.map((table, ti) => {
             const isExpanded = expandedTables.has(ti);
             return (
@@ -273,6 +295,15 @@ export default function GeneratorPage() {
                     <div className="space-y-1.5">
                       {table.columns.map((col, ci) => {
                         const typeOpt = TYPE_OPTIONS.find((t) => t.value === col.type);
+                        const hintOpt = HINT_OPTIONS.find((h) => h.value === col.hint);
+                        const isTypeOpen =
+                          openMenu?.kind === 'type' &&
+                          openMenu.tableIndex === ti &&
+                          openMenu.colIndex === ci;
+                        const isHintOpen =
+                          openMenu?.kind === 'hint' &&
+                          openMenu.tableIndex === ti &&
+                          openMenu.colIndex === ci;
                         return (
                           <div
                             key={ci}
@@ -287,44 +318,97 @@ export default function GeneratorPage() {
                               placeholder="column_name"
                             />
 
-                            {/* Type selector */}
-                            <select
-                              value={col.type}
-                              onChange={(e) => store.updateColumn(ti, ci, { type: e.target.value as ColumnType })}
-                              className={cn(
-                                'cursor-pointer appearance-none rounded-lg px-2 py-1 text-[11px] font-medium outline-none',
-                                typeOpt?.color || 'text-zinc-400 bg-zinc-800',
+                            {/* Type popup */}
+                            <div className="relative" data-popup-root="true">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setOpenMenu((prev) =>
+                                    prev && prev.kind === 'type' && prev.tableIndex === ti && prev.colIndex === ci
+                                      ? null
+                                      : { kind: 'type', tableIndex: ti, colIndex: ci },
+                                  )
+                                }
+                                className={cn(
+                                  'flex w-full items-center justify-between rounded-lg px-2 py-1 text-[11px] font-semibold outline-none transition-colors',
+                                  typeOpt?.color || 'bg-zinc-800 text-zinc-400',
+                                )}
+                              >
+                                <span>{typeOpt?.label ?? 'TEXT'}</span>
+                                <ChevronDown className={cn('h-3 w-3 text-zinc-500 transition-transform', isTypeOpen && 'rotate-180')} />
+                              </button>
+                              {isTypeOpen && (
+                                <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-44 overflow-hidden rounded-xl border border-zinc-700/60 bg-zinc-900/95 p-1 shadow-2xl backdrop-blur-sm">
+                                  {TYPE_OPTIONS.map((t) => (
+                                    <button
+                                      key={t.value}
+                                      type="button"
+                                      onClick={() => {
+                                        store.updateColumn(ti, ci, { type: t.value });
+                                        setOpenMenu(null);
+                                      }}
+                                      className={cn(
+                                        'flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors',
+                                        col.type === t.value
+                                          ? 'bg-violet-500/15 text-violet-200'
+                                          : 'text-zinc-300 hover:bg-zinc-800/80',
+                                      )}
+                                    >
+                                      <span>{t.label}</span>
+                                      {col.type === t.value && <Check className="h-3 w-3 text-violet-300" />}
+                                    </button>
+                                  ))}
+                                </div>
                               )}
-                            >
-                              {TYPE_OPTIONS.map((t) => (
-                                <option key={t.value} value={t.value}>
-                                  {t.label}
-                                </option>
-                              ))}
-                            </select>
+                            </div>
 
-                            {/* Hint selector */}
-                            <select
-                              value={col.hint}
-                              onChange={(e) => store.updateColumn(ti, ci, { hint: e.target.value as SemanticHint })}
-                              className="cursor-pointer appearance-none rounded-lg bg-zinc-800/60 px-2 py-1 text-[11px] text-zinc-400 outline-none hover:text-zinc-200"
-                            >
-                              {(() => {
-                                const groups: Record<string, typeof HINT_OPTIONS> = {};
-                                HINT_OPTIONS.forEach((h) => {
-                                  (groups[h.group] ??= []).push(h);
-                                });
-                                return Object.entries(groups).map(([group, hints]) => (
-                                  <optgroup key={group} label={group}>
-                                    {hints.map((h) => (
-                                      <option key={h.value} value={h.value}>
-                                        {h.label}
-                                      </option>
-                                    ))}
-                                  </optgroup>
-                                ));
-                              })()}
-                            </select>
+                            {/* Hint popup */}
+                            <div className="relative" data-popup-root="true">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setOpenMenu((prev) =>
+                                    prev && prev.kind === 'hint' && prev.tableIndex === ti && prev.colIndex === ci
+                                      ? null
+                                      : { kind: 'hint', tableIndex: ti, colIndex: ci },
+                                  )
+                                }
+                                className="flex w-full items-center justify-between rounded-lg border border-zinc-700/40 bg-zinc-800/70 px-2 py-1 text-[11px] text-zinc-300 outline-none transition-colors hover:border-zinc-600/60"
+                              >
+                                <span className="truncate">{hintOpt?.label ?? 'Auto-detect'}</span>
+                                <ChevronDown className={cn('h-3 w-3 shrink-0 text-zinc-500 transition-transform', isHintOpen && 'rotate-180')} />
+                              </button>
+                              {isHintOpen && (
+                                <div className="absolute left-0 top-[calc(100%+6px)] z-30 max-h-64 w-60 overflow-auto rounded-xl border border-zinc-700/60 bg-zinc-900/95 p-1 shadow-2xl backdrop-blur-sm">
+                                  {groupedHints.map(([group, hints]) => (
+                                    <div key={group} className="pb-1">
+                                      <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                                        {group}
+                                      </p>
+                                      {hints.map((h) => (
+                                        <button
+                                          key={h.value}
+                                          type="button"
+                                          onClick={() => {
+                                            store.updateColumn(ti, ci, { hint: h.value });
+                                            setOpenMenu(null);
+                                          }}
+                                          className={cn(
+                                            'flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] transition-colors',
+                                            col.hint === h.value
+                                              ? 'bg-violet-500/15 font-medium text-violet-200'
+                                              : 'text-zinc-300 hover:bg-zinc-800/80',
+                                          )}
+                                        >
+                                          <span>{h.label}</span>
+                                          {col.hint === h.value && <Check className="h-3 w-3 text-violet-300" />}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
 
                             {/* PK */}
                             <div className="flex justify-center">
@@ -370,47 +454,20 @@ export default function GeneratorPage() {
             <Plus className="h-4 w-4" />
             Add Table
           </button>
-        </div>
-
-        {/* Right: Generated SQL Output */}
-        <div className="flex flex-col gap-3 overflow-auto">
-          {!showSQL || !store.generatedSQL ? (
-            <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-8 text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-500/10">
-                <FileCode className="h-8 w-8 text-violet-400/50" />
-              </div>
-              <h3 className="mb-1.5 text-sm font-semibold text-zinc-300">No SQL Generated Yet</h3>
-              <p className="max-w-xs text-xs text-zinc-500">
-                Define your tables on the left, then click <strong>Generate SQL</strong> to create
-                CREATE TABLE and INSERT statements with realistic sample data.
-              </p>
-              <div className="mt-6 rounded-lg border border-zinc-800/60 bg-zinc-900/60 px-4 py-3 text-left">
-                <p className="mb-2 text-[11px] font-medium text-zinc-400">Data pattern examples:</p>
-                <div className="space-y-1 text-[11px] text-zinc-500">
-                  <p><span className="text-amber-400">cgpa</span> → 7.84, 8.23, 6.91</p>
-                  <p><span className="text-blue-400">email</span> → alice.johnson@gmail.com</p>
-                  <p><span className="text-emerald-400">salary</span> → 75000, 92400</p>
-                  <p><span className="text-cyan-400">grade</span> → A+, B, A-</p>
-                  <p><span className="text-pink-400">gpa</span> → 3.8, 2.9, 3.5</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-1 flex-col rounded-xl border border-zinc-800/60 bg-zinc-900/80 backdrop-blur-sm">
-              {/* SQL Header */}
-              <div className="flex items-center justify-between border-b border-zinc-800/40 px-5 py-3">
+          {store.generatedSQL && (
+            <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/70 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <Database className="h-4 w-4 text-violet-400" />
-                  <h2 className="text-sm font-semibold text-zinc-200">Generated SQL</h2>
+                  <p className="text-sm font-semibold text-zinc-200">SQL generated successfully</p>
                   <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
                     {store.generatedSQL.split('\n').length} lines
                   </span>
                 </div>
-
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={handleCopy}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700/50 px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition-all hover:border-zinc-600 hover:bg-zinc-800/60 hover:text-zinc-200"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700/50 px-3 py-1.5 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-600 hover:bg-zinc-800/60 hover:text-zinc-100"
                     title="Copy SQL to clipboard"
                   >
                     {copied ? (
@@ -425,60 +482,64 @@ export default function GeneratorPage() {
                       </>
                     )}
                   </button>
+                  <button
+                    onClick={() => setShowSqlModal(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    View SQL
+                  </button>
                 </div>
               </div>
-
-              {/* SQL Code */}
-              <div className="flex-1 overflow-auto p-5">
-                <pre
-                  ref={sqlRef}
-                  className="font-mono text-xs leading-relaxed text-zinc-400 selection:bg-violet-500/30"
-                >
-                  {store.generatedSQL}
-                </pre>
-              </div>
-
-              {/* Import Actions */}
-              <div className="border-t border-zinc-800/40 px-5 py-3">
-                <p className="mb-2 text-[11px] font-medium text-zinc-500">
-                  Import generated tables into:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Link
-                    href="/sandbox"
-                    onClick={() => {
-                      if (store.generatedSQL) {
-                        navigator.clipboard.writeText(store.generatedSQL);
-                      }
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-300 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20"
-                  >
-                    <ClipboardPaste className="h-3.5 w-3.5" />
-                    SQL Sandbox
-                    <ArrowRight className="h-3 w-3" />
-                  </Link>
-                  <Link
-                    href="/er-builder"
-                    onClick={() => {
-                      if (store.generatedSQL) {
-                        navigator.clipboard.writeText(store.generatedSQL);
-                      }
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20"
-                  >
-                    <ClipboardPaste className="h-3.5 w-3.5" />
-                    ER Builder
-                    <ArrowRight className="h-3 w-3" />
-                  </Link>
-                </div>
-                <p className="mt-2 text-[10px] text-zinc-600">
-                  SQL is copied to clipboard. In SQL Sandbox, use Import SQL to paste it.
-                </p>
-              </div>
+              <p className="mt-2 text-[11px] text-zinc-500">
+                Preview is moved to a modal to keep the editor area uncluttered.
+              </p>
             </div>
           )}
-        </div>
       </div>
+
+      {showSqlModal && store.generatedSQL && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="flex h-[85vh] w-full max-w-5xl flex-col rounded-2xl border border-zinc-700/60 bg-zinc-950 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-800/50 px-5 py-3">
+              <div className="flex items-center gap-2.5">
+                <Database className="h-4 w-4 text-violet-400" />
+                <h2 className="text-sm font-semibold text-zinc-200">Generated SQL</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCopy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700/50 px-3 py-1.5 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-600 hover:bg-zinc-800/60"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-green-400" />
+                      <span className="text-green-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy SQL
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowSqlModal(false)}
+                  className="rounded-lg border border-zinc-700/50 p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto p-5">
+              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-zinc-300 selection:bg-violet-500/30">
+                {store.generatedSQL}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
