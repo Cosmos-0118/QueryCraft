@@ -5,243 +5,295 @@ import { motion } from 'framer-motion';
 import {
   ArrowRight,
   BookOpen,
-  Database,
+  CircuitBoard,
   FunctionSquare,
   PenTool,
   RefreshCw,
-  Sparkles,
   Sigma,
+  Sparkles,
   Terminal,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 
-const tools: { title: string; description: string; href: string; icon: ReactNode; tone: string }[] = [
-  {
-    title: 'Guided Learn',
-    description: 'Structured DBMS lessons with visual walkthroughs and practice-ready explanations.',
-    href: '/learn',
-    icon: <BookOpen size={18} />,
-    tone: 'from-sky-500/20 to-indigo-500/10',
-  },
-  {
-    title: 'SQL Sandbox',
-    description: 'Run SQL live with visual result feedback, history, and schema-aware workflows.',
-    href: '/sandbox',
-    icon: <Terminal size={18} />,
-    tone: 'from-emerald-500/20 to-cyan-500/10',
-  },
-  {
-    title: 'Table Generator',
-    description: 'Generate realistic datasets and SQL inserts instantly for multi-table practice.',
-    href: '/generator',
-    icon: <Sparkles size={18} />,
-    tone: 'from-fuchsia-500/20 to-violet-500/10',
-  },
-  {
-    title: 'Relational Algebra',
-    description: 'Compose expressions, inspect step-by-step evaluation, and map directly to SQL.',
-    href: '/algebra',
-    icon: <Sigma size={18} />,
-    tone: 'from-violet-500/20 to-fuchsia-500/10',
-  },
-  {
-    title: 'Tuple Calculus',
-    description: 'Use textbook TRC notation with quantifiers and convert it to executable SQL.',
-    href: '/tuple-calculus',
-    icon: <FunctionSquare size={18} />,
-    tone: 'from-cyan-500/20 to-blue-500/10',
-  },
-  {
-    title: 'ER Builder',
-    description: 'Design models visually and turn diagrams into relational schema in one click.',
-    href: '/er-builder',
-    icon: <PenTool size={18} />,
-    tone: 'from-amber-500/20 to-orange-500/10',
-  },
-  {
-    title: 'Normalization',
-    description: 'Walk through normal forms with decomposition and anomaly demonstrations.',
-    href: '/normalizer',
-    icon: <RefreshCw size={18} />,
-    tone: 'from-rose-500/20 to-pink-500/10',
-  },
+const tools: { title: string; description: string; href: string; icon: ReactNode }[] = [
+  { title: 'Guided Learn', description: 'Structured DBMS lessons with visual walkthroughs and 86+ copyable references.', href: '/learn', icon: <BookOpen size={16} /> },
+  { title: 'SQL Sandbox', description: 'Run SQL live with autocomplete, result tables, and query history.', href: '/sandbox', icon: <Terminal size={16} /> },
+  { title: 'Table Generator', description: 'Generate realistic datasets and SQL INSERT statements instantly.', href: '/generator', icon: <Sparkles size={16} /> },
+  { title: 'Relational Algebra', description: 'Compose expressions, inspect evaluations, and map to SQL.', href: '/algebra', icon: <Sigma size={16} /> },
+  { title: 'Tuple Calculus', description: 'Use TRC notation with quantifiers and convert it to SQL.', href: '/tuple-calculus', icon: <FunctionSquare size={16} /> },
+  { title: 'ER Builder', description: 'Design models visually and convert diagrams to relational schema.', href: '/er-builder', icon: <PenTool size={16} /> },
+  { title: 'Normalization', description: 'Walk through normal forms with decomposition visualizations.', href: '/normalizer', icon: <RefreshCw size={16} /> },
 ];
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 22 },
-  show: { opacity: 1, y: 0 },
+const fadeUp = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
+
+const backgroundTiles = Array.from({ length: 720 }, (_, i) => ({
+  id: i,
+  delay: ((i * 37) % 100) / 18,
+  duration: 4.8 + (i % 8) * 0.4,
+}));
+
+type ClickBurst = {
+  id: number;
+  x: number;
+  y: number;
 };
 
 export default function Home() {
-  return (
-    <div className="relative min-h-screen overflow-hidden bg-[#05070f] text-zinc-100">
-      <AnimatedBackground />
+  const [clickBursts, setClickBursts] = useState<ClickBurst[]>([]);
+  const ringRef = useRef<HTMLDivElement | null>(null);
+  const dotRef = useRef<HTMLDivElement | null>(null);
+  const pointerRef = useRef({ x: -120, y: -120 });
+  const frameRef = useRef<number | null>(null);
+  const showMouseFx = useSyncExternalStore(
+    (onStoreChange) => {
+      const mediaQuery = window.matchMedia('(pointer: coarse)');
+      const handleModeChange = () => onStoreChange();
 
-      <header className="relative z-20 border-b border-white/10 bg-black/20 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-6 lg:px-8">
-          <span className="text-lg font-semibold tracking-wide text-zinc-100">
-            Query<span className="text-cyan-300">Craft</span>
-          </span>
-          <div className="flex items-center gap-3">
+      mediaQuery.addEventListener('change', handleModeChange);
+      return () => {
+        mediaQuery.removeEventListener('change', handleModeChange);
+      };
+    },
+    () => !window.matchMedia('(pointer: coarse)').matches,
+    () => false
+  );
+
+  useEffect(() => {
+    if (!showMouseFx) return;
+
+    const renderPointer = () => {
+      frameRef.current = null;
+
+      const ring = ringRef.current;
+      const dot = dotRef.current;
+      if (!ring || !dot) return;
+
+      const x = pointerRef.current.x;
+      const y = pointerRef.current.y;
+
+      ring.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) rotate(45deg)`;
+      dot.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+    };
+
+    const scheduleRender = () => {
+      if (frameRef.current === null) {
+        frameRef.current = window.requestAnimationFrame(renderPointer);
+      }
+    };
+
+    const updatePointer = (event: PointerEvent) => {
+      pointerRef.current.x = event.clientX;
+      pointerRef.current.y = event.clientY;
+      scheduleRender();
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const burstId = event.timeStamp + Math.random();
+      setClickBursts((previous) => [...previous.slice(-4), { id: burstId, x: event.clientX, y: event.clientY }]);
+
+      window.setTimeout(() => {
+        setClickBursts((previous) => previous.filter((burst) => burst.id !== burstId));
+      }, 420);
+    };
+
+    const hidePointer = () => {
+      pointerRef.current.x = -120;
+      pointerRef.current.y = -120;
+      scheduleRender();
+    };
+
+    window.addEventListener('pointerrawupdate', updatePointer as EventListener, { passive: true });
+    window.addEventListener('pointermove', updatePointer, { passive: true });
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('pointerleave', hidePointer);
+
+    return () => {
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      window.removeEventListener('pointerrawupdate', updatePointer as EventListener);
+      window.removeEventListener('pointermove', updatePointer);
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('pointerleave', hidePointer);
+    };
+  }, [showMouseFx]);
+
+  return (
+    <div className="relative min-h-[100svh] w-full overflow-x-hidden bg-[#050810] text-slate-100" style={{ fontFamily: "'Inter', 'Geist', system-ui, sans-serif" }}>
+      {/* Animated tile background */}
+      <div className="pointer-events-none fixed inset-0">
+        <div className="absolute inset-0 bg-[#050810]" />
+        <div className="qc-tile-grid absolute inset-0 opacity-70">
+          {backgroundTiles.map((tile) => (
+            <span
+              key={tile.id}
+              className="qc-bg-tile"
+              style={{ animationDelay: `${tile.delay}s`, animationDuration: `${tile.duration}s` }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {showMouseFx && (
+        <>
+          <div
+            ref={ringRef}
+            aria-hidden
+            className="pointer-events-none fixed left-0 top-0 z-30 h-8 w-8 border border-teal-300/70 will-change-transform"
+          />
+          <div
+            ref={dotRef}
+            aria-hidden
+            className="pointer-events-none fixed left-0 top-0 z-30 h-1.5 w-1.5 bg-teal-200 will-change-transform"
+          />
+
+          {clickBursts.map((burst) => (
+            <motion.div
+              key={burst.id}
+              aria-hidden
+              className="pointer-events-none fixed z-30 h-3 w-3 border border-teal-200"
+              initial={{ x: burst.x, y: burst.y, scale: 0.2, opacity: 0.95, rotate: 20 }}
+              animate={{ x: burst.x, y: burst.y, scale: 5.2, opacity: 0, rotate: 130 }}
+              transition={{ duration: 0.42, ease: [0.18, 0.78, 0.2, 1] }}
+              style={{ translateX: '-50%', translateY: '-50%' }}
+            />
+          ))}
+        </>
+      )}
+
+      <div className="pointer-events-none fixed inset-0 z-[1] bg-[rgba(0,0,0,0.15)]" />
+
+      <div className="relative z-10">
+        {/* Header */}
+        <header className="relative z-10 border-b border-white/[0.06]">
+          <div className="mx-auto flex h-14 w-full max-w-[1400px] items-center justify-between px-6 lg:px-10">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-teal-400">
+                <CircuitBoard size={12} className="text-black" />
+              </div>
+              <span className="text-sm font-bold tracking-tight text-white">
+                Query<span className="text-teal-400">Craft</span>
+              </span>
+            </div>
             <Link
               href="/login"
-              className="rounded-full border border-cyan-300/40 bg-cyan-300/10 px-5 py-2 text-sm font-semibold text-cyan-200 transition hover:border-cyan-200 hover:bg-cyan-300/20 hover:text-cyan-100"
+              className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-white/[0.13]"
             >
-              Launch App
+              Launch App <ArrowRight size={11} />
             </Link>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="relative z-10">
-        <section className="mx-auto w-full max-w-7xl px-6 pb-16 pt-20 lg:px-8 lg:pb-24 lg:pt-28">
-          <motion.div
-            variants={fadeUp}
-            initial="hidden"
-            animate="show"
-            transition={{ duration: 0.55, ease: 'easeOut' }}
-            className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs uppercase tracking-[0.16em] text-zinc-300"
-          >
-            <Database size={13} className="text-cyan-300" />
-            Visual DBMS Lab
-          </motion.div>
-
-          <motion.h1
-            variants={fadeUp}
-            initial="hidden"
-            animate="show"
-            transition={{ delay: 0.08, duration: 0.65, ease: 'easeOut' }}
-            className="mt-6 max-w-4xl text-5xl font-black leading-[1.03] tracking-tight text-zinc-50 sm:text-6xl lg:text-7xl"
-          >
-            Master Databases
-            <span className="block bg-gradient-to-r from-cyan-200 via-sky-300 to-blue-400 bg-clip-text text-transparent">
-              by Seeing Every Step
-            </span>
-          </motion.h1>
-
-          <motion.p
-            variants={fadeUp}
-            initial="hidden"
-            animate="show"
-            transition={{ delay: 0.16, duration: 0.6, ease: 'easeOut' }}
-            className="mt-6 max-w-2xl text-base leading-relaxed text-zinc-300 sm:text-lg"
-          >
-            QueryCraft turns SQL, Algebra, Tuple Calculus, ER modeling, and normalization into an interactive
-            learning experience with live execution, visual transitions, and clear concept mapping.
-          </motion.p>
-
-          <motion.div
-            variants={fadeUp}
-            initial="hidden"
-            animate="show"
-            transition={{ delay: 0.24, duration: 0.55, ease: 'easeOut' }}
-            className="mt-10 flex flex-wrap items-center gap-4"
-          >
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-3 text-sm font-bold text-slate-950 shadow-[0_10px_40px_rgba(34,211,238,0.25)] transition hover:translate-y-[-1px]"
+        <main className="relative z-10 flex flex-col">
+          {/* Hero */}
+          <section className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-[1400px] items-center px-6 py-16 lg:px-10 lg:py-20">
+            <motion.div
+              variants={fadeUp}
+              initial="hidden"
+              animate="show"
+              transition={{ duration: 0.5, ease: 'easeOut' }}
             >
-              Get Started
-              <ArrowRight size={15} />
-            </Link>
-          </motion.div>
-        </section>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-400">Database Learning Studio</p>
+              <h1 className="mt-4 max-w-3xl text-4xl font-black leading-[1.08] tracking-[-0.03em] text-white sm:text-5xl lg:text-6xl">
+                Master SQL.<br />
+                <span className="text-zinc-400">Understand the theory.</span>
+              </h1>
+              <p className="mt-5 max-w-xl text-base leading-relaxed text-zinc-400">
+                One workspace for SQL, relational algebra, ER diagrams, and normalization — so every concept reinforces the next.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link
+                  href="/login"
+                  className="inline-flex items-center gap-2 rounded-full bg-teal-400 px-6 py-2.5 text-sm font-bold text-black transition hover:bg-teal-300"
+                >
+                  Get Started <ArrowRight size={13} />
+                </Link>
+                <Link
+                  href="/login?next=%2Flearn"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 px-6 py-2.5 text-sm font-medium text-zinc-300 transition hover:border-white/20 hover:text-white"
+                >
+                  Browse SQL Reference
+                </Link>
+              </div>
+            </motion.div>
+          </section>
 
-        <section id="tools" className="mx-auto w-full max-w-7xl px-6 pb-20 lg:px-8">
-          <motion.div
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true, amount: 0.2 }}
-            transition={{ staggerChildren: 0.08 }}
-            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            {tools.map((tool) => (
-              <motion.div
-                key={tool.title}
-                variants={fadeUp}
-                whileHover={{ y: -5, scale: 1.01 }}
-                transition={{ type: 'spring', stiffness: 250, damping: 18 }}
-                className="group relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/65 p-5 backdrop-blur-sm"
-              >
-                <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${tool.tone} opacity-0 transition-opacity duration-300 group-hover:opacity-100`} />
-                <motion.div
-                  className="pointer-events-none absolute -left-24 top-0 h-full w-20 bg-gradient-to-r from-transparent via-white/15 to-transparent"
-                  initial={{ x: -120 }}
-                  whileHover={{ x: 520 }}
-                  transition={{ duration: 0.9, ease: 'easeOut' }}
-                />
-                <div className="relative z-10">
-                  <div className="inline-flex rounded-lg border border-white/15 bg-white/5 p-2 text-cyan-200">
-                    {tool.icon}
-                  </div>
-                  <h3 className="mt-4 text-lg font-semibold text-zinc-100">{tool.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-zinc-400">{tool.description}</p>
-                  <Link
-                    href={`/login?next=${encodeURIComponent(tool.href)}`}
-                    className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-cyan-300 transition group-hover:text-cyan-200"
+          {/* Divider */}
+          <div className="mx-auto w-full max-w-[1400px] border-t border-white/[0.06] px-6 lg:px-10" />
+
+          {/* Tools */}
+          <section className="mx-auto w-full max-w-[1400px] px-6 py-20 lg:px-10">
+            <motion.div
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4 }}
+            >
+              <p className="mb-8 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">7 Workspaces</p>
+              <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {tools.map((tool, i) => (
+                  <motion.div
+                    key={tool.title}
+                    className="h-full"
+                    initial={{ opacity: 0 }}
+                    whileHover={{ y: -2 }}
+                    whileInView={{ opacity: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.3, delay: i * 0.05 }}
                   >
-                    Open
-                    <ArrowRight size={14} />
-                  </Link>
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-        </section>
-      </main>
-    </div>
-  );
-}
+                    <Link
+                      href={`/login?next=${encodeURIComponent(tool.href)}`}
+                      className="group relative flex h-full min-h-[220px] flex-col rounded-2xl border border-white/10 bg-[#0b1222] p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset] transition duration-200 hover:border-teal-400/35 hover:shadow-[0_18px_45px_-28px_rgba(45,212,191,0.5)]"
+                    >
+                      <div className="absolute left-5 right-5 top-0 h-px bg-white/20 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="rounded-xl border border-white/[0.12] bg-white/[0.03] p-2.5 text-zinc-300 transition-colors group-hover:border-teal-300/40 group-hover:text-teal-300">
+                          {tool.icon}
+                        </div>
+                        <ArrowRight size={13} className="mt-1 text-zinc-600 transition-all group-hover:translate-x-0.5 group-hover:text-teal-300" />
+                      </div>
+                      <div className="mt-4 flex-1">
+                        <h3 className="text-base font-semibold text-zinc-100 group-hover:text-white">{tool.title}</h3>
+                        <p className="mt-2 text-sm leading-relaxed text-zinc-400">{tool.description}</p>
+                      </div>
+                      <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500 transition-colors group-hover:text-zinc-300">Open Workspace</p>
+                    </Link>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          </section>
 
-function AnimatedBackground() {
-  const particles = Array.from({ length: 14 }, (_, idx) => idx);
+          {/* Simple CTA */}
+          <section className="mx-auto w-full max-w-[1400px] border-t border-white/[0.06] px-6 py-16 text-center lg:px-10">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4 }}
+            >
+              <p className="text-lg font-bold text-white">Ready to build real database intuition?</p>
+              <p className="mt-1 text-sm text-zinc-400">Free to use. No credit card required.</p>
+              <Link
+                href="/login"
+                className="mt-6 inline-flex items-center gap-2 rounded-full bg-teal-400 px-7 py-2.5 text-sm font-bold text-black transition hover:bg-teal-300"
+              >
+                Start Learning <ArrowRight size={13} />
+              </Link>
+            </motion.div>
+          </section>
+        </main>
 
-  return (
-    <div className="pointer-events-none absolute inset-0">
-      <motion.div
-        className="absolute left-[-8%] top-[-12%] h-[42rem] w-[42rem] rounded-full bg-cyan-500/20 blur-3xl"
-        animate={{ x: [0, 30, -12, 0], y: [0, -18, 10, 0] }}
-        transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <motion.div
-        className="absolute right-[-10%] top-[18%] h-[36rem] w-[36rem] rounded-full bg-blue-500/20 blur-3xl"
-        animate={{ x: [0, -26, 14, 0], y: [0, 22, -8, 0] }}
-        transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <motion.div
-        className="absolute bottom-[-18%] left-[30%] h-[34rem] w-[34rem] rounded-full bg-violet-500/15 blur-3xl"
-        animate={{ x: [0, 22, -18, 0], y: [0, -14, 12, 0] }}
-        transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
-      />
-
-      <motion.div
-        className="absolute inset-0 opacity-35"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.12) 1px, transparent 0)',
-          backgroundSize: '30px 30px',
-        }}
-        animate={{ backgroundPosition: ['0px 0px', '30px 30px', '0px 0px'] }}
-        transition={{ duration: 24, repeat: Infinity, ease: 'linear' }}
-      />
-
-      {particles.map((idx) => {
-        const size = 2 + (idx % 3);
-        const left = 4 + ((idx * 7) % 92);
-        const duration = 10 + (idx % 6) * 2;
-        const delay = (idx % 5) * 0.6;
-        return (
-          <motion.span
-            key={idx}
-            className="absolute rounded-full bg-cyan-100/35"
-            style={{ width: size, height: size, left: `${left}%`, top: `${80 + (idx % 8)}%` }}
-            animate={{ y: [0, -220 - idx * 8], opacity: [0, 0.7, 0] }}
-            transition={{ duration, delay, repeat: Infinity, ease: 'easeOut' }}
-          />
-        );
-      })}
-
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.12),rgba(5,7,15,0.8)_45%,rgba(5,7,15,1)_70%)]" />
+        {/* Footer */}
+        <footer className="relative z-10 border-t border-white/[0.05] px-6 py-6">
+          <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between lg:px-4">
+            <span className="text-xs font-bold text-zinc-600">Query<span className="text-teal-500">Craft</span></span>
+            <p className="text-xs text-zinc-600">© 2025 QueryCraft</p>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }

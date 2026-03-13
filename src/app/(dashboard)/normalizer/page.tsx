@@ -100,7 +100,7 @@ export default function NormalizerPage() {
   const canAnalyze = colCount > 0 && fdCount > 0;
 
   return (
-    <div className="flex flex-col gap-4 p-6 lg:p-8">
+    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 p-4 sm:p-6 lg:p-8">
       {/* ── Header ─────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
@@ -166,7 +166,7 @@ export default function NormalizerPage() {
       </div>
 
       {/* ── Input + Diagram side-by-side ───────────────── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <FDInput
           columns={store.columns}
           fds={store.fds}
@@ -178,51 +178,56 @@ export default function NormalizerPage() {
       </div>
 
       {/* ── Candidate Keys + Analysis bar ──────────────── */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-700/50 bg-zinc-900/60 px-4 py-3">
-        {candidateKeys.length > 0 && (
-          <>
+      <div className="rounded-2xl border border-zinc-700/50 bg-zinc-900/60 px-4 py-4 sm:px-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-h-8 flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
               <KeyRound className="h-3.5 w-3.5 text-amber-400" />
               Candidate Keys
             </div>
-            {candidateKeys.map((key, i) => (
-              <span
-                key={i}
-                className="rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 font-mono text-xs font-bold text-amber-400"
+            {candidateKeys.length > 0 ? (
+              candidateKeys.map((key, i) => (
+                <span
+                  key={i}
+                  className="rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 font-mono text-xs font-bold text-amber-400"
+                >
+                  {'{' + key.join(', ') + '}'}
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-zinc-500">Add attributes and FDs to compute keys.</span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] font-medium text-zinc-400">Target</label>
+              <select
+                value={store.targetNF}
+                onChange={(e) => store.setTargetNF(e.target.value as NormalForm)}
+                className="rounded-lg border border-zinc-700/60 bg-zinc-800/50 px-2.5 py-1 text-xs font-medium text-zinc-300 outline-none transition-colors focus:border-amber-500/40"
               >
-                {'{' + key.join(', ') + '}'}
-              </span>
-            ))}
-            <div className="mx-1 h-4 w-px bg-zinc-700/50" />
-          </>
-        )}
+                <option value="2NF">2NF</option>
+                <option value="3NF">3NF</option>
+                <option value="BCNF">BCNF</option>
+              </select>
+            </div>
 
-        <div className="flex items-center gap-2">
-          <label className="text-[11px] font-medium text-zinc-400">Target</label>
-          <select
-            value={store.targetNF}
-            onChange={(e) => store.setTargetNF(e.target.value as NormalForm)}
-            className="rounded-lg border border-zinc-700/60 bg-zinc-800/50 px-2.5 py-1 text-xs font-medium text-zinc-300 outline-none transition-colors focus:border-amber-500/40"
-          >
-            <option value="2NF">2NF</option>
-            <option value="3NF">3NF</option>
-            <option value="BCNF">BCNF</option>
-          </select>
+            <button
+              onClick={handleAnalyze}
+              disabled={!canAnalyze}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold tracking-wide transition-all duration-200',
+                canAnalyze
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40'
+                  : 'cursor-not-allowed bg-zinc-800/50 text-zinc-600',
+              )}
+            >
+              <Play className="h-3.5 w-3.5" />
+              Analyze & Decompose
+            </button>
+          </div>
         </div>
-
-        <button
-          onClick={handleAnalyze}
-          disabled={!canAnalyze}
-          className={cn(
-            'ml-auto inline-flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold tracking-wide transition-all duration-200',
-            canAnalyze
-              ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40'
-              : 'bg-zinc-800/50 text-zinc-600 cursor-not-allowed',
-          )}
-        >
-          <Play className="h-3.5 w-3.5" />
-          Analyze & Decompose
-        </button>
       </div>
 
       {/* ── Decomposition Results ──────────────────────── */}

@@ -122,3 +122,161 @@ body {
 .execute-feedback-error {
   animation: execute-error-pulse 680ms ease-out;
 }
+
+@keyframes qc-tile-switch {
+  0% {
+    opacity: 0.5;
+    transform: scale(1);
+    background-color: rgba(30, 41, 59, 0.55);
+  }
+  22% {
+    opacity: 0.86;
+    transform: scale(0.93);
+    background-color: rgba(45, 212, 191, 0.2);
+  }
+  56% {
+    opacity: 0.62;
+    transform: scale(1);
+    background-color: rgba(14, 116, 144, 0.16);
+  }
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+    background-color: rgba(30, 41, 59, 0.55);
+  }
+}
+
+@keyframes qc-tile-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -2px, 0);
+  }
+}
+
+@keyframes qc-tile-shimmer {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 200% 0%;
+  }
+}
+
+@keyframes qc-grid-scan {
+  0%,
+  100% {
+    opacity: 0.08;
+    transform: translateY(-6%);
+  }
+  50% {
+    opacity: 0.22;
+    transform: translateY(106%);
+  }
+}
+
+.qc-tile-grid {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  grid-auto-rows: minmax(70px, 1fr);
+  gap: 1px;
+  padding: 1px;
+}
+
+.qc-tile-grid::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(45, 212, 191, 0) 0px,
+    rgba(45, 212, 191, 0) 38px,
+    rgba(45, 212, 191, 0.35) 39px,
+    rgba(45, 212, 191, 0) 40px
+  );
+  mix-blend-mode: screen;
+  animation: qc-grid-scan 7.5s ease-in-out infinite;
+}
+
+.qc-bg-tile {
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  background-color: rgba(30, 41, 59, 0.55);
+  background-image: linear-gradient(
+    110deg,
+    rgba(148, 163, 184, 0.06) 0%,
+    rgba(45, 212, 191, 0.26) 45%,
+    rgba(148, 163, 184, 0.06) 100%
+  );
+  background-size: 200% 100%;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.35);
+  animation-name: qc-tile-switch, qc-tile-drift, qc-tile-shimmer;
+  animation-timing-function: steps(6, end), ease-in-out, linear;
+  animation-iteration-count: infinite;
+}
+
+@media (min-width: 640px) {
+  .qc-tile-grid {
+    grid-template-columns: repeat(18, minmax(0, 1fr));
+    grid-auto-rows: minmax(64px, 1fr);
+  }
+}
+
+@media (min-width: 1280px) {
+  .qc-tile-grid {
+    grid-template-columns: repeat(24, minmax(0, 1fr));
+    grid-auto-rows: minmax(56px, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qc-tile-grid::after,
+  .qc-bg-tile {
+    animation: none;
+  }
+}
+
+/* Light-mode compatibility layer for older hardcoded dark utility classes */
+:root[data-resolved-theme='light'] .bg-zinc-950,
+:root[data-resolved-theme='light'] .bg-zinc-950\/60,
+:root[data-resolved-theme='light'] .bg-zinc-900,
+:root[data-resolved-theme='light'] .bg-zinc-900\/95,
+:root[data-resolved-theme='light'] .bg-zinc-900\/80,
+:root[data-resolved-theme='light'] .bg-zinc-900\/70,
+:root[data-resolved-theme='light'] .bg-zinc-900\/60,
+:root[data-resolved-theme='light'] .bg-zinc-800\/70,
+:root[data-resolved-theme='light'] .bg-zinc-800\/60,
+:root[data-resolved-theme='light'] .bg-zinc-800\/50,
+:root[data-resolved-theme='light'] .bg-zinc-800\/40,
+:root[data-resolved-theme='light'] .bg-zinc-800\/20 {
+  background-color: color-mix(in oklab, var(--card) 96%, #0a0a0a 4%) !important;
+}
+
+:root[data-resolved-theme='light'] .border-zinc-800\/60,
+:root[data-resolved-theme='light'] .border-zinc-800\/50,
+:root[data-resolved-theme='light'] .border-zinc-800\/40,
+:root[data-resolved-theme='light'] .border-zinc-700\/60,
+:root[data-resolved-theme='light'] .border-zinc-700\/50,
+:root[data-resolved-theme='light'] .border-zinc-700\/40 {
+  border-color: color-mix(in oklab, var(--border) 88%, #0a0a0a 12%) !important;
+}
+
+:root[data-resolved-theme='light'] .text-zinc-100,
+:root[data-resolved-theme='light'] .text-zinc-200,
+:root[data-resolved-theme='light'] .text-zinc-300 {
+  color: var(--foreground) !important;
+}
+
+:root[data-resolved-theme='light'] .text-zinc-400,
+:root[data-resolved-theme='light'] .text-zinc-500,
+:root[data-resolved-theme='light'] .text-zinc-600 {
+  color: var(--muted-foreground) !important;
+}
+
+:root[data-resolved-theme='light'] .placeholder\:text-zinc-600::placeholder {
+  color: color-mix(in oklab, var(--muted-foreground) 84%, transparent) !important;
+}

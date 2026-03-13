@@ -541,10 +541,11 @@ interface SqlEditorProps {
   onExecute: () => void;
   tables?: TableSchema[];
   executionFeedback?: 'idle' | 'success' | 'error';
+  hasOutput?: boolean;
   className?: string;
 }
 
-export function SqlEditor({ value, onChange, onExecute, tables = [], executionFeedback = 'idle', className }: SqlEditorProps) {
+export function SqlEditor({ value, onChange, onExecute, tables = [], executionFeedback = 'idle', hasOutput = false, className }: SqlEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onExecuteRef = useRef(onExecute);
@@ -595,10 +596,19 @@ export function SqlEditor({ value, onChange, onExecute, tables = [], executionFe
           '&': {
             fontSize: '13px',
             background: 'transparent',
+            height: '100%',
           },
-          '.cm-content': { padding: '14px 0', fontFamily: 'var(--font-mono), monospace' },
+          '.cm-content': {
+            padding: '14px 0',
+            fontFamily: 'var(--font-mono), monospace',
+          },
+          '.cm-editor': { height: '100%' },
           '.cm-gutters': { background: 'transparent', border: 'none', color: '#3f3f46' },
-          '.cm-scroller': { borderRadius: '12px' },
+          '.cm-scroller': {
+            borderRadius: '12px',
+            overflow: 'auto',
+            maxHeight: '100%',
+          },
           '.cm-activeLine': { backgroundColor: 'rgba(113,113,122,0.08)' },
           '.cm-activeLineGutter': { backgroundColor: 'transparent' },
           '.cm-tooltip-autocomplete': {
@@ -665,9 +675,11 @@ export function SqlEditor({ value, onChange, onExecute, tables = [], executionFe
   }, [value]);
 
   return (
-    <div className={className}>
+    <div className={`min-h-0 ${className ?? ''}`}>
       <div
-        className={`overflow-hidden rounded-xl border border-zinc-700/50 ${
+        className={`overflow-hidden rounded-xl border border-zinc-700/50 transition-[height] duration-200 ${
+          hasOutput ? 'h-[clamp(220px,36vh,420px)]' : 'h-[clamp(300px,58vh,680px)]'
+        } ${
           executionFeedback === 'success'
             ? 'execute-feedback-success'
             : executionFeedback === 'error'

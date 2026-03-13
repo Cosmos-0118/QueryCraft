@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 export type ColorTheme = 'purple' | 'ocean' | 'emerald';
-export type AppearanceMode = 'light' | 'dark' | 'system';
+export type AppearanceMode = 'dark';
 
 interface ThemeStore {
   appearance: AppearanceMode;
@@ -14,9 +14,9 @@ interface ThemeStore {
 export const useThemeStore = create<ThemeStore>()(
   persist(
     (set) => ({
-      appearance: 'system',
+      appearance: 'dark',
       colorTheme: 'purple',
-      setAppearance: (appearance) => set({ appearance }),
+      setAppearance: () => set({ appearance: 'dark' }),
       setColorTheme: (colorTheme) => set({ colorTheme }),
     }),
     { name: 'querycraft-theme' },

@@ -109,39 +109,25 @@ const COLOR_THEMES: Record<ColorTheme, { light: Record<string, string>; dark: Re
 };
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const { appearance, colorTheme } = useThemeStore();
+  const { colorTheme } = useThemeStore();
 
   useEffect(() => {
     const root = document.documentElement;
 
-    // Determine if dark mode
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
-    const isDark =
-      appearance === 'dark' || (appearance === 'system' && prefersDark.matches);
-
     // Apply color theme variables
-    const vars = COLOR_THEMES[colorTheme][isDark ? 'dark' : 'light'];
+    const vars = COLOR_THEMES[colorTheme].dark;
     for (const [key, value] of Object.entries(vars)) {
       root.style.setProperty(key, value);
     }
 
+    root.style.colorScheme = 'dark';
+    root.dataset.appearance = 'dark';
+    root.dataset.colorTheme = colorTheme;
+    root.dataset.resolvedTheme = 'dark';
+
     // Toggle dark class for potential utility usage
-    root.classList.toggle('dark', isDark);
-
-    // Listen for system preference changes
-    const handler = (e: MediaQueryListEvent) => {
-      if (appearance === 'system') {
-        const newVars = COLOR_THEMES[colorTheme][e.matches ? 'dark' : 'light'];
-        for (const [key, value] of Object.entries(newVars)) {
-          root.style.setProperty(key, value);
-        }
-        root.classList.toggle('dark', e.matches);
-      }
-    };
-
-    prefersDark.addEventListener('change', handler);
-    return () => prefersDark.removeEventListener('change', handler);
-  }, [appearance, colorTheme]);
+    root.classList.add('dark');
+  }, [colorTheme]);
 
   return <>{children}</>;
 }

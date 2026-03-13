@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRef, useState, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { useAuth } from '@/hooks/use-auth';
-import { useThemeStore, type AppearanceMode, type ColorTheme } from '@/stores/theme-store';
+import { useThemeStore, type ColorTheme } from '@/stores/theme-store';
 import { useLoadingStore } from '@/stores/loading-store';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
-  Settings, Sun, Moon, Monitor, Palette, Sparkles, FunctionSquare,
+  Settings, Moon, Palette, Sparkles, FunctionSquare,
+  CircuitBoard, LogOut, ChevronRight,
 } from 'lucide-react';
 
 const emptySubscribe = () => () => {};
@@ -20,28 +21,36 @@ function useHydrated() {
   );
 }
 
-const NAV_ITEMS: { label: string; href: string; icon: ReactNode }[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={18} /> },
-  { label: 'Learn', href: '/learn', icon: <BookOpen size={18} /> },
-  { label: 'SQL Sandbox', href: '/sandbox', icon: <Terminal size={18} /> },
-  { label: 'Table Generator', href: '/generator', icon: <Sparkles size={18} /> },
-  { label: 'Algebra', href: '/algebra', icon: <Sigma size={18} /> },
-  { label: 'Tuple Calculus', href: '/tuple-calculus', icon: <FunctionSquare size={18} /> },
-  { label: 'ER Builder', href: '/er-builder', icon: <PenTool size={18} /> },
-  { label: 'Normalizer', href: '/normalizer', icon: <RefreshCw size={18} /> },
-  { label: 'Settings', href: '/settings', icon: <Settings size={18} /> },
+const NAV_ITEMS: { label: string; href: string; icon: ReactNode; group?: string }[] = [
+  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={16} />, group: 'Main' },
+  { label: 'Learn', href: '/learn', icon: <BookOpen size={16} />, group: 'Main' },
+  { label: 'SQL Sandbox', href: '/sandbox', icon: <Terminal size={16} />, group: 'Labs' },
+  { label: 'Table Generator', href: '/generator', icon: <Sparkles size={16} />, group: 'Labs' },
+  { label: 'Algebra', href: '/algebra', icon: <Sigma size={16} />, group: 'Theory' },
+  { label: 'Tuple Calculus', href: '/tuple-calculus', icon: <FunctionSquare size={16} />, group: 'Theory' },
+  { label: 'ER Builder', href: '/er-builder', icon: <PenTool size={16} />, group: 'Theory' },
+  { label: 'Normalizer', href: '/normalizer', icon: <RefreshCw size={16} />, group: 'Theory' },
+  { label: 'Settings', href: '/settings', icon: <Settings size={16} />, group: 'Account' },
 ];
 
-const APPEARANCE_OPTIONS: { value: AppearanceMode; label: string; icon: ReactNode }[] = [
-  { value: 'light', label: 'Light', icon: <Sun size={14} /> },
-  { value: 'dark', label: 'Dark', icon: <Moon size={14} /> },
-  { value: 'system', label: 'System', icon: <Monitor size={14} /> },
-];
+const NAV_GROUPS = ['Main', 'Labs', 'Theory', 'Account'];
 
-const COLOR_THEME_OPTIONS: { value: ColorTheme; label: string; swatch: string }[] = [
-  { value: 'purple', label: 'Purple', swatch: '#6d28d9' },
-  { value: 'ocean', label: 'Ocean', swatch: '#0369a1' },
-  { value: 'emerald', label: 'Emerald', swatch: '#059669' },
+const NAV_ACCENT: Record<string, string> = {
+  '/dashboard': 'from-violet-500 to-purple-500',
+  '/learn': 'from-teal-500 to-cyan-500',
+  '/sandbox': 'from-emerald-500 to-green-500',
+  '/generator': 'from-amber-500 to-orange-500',
+  '/algebra': 'from-indigo-500 to-violet-500',
+  '/tuple-calculus': 'from-sky-500 to-blue-500',
+  '/er-builder': 'from-rose-500 to-pink-500',
+  '/normalizer': 'from-lime-500 to-emerald-500',
+  '/settings': 'from-slate-400 to-slate-500',
+};
+
+const COLOR_THEME_OPTIONS: { value: ColorTheme; label: string; swatch: string; description: string }[] = [
+  { value: 'purple', label: 'Purple', swatch: '#7c3aed', description: 'Default' },
+  { value: 'ocean', label: 'Ocean', swatch: '#0369a1', description: 'Deep blue' },
+  { value: 'emerald', label: 'Emerald', swatch: '#059669', description: 'Fresh green' },
 ];
 
 function Breadcrumbs() {
@@ -52,8 +61,8 @@ function Breadcrumbs() {
     <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
       {segments.map((seg, i) => (
         <span key={i} className="flex items-center gap-1.5">
-          {i > 0 && <span>/</span>}
-          <span className={i === segments.length - 1 ? 'font-medium text-foreground' : ''}>
+          {i > 0 && <ChevronRight size={12} className="opacity-40" />}
+          <span className={i === segments.length - 1 ? 'font-semibold text-foreground' : ''}>
             {seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ')}
           </span>
         </span>
@@ -62,12 +71,64 @@ function Breadcrumbs() {
   );
 }
 
+function SidebarLogo() {
+  return (
+    <div className="flex h-14 items-center gap-2.5 border-b border-border/60 px-4">
+      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-teal-400 to-cyan-500 shadow-lg shadow-teal-500/30">
+        <CircuitBoard size={14} className="text-black" />
+      </div>
+      <Link href="/dashboard" className="text-[15px] font-black tracking-tight text-foreground">
+        Query<span className="text-primary">Craft</span>
+      </Link>
+    </div>
+  );
+}
+
+function SidebarNav({ pathname, onClose }: { pathname: string; onClose?: () => void }) {
+  return (
+    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+      {NAV_GROUPS.map((group) => {
+        const items = NAV_ITEMS.filter((i) => i.group === group);
+        return (
+          <div key={group} className="mb-3">
+            <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/70">{group}</p>
+            {items.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={`group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${
+                    isActive
+                      ? 'bg-primary/14 text-foreground'
+                      : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
+                  }`}
+                >
+                  {isActive && (
+                    <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-primary" />
+                  )}
+                  <span className={`transition-colors ${isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
+                    {item.icon}
+                  </span>
+                  <span>{item.label}</span>
+                  {isActive && <span className="ml-auto"><ChevronRight size={12} className="opacity-30" /></span>}
+                </Link>
+              );
+            })}
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const mounted = useHydrated();
   const { user, isAuthenticated, logout } = useAuth();
-  const { appearance, colorTheme, setAppearance, setColorTheme } = useThemeStore();
+  const { colorTheme, setColorTheme } = useThemeStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
@@ -81,7 +142,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [mounted, isAuthenticated, router]);
 
-  // Show loading overlay while hydrating / checking auth
   useEffect(() => {
     if (!mounted || !isAuthenticated) {
       startLoading('Authenticating…');
@@ -94,97 +154,56 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return null;
   }
 
+  const initials = user?.displayName?.charAt(0)?.toUpperCase() || '?';
+
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex min-h-[100svh] overflow-hidden bg-background">
       {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r border-border bg-card lg:flex lg:flex-col">
-        <div className="flex h-16 items-center border-b border-border px-6">
-          <Link href="/dashboard" className="text-lg font-bold tracking-tight">
-            <span className="text-primary">Query</span>Craft
-          </Link>
-        </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
-                  isActive
-                    ? 'bg-primary/10 font-medium text-primary'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                {item.icon}
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="border-t border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-              {user?.displayName?.charAt(0)?.toUpperCase() || '?'}
+      <aside className="hidden w-56 shrink-0 flex-col overflow-hidden border-r border-border/60 bg-card lg:flex">
+        <SidebarLogo />
+        <SidebarNav pathname={pathname} />
+        {/* User footer */}
+        <div className="border-t border-border/60 p-3">
+          <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-[12px] font-bold text-white shadow-md">
+              {initials}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{user?.displayName || 'Guest'}</p>
+              <p className="truncate text-xs font-semibold text-foreground/80">{user?.displayName || 'Guest'}</p>
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Mobile sidebar overlay */}
+      {/* Mobile sidebar */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-64 bg-card shadow-xl">
-            <div className="flex h-16 items-center justify-between border-b border-border px-6">
-              <span className="text-lg font-bold">
-                <span className="text-primary">Query</span>Craft
-              </span>
-              <button
-                onClick={() => setMobileOpen(false)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              </button>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 flex h-full w-56 flex-col bg-card shadow-2xl">
+            <SidebarLogo />
+            <SidebarNav pathname={pathname} onClose={() => setMobileOpen(false)} />
+            <div className="border-t border-border/60 p-3">
+              <div className="flex items-center gap-2.5 px-2 py-2">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-[12px] font-bold text-white">
+                  {initials}
+                </div>
+                <p className="truncate text-xs font-semibold text-foreground/80">{user?.displayName || 'Guest'}</p>
+              </div>
             </div>
-            <nav className="space-y-1 p-3">
-              {NAV_ITEMS.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
-                      isActive
-                        ? 'bg-primary/10 font-medium text-primary'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
           </aside>
         </div>
       )}
 
-      {/* Main content area */}
+      {/* Main area */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Header */}
-        <header className="flex h-16 items-center justify-between border-b border-border bg-card px-4 lg:px-6">
+        {/* Topbar */}
+        <header className="relative z-50 flex h-14 shrink-0 items-center justify-between border-b border-border/50 bg-card/60 px-4 backdrop-blur lg:px-6">
           <div className="flex items-center gap-3">
-            {/* Mobile menu button */}
             <button
               onClick={() => setMobileOpen(true)}
               className="rounded-lg p-2 text-muted-foreground hover:bg-muted lg:hidden"
             >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 5A.75.75 0 012.75 9h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 9.75zm0 5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z" />
               </svg>
             </button>
@@ -192,56 +211,44 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Theme selector */}
+            {/* Theme button */}
             <div className="relative">
               <button
                 onClick={() => { setThemeMenuOpen(!themeMenuOpen); setUserMenuOpen(false); }}
                 className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                title="Theme settings"
               >
-                <Palette size={18} />
+                <Palette size={16} />
               </button>
               {themeMenuOpen && (
-                <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-border bg-card p-3 shadow-lg">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Appearance
-                  </p>
-                  <div className="flex gap-1">
-                    {APPEARANCE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setAppearance(opt.value)}
-                        className={`flex-1 rounded-lg px-2 py-1.5 text-xs transition-colors flex items-center justify-center gap-1 ${
-                          appearance === opt.value
-                            ? 'bg-primary/10 font-medium text-primary'
-                            : 'text-muted-foreground hover:bg-muted'
-                        }`}
-                      >
-                        {opt.icon} {opt.label}
-                      </button>
-                    ))}
+                <div className="absolute right-0 top-full z-[500] mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card shadow-2xl" style={{ backgroundColor: 'var(--card)' }}>
+                  <div className="p-3 pb-2">
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Appearance</p>
+                    <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-2 py-2 text-[11px] font-medium text-foreground">
+                      <Moon size={13} className="text-primary" />
+                      Dark mode only
+                    </div>
                   </div>
-                  <p className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Color Theme
-                  </p>
-                  <div className="space-y-1">
-                    {COLOR_THEME_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setColorTheme(opt.value)}
-                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                          colorTheme === opt.value
-                            ? 'bg-primary/10 font-medium text-primary'
-                            : 'text-muted-foreground hover:bg-muted'
-                        }`}
-                      >
-                        <span
-                          className="h-4 w-4 rounded-full border border-border"
-                          style={{ backgroundColor: opt.swatch }}
-                        />
-                        {opt.label}
-                      </button>
-                    ))}
+                  <div className="border-t border-border p-3 pt-2">
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Color Theme</p>
+                    <div className="space-y-0.5">
+                      {COLOR_THEME_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setColorTheme(opt.value)}
+                          className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-all ${
+                            colorTheme === opt.value
+                              ? 'bg-muted font-semibold text-foreground'
+                              : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                          }`}
+                        >
+                          <span className="h-4 w-4 shrink-0 rounded-full shadow-sm ring-2 ring-border" style={{ backgroundColor: opt.swatch }} />
+                          <span className="flex-1 text-left">{opt.label}</span>
+                          {colorTheme === opt.value && (
+                            <span className="ml-auto text-[10px] text-muted-foreground">{opt.description}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -251,37 +258,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="relative">
               <button
                 onClick={() => { setUserMenuOpen(!userMenuOpen); setThemeMenuOpen(false); }}
-                className="flex items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-muted"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-xs font-bold text-white shadow-md transition-transform hover:scale-105"
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-                  {user?.displayName?.charAt(0)?.toUpperCase() || '?'}
-                </div>
+                {initials}
               </button>
               {userMenuOpen && (
-                <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-border bg-card py-1 shadow-lg">
-                  <div className="border-b border-border px-4 py-2">
-                    <p className="truncate text-sm font-medium">{user?.displayName || 'Guest'}</p>
+                <div className="absolute right-0 top-full z-[500] mt-2 w-44 overflow-hidden rounded-xl border border-border shadow-2xl" style={{ backgroundColor: 'var(--card)' }}>
+                  <div className="border-b border-border px-4 py-3">
+                    <p className="truncate text-sm font-semibold">{user?.displayName || 'Guest'}</p>
+
                   </div>
-                  <Link
-                    href="/settings"
-                    onClick={() => setUserMenuOpen(false)}
-                    className="block px-4 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-                  >
-                    Settings
-                  </Link>
-                  <button
-                    onClick={() => { setUserMenuOpen(false); logout(); }}
-                    className="w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-muted"
-                  >
-                    Log out
-                  </button>
+                  <div className="p-1">
+                    <Link
+                      href="/settings"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <Settings size={14} /> Settings
+                    </Link>
+                    <button
+                      onClick={() => { setUserMenuOpen(false); logout(); }}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-500 hover:bg-red-500/10"
+                    >
+                      <LogOut size={14} /> Log out
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           </div>
         </header>
 
-        {/* Page content */}
+        {/* Page */}
         <main className="min-h-0 flex-1 overflow-auto">{children}</main>
       </div>
     </div>

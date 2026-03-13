@@ -2,15 +2,8 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
-import { useThemeStore, type AppearanceMode, type ColorTheme } from '@/stores/theme-store';
-import { Sun, Moon, Monitor } from 'lucide-react';
-import type { ReactNode } from 'react';
-
-const APPEARANCE_OPTIONS: { value: AppearanceMode; label: string; desc: string; icon: ReactNode }[] = [
-  { value: 'light', label: 'Light', desc: 'Always light', icon: <Sun size={16} /> },
-  { value: 'dark', label: 'Dark', desc: 'Always dark', icon: <Moon size={16} /> },
-  { value: 'system', label: 'System', desc: 'Match OS setting', icon: <Monitor size={16} /> },
-];
+import { useThemeStore, type ColorTheme } from '@/stores/theme-store';
+import { Moon } from 'lucide-react';
 
 const COLOR_THEMES: { value: ColorTheme; label: string; swatch: string; desc: string }[] = [
   { value: 'purple', label: 'Purple', swatch: '#6d28d9', desc: 'Royal purple and violet' },
@@ -20,7 +13,7 @@ const COLOR_THEMES: { value: ColorTheme; label: string; swatch: string; desc: st
 
 export default function SettingsPage() {
   const { user, updateName, changePassword } = useAuth();
-  const { appearance, colorTheme, setAppearance, setColorTheme } = useThemeStore();
+  const { colorTheme, setColorTheme } = useThemeStore();
 
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -134,23 +127,10 @@ export default function SettingsPage() {
       {/* Appearance */}
       <section className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-lg font-semibold">Appearance</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Choose your preferred mode.</p>
-        <div className="mt-4 flex gap-2">
-          {APPEARANCE_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setAppearance(opt.value)}
-              className={`flex-1 rounded-lg border p-3 text-center text-sm transition-colors ${
-                appearance === opt.value
-                  ? 'border-primary bg-primary/10 font-medium text-primary'
-                  : 'border-border text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              <div className="flex justify-center text-lg">{opt.icon}</div>
-              <div className="mt-1">{opt.label}</div>
-              <div className="mt-0.5 text-xs">{opt.desc}</div>
-            </button>
-          ))}
+        <p className="mt-1 text-sm text-muted-foreground">This app now uses dark mode only.</p>
+        <div className="mt-4 inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary">
+          <Moon size={15} />
+          Dark mode enabled
         </div>
       </section>
 

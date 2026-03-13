@@ -53,17 +53,17 @@ export function AnomalyDemo({
   const [selected, setSelected] = useState<string | null>(null);
 
   return (
-    <div className={cn('rounded-xl border border-zinc-700/50 bg-zinc-900/60', className)}>
-      <div className="flex items-center gap-2 border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-2.5">
+    <div className={cn('rounded-2xl border border-zinc-700/50 bg-zinc-900/60', className)}>
+      <div className="flex items-center gap-2 border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-3 sm:px-5">
         <ShieldAlert className="h-3.5 w-3.5 text-rose-400" />
         <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
           Anomaly Demo
         </span>
         <span className="ml-1 text-[10px] text-zinc-600">— {tableName}</span>
       </div>
-      <div className="space-y-3 p-4">
+      <div className="space-y-4 p-4 sm:p-5">
         {/* Anomaly type buttons */}
-        <div className="flex gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {ANOMALY_TYPES.map((a) => {
             const Icon = a.icon;
             const isActive = selected === a.key;
@@ -72,7 +72,7 @@ export function AnomalyDemo({
                 key={a.key}
                 onClick={() => setSelected(isActive ? null : a.key)}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-all duration-150',
+                  'flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-medium transition-all duration-150',
                   isActive
                     ? a.activeBg
                     : 'border-zinc-700/50 text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300',
@@ -86,7 +86,7 @@ export function AnomalyDemo({
         </div>
 
         {/* Explanation */}
-        {selected && (
+        {selected ? (
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
             <p className="flex items-start gap-2 text-xs leading-relaxed text-amber-300">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
@@ -107,6 +107,10 @@ export function AnomalyDemo({
               <span className="text-zinc-700">·</span>
               <span>{columns.length} attributes</span>
             </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-zinc-700/40 bg-zinc-800/20 px-3 py-2.5 text-xs text-zinc-500">
+            Pick an anomaly type above to see why this table design can fail in practice.
           </div>
         )}
       </div>

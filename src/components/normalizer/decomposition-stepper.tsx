@@ -23,8 +23,8 @@ export function DecompositionStepper({
   const active = steps[activeStep];
 
   return (
-    <div className={cn('rounded-xl border border-zinc-700/50 bg-zinc-900/60', className)}>
-      <div className="flex items-center gap-2 border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-2.5">
+    <div className={cn('rounded-2xl border border-zinc-700/50 bg-zinc-900/60', className)}>
+      <div className="flex items-center gap-2 border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-3 sm:px-5">
         <SplitSquareHorizontal className="h-3.5 w-3.5 text-amber-400" />
         <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
           Decomposition Steps
@@ -35,13 +35,13 @@ export function DecompositionStepper({
       </div>
 
       {/* Step tabs */}
-      <div className="flex gap-1 overflow-x-auto border-b border-zinc-700/40 px-4 py-2">
+      <div className="flex gap-1.5 overflow-x-auto border-b border-zinc-700/40 px-4 py-3 sm:px-5">
         {steps.map((step, i) => (
           <button
             key={i}
             onClick={() => onStepSelect(i)}
             className={cn(
-              'flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all duration-150',
+              'flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-medium transition-all duration-150',
               i === activeStep
                 ? 'bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/25'
                 : 'text-zinc-500 hover:bg-zinc-800/60 hover:text-zinc-300',
@@ -64,9 +64,11 @@ export function DecompositionStepper({
       </div>
 
       {active && (
-        <div className="space-y-4 p-4">
+        <div className="space-y-5 p-4 sm:p-5">
           {/* Explanation */}
-          <p className="text-sm leading-relaxed text-zinc-300">{active.explanation}</p>
+          <div className="rounded-xl border border-zinc-700/40 bg-zinc-800/20 px-4 py-3">
+            <p className="text-sm leading-relaxed text-zinc-300">{active.explanation}</p>
+          </div>
 
           {/* Anomaly fixed callout */}
           {active.anomalyFixed && (
@@ -78,12 +80,20 @@ export function DecompositionStepper({
 
           {/* Resulting tables */}
           <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                Resulting Tables
+              </h3>
+              <span className="text-[11px] text-zinc-600">{active.tables.length} table{active.tables.length !== 1 ? 's' : ''}</span>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-2">
             {active.tables.map((table) => (
               <div
                 key={table.name}
-                className="rounded-lg border border-zinc-800/50 bg-zinc-800/20 p-3"
+                className="rounded-xl border border-zinc-800/50 bg-zinc-800/20 p-3.5"
               >
-                <div className="mb-2.5 flex items-center gap-2">
+                <div className="mb-3 flex items-center gap-2">
                   <span className="text-sm font-bold text-zinc-200">{table.name}</span>
                   <span className="text-[10px] text-zinc-600">
                     ({table.columns.length} col{table.columns.length !== 1 ? 's' : ''})
@@ -109,19 +119,22 @@ export function DecompositionStepper({
                   })}
                 </div>
                 {table.functionalDependencies.length > 0 && (
-                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-zinc-600">
-                    <span className="font-medium uppercase tracking-wider">FDs:</span>
-                    {table.functionalDependencies.map((fd, fi) => (
-                      <span key={fi} className="inline-flex items-center gap-1 font-mono">
-                        <span className="text-amber-400/70">{fd.determinant.join(', ')}</span>
-                        <ArrowRight className="h-2.5 w-2.5 text-zinc-700" />
-                        <span className="text-zinc-400">{fd.dependent.join(', ')}</span>
-                      </span>
-                    ))}
+                  <div className="mt-3 border-t border-zinc-800/60 pt-2.5 text-[10px] text-zinc-600">
+                    <p className="mb-1.5 font-medium uppercase tracking-wider">FDs:</p>
+                    <ul className="space-y-1.5">
+                      {table.functionalDependencies.map((fd, fi) => (
+                        <li key={fi} className="flex items-center gap-1 font-mono leading-relaxed">
+                          <span className="text-amber-400/80">{fd.determinant.join(', ')}</span>
+                          <ArrowRight className="h-2.5 w-2.5 shrink-0 text-zinc-700" />
+                          <span className="text-zinc-400">{fd.dependent.join(', ')}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </div>
             ))}
+            </div>
           </div>
         </div>
       )}

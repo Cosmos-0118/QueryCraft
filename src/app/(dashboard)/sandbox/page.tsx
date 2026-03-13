@@ -321,6 +321,7 @@ export default function SandboxPage() {
               onExecute={handleExecute}
               tables={tables}
               executionFeedback={editorFeedback}
+              hasOutput={Boolean(result)}
             />
 
             {/* Run bar */}
