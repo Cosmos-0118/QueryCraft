@@ -1,4 +1,5 @@
 import type { QueryResult, TableSchema, Row } from '@/types/database';
+import { sqlErrorEngine } from '@/lib/engine/sql-error-engine';
 
 type SqlJsDatabase = {
   run: (sql: string) => void;
@@ -490,16 +491,27 @@ export class SqlExecutor {
   }
 
   execute(sql: string): QueryResult {
-    if (!this.db) throw new Error('Database not initialized. Call init() first.');
-
     const start = performance.now();
+
+    if (!this.db) {
+      return sqlErrorEngine.fromMessage('Database not initialized. Call init() first.', {
+        sql,
+        startTime: start,
+      });
+    }
 
     // Run MySQL translation
     const translated = translateMySQL(sql, this.db);
 
     // If translation produced a pre-computed result, return it with timing
     if (translated.sql === null && translated.result) {
-      return { ...translated.result, executionTimeMs: performance.now() - start };
+      const resolved = { ...translated.result, executionTimeMs: performance.now() - start };
+      if (!resolved.error) return resolved;
+
+      return sqlErrorEngine.enrichResultWithError(resolved, {
+        sql,
+        translatedSql: translated.sql ?? undefined,
+      });
     }
 
     const finalSql = translated.sql ?? sql;
@@ -534,13 +546,11 @@ export class SqlExecutor {
         executionTimeMs: elapsed,
       };
     } catch (e) {
-      return {
-        columns: [],
-        rows: [],
-        rowCount: 0,
-        executionTimeMs: performance.now() - start,
-        error: e instanceof Error ? e.message : String(e),
-      };
+      return sqlErrorEngine.fromUnknownError(e, {
+        sql,
+        translatedSql: finalSql,
+        startTime: start,
+      });
     }
   }
 

@@ -13,7 +13,7 @@ import {
   Sparkles,
   Terminal,
 } from 'lucide-react';
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 const tools: { title: string; description: string; href: string; icon: ReactNode }[] = [
   { title: 'Guided Learn', description: 'Structured DBMS lessons with visual walkthroughs and 86+ copyable references.', href: '/learn', icon: <BookOpen size={16} /> },
@@ -27,24 +27,57 @@ const tools: { title: string; description: string; href: string; icon: ReactNode
 
 const fadeUp = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
 
-const backgroundTiles = Array.from({ length: 720 }, (_, i) => ({
-  id: i,
-  delay: ((i * 37) % 100) / 18,
-  duration: 4.8 + (i % 8) * 0.4,
-}));
-
 type ClickBurst = {
   id: number;
   x: number;
   y: number;
 };
 
+type NetworkConnection = {
+  saveData?: boolean;
+};
+
+type NavigatorWithHints = Navigator & {
+  connection?: NetworkConnection;
+  deviceMemory?: number;
+};
+
+const shouldUseLiteMode = () => {
+  if (typeof window === 'undefined') return false;
+
+  const navigatorHints = window.navigator as NavigatorWithHints;
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const saveData = navigatorHints.connection?.saveData ?? false;
+  const lowCoreCount = (navigatorHints.hardwareConcurrency ?? 8) <= 4;
+  const lowMemory = typeof navigatorHints.deviceMemory === 'number' && navigatorHints.deviceMemory <= 4;
+
+  return prefersReducedMotion || saveData || lowCoreCount || lowMemory;
+};
+
 export default function Home() {
   const [clickBursts, setClickBursts] = useState<ClickBurst[]>([]);
   const ringRef = useRef<HTMLDivElement | null>(null);
   const dotRef = useRef<HTMLDivElement | null>(null);
-  const pointerRef = useRef({ x: -120, y: -120 });
+  const pointerTargetRef = useRef({ x: -120, y: -120 });
+  const pointerRingRef = useRef({ x: -120, y: -120 });
+  const pointerDotRef = useRef({ x: -120, y: -120 });
+  const pointerInitializedRef = useRef(false);
   const frameRef = useRef<number | null>(null);
+
+  const liteMode = useSyncExternalStore(
+    (onStoreChange) => {
+      const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const handlePreferenceChange = () => onStoreChange();
+
+      mediaQuery.addEventListener('change', handlePreferenceChange);
+      return () => {
+        mediaQuery.removeEventListener('change', handlePreferenceChange);
+      };
+    },
+    () => shouldUseLiteMode(),
+    () => false
+  );
+
   const showMouseFx = useSyncExternalStore(
     (onStoreChange) => {
       const mediaQuery = window.matchMedia('(pointer: coarse)');
@@ -55,40 +88,90 @@ export default function Home() {
         mediaQuery.removeEventListener('change', handleModeChange);
       };
     },
-    () => !window.matchMedia('(pointer: coarse)').matches,
+    () => !liteMode && !window.matchMedia('(pointer: coarse)').matches,
     () => false
   );
+
+  const backgroundTiles = useMemo(() => {
+    const tileCount = liteMode ? 160 : 720;
+    const maxDurationSteps = liteMode ? 4 : 8;
+
+    return Array.from({ length: tileCount }, (_, i) => ({
+      id: i,
+      delay: ((i * 37) % 100) / 18,
+      duration: 4.8 + (i % maxDurationSteps) * 0.45,
+    }));
+  }, [liteMode]);
 
   useEffect(() => {
     if (!showMouseFx) return;
 
-    const renderPointer = () => {
-      frameRef.current = null;
-
+    const animatePointer = () => {
       const ring = ringRef.current;
       const dot = dotRef.current;
-      if (!ring || !dot) return;
+      if (!ring || !dot) {
+        frameRef.current = null;
+        return;
+      }
 
-      const x = pointerRef.current.x;
-      const y = pointerRef.current.y;
+      const targetX = pointerTargetRef.current.x;
+      const targetY = pointerTargetRef.current.y;
 
-      ring.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) rotate(45deg)`;
-      dot.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+      const ringDistance = Math.abs(targetX - pointerRingRef.current.x) + Math.abs(targetY - pointerRingRef.current.y);
+
+      const ringLerp = ringDistance > 70 ? 0.5 : 0.3;
+
+      pointerRingRef.current.x += (targetX - pointerRingRef.current.x) * ringLerp;
+      pointerRingRef.current.y += (targetY - pointerRingRef.current.y) * ringLerp;
+
+      pointerDotRef.current.x = targetX;
+      pointerDotRef.current.y = targetY;
+
+      ring.style.transform = `translate3d(${pointerRingRef.current.x}px, ${pointerRingRef.current.y}px, 0) translate(-50%, -50%) rotate(45deg)`;
+      dot.style.transform = `translate3d(${pointerDotRef.current.x}px, ${pointerDotRef.current.y}px, 0) translate(-50%, -50%)`;
+
+      const ringDelta = Math.abs(targetX - pointerRingRef.current.x) + Math.abs(targetY - pointerRingRef.current.y);
+      const dotDelta = Math.abs(targetX - pointerDotRef.current.x) + Math.abs(targetY - pointerDotRef.current.y);
+
+      if (ringDelta < 0.15 && dotDelta < 0.15) {
+        frameRef.current = null;
+        return;
+      }
+
+      frameRef.current = window.requestAnimationFrame(animatePointer);
     };
 
-    const scheduleRender = () => {
+    const scheduleAnimation = () => {
       if (frameRef.current === null) {
-        frameRef.current = window.requestAnimationFrame(renderPointer);
+        frameRef.current = window.requestAnimationFrame(animatePointer);
       }
     };
 
     const updatePointer = (event: PointerEvent) => {
-      pointerRef.current.x = event.clientX;
-      pointerRef.current.y = event.clientY;
-      scheduleRender();
+      pointerTargetRef.current.x = event.clientX;
+      pointerTargetRef.current.y = event.clientY;
+
+      if (!pointerInitializedRef.current) {
+        pointerInitializedRef.current = true;
+        pointerRingRef.current.x = event.clientX;
+        pointerRingRef.current.y = event.clientY;
+        pointerDotRef.current.x = event.clientX;
+        pointerDotRef.current.y = event.clientY;
+
+        const ring = ringRef.current;
+        const dot = dotRef.current;
+        if (ring && dot) {
+          ring.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0) translate(-50%, -50%) rotate(45deg)`;
+          dot.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0) translate(-50%, -50%)`;
+        }
+      }
+
+      scheduleAnimation();
     };
 
     const handlePointerDown = (event: PointerEvent) => {
+      if (liteMode) return;
+
       const burstId = event.timeStamp + Math.random();
       setClickBursts((previous) => [...previous.slice(-4), { id: burstId, x: event.clientX, y: event.clientY }]);
 
@@ -98,12 +181,12 @@ export default function Home() {
     };
 
     const hidePointer = () => {
-      pointerRef.current.x = -120;
-      pointerRef.current.y = -120;
-      scheduleRender();
+      pointerInitializedRef.current = false;
+      pointerTargetRef.current.x = -120;
+      pointerTargetRef.current.y = -120;
+      scheduleAnimation();
     };
 
-    window.addEventListener('pointerrawupdate', updatePointer as EventListener, { passive: true });
     window.addEventListener('pointermove', updatePointer, { passive: true });
     window.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('pointerleave', hidePointer);
@@ -113,15 +196,17 @@ export default function Home() {
         window.cancelAnimationFrame(frameRef.current);
         frameRef.current = null;
       }
-      window.removeEventListener('pointerrawupdate', updatePointer as EventListener);
       window.removeEventListener('pointermove', updatePointer);
       window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointerleave', hidePointer);
     };
-  }, [showMouseFx]);
+  }, [liteMode, showMouseFx]);
 
   return (
-    <div className="relative min-h-[100svh] w-full overflow-x-hidden bg-[#050810] text-slate-100" style={{ fontFamily: "'Inter', 'Geist', system-ui, sans-serif" }}>
+    <div
+      className={`relative min-h-[100svh] w-full overflow-x-hidden bg-[#050810] text-slate-100 ${liteMode ? 'qc-lite-mode' : ''}`}
+      style={{ fontFamily: "'Inter', 'Geist', system-ui, sans-serif" }}
+    >
       {/* Animated tile background */}
       <div className="pointer-events-none fixed inset-0">
         <div className="absolute inset-0 bg-[#050810]" />

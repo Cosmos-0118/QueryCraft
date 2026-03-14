@@ -9,6 +9,7 @@ import { SchemaBrowser } from '@/components/sandbox/schema-browser';
 
 import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import { ResultPanel } from '@/components/visual/result-panel';
+import { SqlErrorAlert } from '@/components/visual/sql-error-alert';
 import { cn } from '@/lib/utils/helpers';
 import type { QueryResult } from '@/types/database';
 import {
@@ -65,7 +66,7 @@ export default function SandboxPage() {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [importSql, setImportSql] = useState('');
-  const [importError, setImportError] = useState<string | null>(null);
+  const [importErrorResult, setImportErrorResult] = useState<QueryResult | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [activeDataset, setActiveDataset] = useState<string | null>(null);
   const [editorFeedback, setEditorFeedback] = useState<'idle' | 'success' | 'error'>('idle');
@@ -123,13 +124,13 @@ export default function SandboxPage() {
   );
 
   const handleImportSQL = useCallback(() => {
-    setImportError(null);
+    setImportErrorResult(null);
     const sql = importSql.trim();
     if (!sql) return;
     const res = loadSQL(sql);
     setResult(res);
     if (res.error) {
-      setImportError(res.error);
+      setImportErrorResult(res);
       return;
     }
     setShowImport(false);
@@ -251,16 +252,19 @@ export default function SandboxPage() {
               value={importSql}
               onChange={(e) => {
                 setImportSql(e.target.value);
-                if (importError) setImportError(null);
+                if (importErrorResult) setImportErrorResult(null);
               }}
               placeholder={'-- Paste your SQL here\nCREATE TABLE "students" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);'}
               className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/60 px-4 py-3 font-mono text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
               rows={6}
             />
-            {importError && (
-              <p className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-                Import failed: {importError}
-              </p>
+            {importErrorResult?.error && (
+              <SqlErrorAlert
+                error={importErrorResult.error}
+                details={importErrorResult.errorDetails}
+                compact
+                className="mt-2"
+              />
             )}
             <div className="mt-3 flex items-center gap-2">
               <button
@@ -275,7 +279,7 @@ export default function SandboxPage() {
                 onClick={() => {
                   setShowImport(false);
                   setImportSql('');
-                  setImportError(null);
+                  setImportErrorResult(null);
                 }}
                 className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
               >
@@ -352,10 +356,7 @@ export default function SandboxPage() {
 
             {/* Error */}
             {result?.error && (
-              <div className="flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{result.error}</span>
-              </div>
+              <SqlErrorAlert error={result.error} details={result.errorDetails} />
             )}
 
             {/* Results table */}

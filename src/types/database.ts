@@ -1,3 +1,5 @@
+import type { SqlErrorDetails } from '@/types/sql-error';
+
 export interface Column {
   name: string;
   type: string;
@@ -20,4 +22,5 @@ export interface QueryResult {
   rowCount: number;
   executionTimeMs: number;
   error?: string;
+  errorDetails?: SqlErrorDetails;
 }

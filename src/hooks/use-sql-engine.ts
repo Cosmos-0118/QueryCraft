@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { SqlExecutor } from '@/lib/engine/sql-executor';
+import { sqlErrorEngine } from '@/lib/engine/sql-error-engine';
 import type { QueryResult, TableSchema } from '@/types/database';
 import { useLoadingStore } from '@/stores/loading-store';
 
@@ -58,6 +59,7 @@ export function useSqlEngine() {
   const persistedStatementsRef = useRef<string[]>([]);
   const [isReady, setIsReady] = useState(false);
   const [tables, setTables] = useState<TableSchema[]>([]);
+  const [engineUnavailable, setEngineUnavailable] = useState(false);
   const { start: startLoading, stop: stopLoading } = useLoadingStore();
 
   useEffect(() => {
@@ -65,14 +67,26 @@ export function useSqlEngine() {
     startLoading('Initializing SQL engine…');
     const executor = new SqlExecutor();
     executorRef.current = executor;
-    executor.init().then(() => {
-      if (persistedStatementsRef.current.length > 0) {
-        executor.loadSQL(persistedStatementsRef.current.join('\n'));
-      }
-      setIsReady(true);
-      setTables(executor.getTables());
-      stopLoading();
-    });
+
+    executor
+      .init()
+      .then(() => {
+        if (persistedStatementsRef.current.length > 0) {
+          executor.loadSQL(persistedStatementsRef.current.join('\n'));
+        }
+        setEngineUnavailable(false);
+        setIsReady(true);
+        setTables(executor.getTables());
+      })
+      .catch(() => {
+        setEngineUnavailable(true);
+        setIsReady(false);
+        setTables([]);
+      })
+      .finally(() => {
+        stopLoading();
+      });
+
     return () => {
       executor.reset();
     };
@@ -80,9 +94,16 @@ export function useSqlEngine() {
   }, []);
 
   const execute = useCallback((sql: string): QueryResult => {
-    if (!executorRef.current?.isReady()) {
-      return { columns: [], rows: [], rowCount: 0, executionTimeMs: 0, error: 'Engine not ready' };
+    const start = performance.now();
+
+    if (engineUnavailable) {
+      return sqlErrorEngine.fromMessage('Engine failed to initialize.', { sql, startTime: start });
     }
+
+    if (!executorRef.current?.isReady()) {
+      return sqlErrorEngine.fromMessage('Engine not ready', { sql, startTime: start });
+    }
+
     const result = executorRef.current.execute(sql);
     if (!result.error && isMutatingSql(sql)) {
       persistedStatementsRef.current = [...persistedStatementsRef.current, sql];
@@ -93,9 +114,16 @@ export function useSqlEngine() {
   }, []);
 
   const loadSQL = useCallback((sql: string): QueryResult => {
-    if (!executorRef.current?.isReady()) {
-      return { columns: [], rows: [], rowCount: 0, executionTimeMs: 0, error: 'Engine not ready' };
+    const start = performance.now();
+
+    if (engineUnavailable) {
+      return sqlErrorEngine.fromMessage('Engine failed to initialize.', { sql, startTime: start });
     }
+
+    if (!executorRef.current?.isReady()) {
+      return sqlErrorEngine.fromMessage('Engine not ready', { sql, startTime: start });
+    }
+
     const result = executorRef.current.loadSQL(sql);
     if (!result.error && isMutatingSql(sql)) {
       persistedStatementsRef.current = [...persistedStatementsRef.current, sql];
@@ -114,10 +142,18 @@ export function useSqlEngine() {
       clearPersistedStatements();
       const executor = new SqlExecutor();
       executorRef.current = executor;
-      executor.init().then(() => {
-        setIsReady(true);
-        setTables(executor.getTables());
-      });
+      executor
+        .init()
+        .then(() => {
+          setEngineUnavailable(false);
+          setIsReady(true);
+          setTables(executor.getTables());
+        })
+        .catch(() => {
+          setEngineUnavailable(true);
+          setIsReady(false);
+          setTables([]);
+        });
     }
   }, []);
 

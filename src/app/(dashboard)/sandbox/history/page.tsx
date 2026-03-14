@@ -4,14 +4,15 @@ import { useState } from 'react';
 import { useSandboxStore } from '@/stores/sandbox-store';
 import type { HistoryEntry } from '@/stores/sandbox-store';
 import Link from 'next/link';
+import { SqlErrorAlert } from '@/components/visual/sql-error-alert';
 import {
   ArrowLeft,
   Clock,
   Check,
+  XCircle,
   Copy,
   Trash2,
   CornerDownLeft,
-  XCircle,
   CheckCircle2,
   Table2,
   ChevronDown,
@@ -282,10 +283,11 @@ function HistoryEntryCard({
 
             {/* Error */}
             {hasError && (
-              <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
-                <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
-                <span className="font-mono text-[11px] text-red-400">{entry.result!.error}</span>
-              </div>
+              <SqlErrorAlert
+                error={entry.result!.error ?? 'SQL execution failed'}
+                details={entry.result!.errorDetails}
+                compact
+              />
             )}
 
             {/* Success, no rows */}

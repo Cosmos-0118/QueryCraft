@@ -36,6 +36,15 @@ interface Section {
   commands: CommandEntry[];
 }
 
+type IndexedCommand = {
+  section: Section;
+  command: CommandEntry;
+};
+
+type SearchHit = IndexedCommand & {
+  score: number;
+};
+
 /* ──────────────────── Data ──────────────────── */
 
 const SECTIONS: Section[] = [
@@ -408,6 +417,86 @@ const COLOR_MAP: Record<string, { pill: string; pillBg: string; border: string; 
 };
 
 const TOTAL_COMMANDS = SECTIONS.reduce((sum, s) => sum + s.commands.length, 0);
+const ALL_COMMANDS: IndexedCommand[] = SECTIONS.flatMap((section) =>
+  section.commands.map((command) => ({ section, command }))
+);
+
+const normalize = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+const tokenized = (value: string) => normalize(value).split(/\s+/).filter(Boolean);
+
+const hasOrderedChars = (text: string, queryText: string) => {
+  let fromIndex = 0;
+  for (const char of queryText) {
+    const matchIndex = text.indexOf(char, fromIndex);
+    if (matchIndex === -1) return false;
+    fromIndex = matchIndex + 1;
+  }
+  return true;
+};
+
+const scoreCommand = (queryText: string, command: CommandEntry, section: Section) => {
+  if (!queryText) return 0;
+
+  const commandText = normalize(command.command);
+  const descriptionText = normalize(command.description);
+  const exampleText = normalize(command.example);
+  const sectionText = normalize(`${section.title} ${section.shortTitle}`);
+  const mergedText = `${commandText} ${descriptionText} ${exampleText} ${sectionText}`;
+
+  let score = 0;
+
+  if (commandText === queryText) score += 140;
+  if (commandText.startsWith(queryText)) score += 92;
+  if (commandText.includes(queryText)) score += 60;
+  if (descriptionText.includes(queryText)) score += 34;
+  if (exampleText.includes(queryText)) score += 18;
+  if (sectionText.includes(queryText)) score += 24;
+
+  const tokens = tokenized(queryText);
+  let matchedTokens = 0;
+  for (const token of tokens) {
+    if (commandText.includes(token)) {
+      score += 24;
+      matchedTokens += 1;
+      continue;
+    }
+    if (descriptionText.includes(token)) {
+      score += 14;
+      matchedTokens += 1;
+      continue;
+    }
+    if (exampleText.includes(token)) {
+      score += 8;
+      matchedTokens += 1;
+      continue;
+    }
+    if (sectionText.includes(token)) {
+      score += 10;
+      matchedTokens += 1;
+    }
+  }
+
+  if (tokens.length > 0 && matchedTokens === tokens.length) {
+    score += 18;
+  }
+
+  if (queryText.length >= 3 && hasOrderedChars(commandText, queryText)) {
+    score += 15;
+  }
+
+  if (!mergedText.includes(queryText) && matchedTokens === 0 && score < 20) {
+    return 0;
+  }
+
+  const lengthPenalty = Math.max(0, commandText.length - queryText.length) * 0.18;
+  return score - lengthPenalty;
+};
 
 /* ──────────────────── Copy Button ──────────────────── */
 
@@ -474,36 +563,47 @@ export default function LearnPage() {
   const [activeTab, setActiveTab] = useState(SECTIONS[0].id);
   const [search, setSearch] = useState('');
 
-  const query = search.toLowerCase().trim();
+  const query = normalize(search);
   const activeSection = SECTIONS.find((s) => s.id === activeTab) ?? SECTIONS[0];
   const colors = COLOR_MAP[activeSection.color] ?? COLOR_MAP.sky;
 
+  const searchHits = useMemo(() => {
+    if (!query) return [] as SearchHit[];
+
+    return ALL_COMMANDS.map(({ section, command }) => ({
+      section,
+      command,
+      score: scoreCommand(query, command, section),
+    }))
+      .filter((hit) => hit.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        const commandLengthDelta = a.command.command.length - b.command.command.length;
+        if (commandLengthDelta !== 0) return commandLengthDelta;
+        return a.command.command.localeCompare(b.command.command);
+      });
+  }, [query]);
+
   const filteredCommands = useMemo(() => {
     if (!query) return activeSection.commands;
-    return activeSection.commands.filter(
-      (c) =>
-        c.command.toLowerCase().includes(query) ||
-        c.description.toLowerCase().includes(query) ||
-        c.example.toLowerCase().includes(query),
-    );
-  }, [activeSection, query]);
+    return searchHits.map((hit) => hit.command);
+  }, [activeSection.commands, query, searchHits]);
 
   const matchingTabIds = useMemo(() => {
     if (!query) return null;
-    return new Set(
-      SECTIONS.filter((s) =>
-        s.commands.some(
-          (c) =>
-            c.command.toLowerCase().includes(query) ||
-            c.description.toLowerCase().includes(query) ||
-            c.example.toLowerCase().includes(query),
-        ),
-      ).map((s) => s.id),
-    );
-  }, [query]);
+    return new Set(searchHits.map((hit) => hit.section.id));
+  }, [query, searchHits]);
+
+  const commandSectionMap = useMemo(() => {
+    const map = new Map<CommandEntry, Section>();
+    for (const { section, command } of ALL_COMMANDS) {
+      map.set(command, section);
+    }
+    return map;
+  }, []);
 
   const totalInScope = matchingTabIds
-    ? SECTIONS.filter((s) => matchingTabIds.has(s.id)).reduce((sum, s) => sum + s.commands.length, 0)
+    ? searchHits.length
     : TOTAL_COMMANDS;
 
   return (
@@ -544,14 +644,23 @@ export default function LearnPage() {
             </div>
 
             {/* Search */}
-            <div className="relative">
-              <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
+            <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-background via-background to-muted/40 p-2 shadow-[0_14px_35px_-22px_rgba(2,6,23,0.55)]">
+              <div className="mb-2 flex items-center justify-between px-1">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+                  Smart Search
+                </span>
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                  All Categories
+                </span>
+              </div>
+              <div className="relative">
+                <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search command, description, or example…"
-                className="h-11 w-full rounded-xl border border-border/60 bg-background/80 py-2 pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none transition-all focus:border-primary/50 focus:ring-2 focus:ring-primary/10 focus:bg-background"
+                placeholder="Try: left join null values, normalize 3nf, create trigger..."
+                className="h-12 w-full rounded-xl border border-border/70 bg-background/95 py-2 pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground/55 outline-none transition-all focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
               />
               {search && (
                 <button
@@ -561,6 +670,7 @@ export default function LearnPage() {
                   <X size={13} />
                 </button>
               )}
+              </div>
             </div>
           </div>
 
@@ -583,9 +693,14 @@ export default function LearnPage() {
                 >
                   <span className={isActive ? c.pill : ''}>{section.icon}</span>
                   {section.shortTitle}
-                  {isActive && (
+                  {isActive && !query && (
                     <span className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${c.badge} border`}>
                       {section.commands.length}
+                    </span>
+                  )}
+                  {query && hasMatch && (
+                    <span className="ml-0.5 rounded-full border border-white/10 bg-white/10 px-1.5 py-0.5 text-[9px] font-bold text-zinc-200">
+                      {searchHits.filter((hit) => hit.section.id === section.id).length}
                     </span>
                   )}
                 </button>
@@ -606,15 +721,15 @@ export default function LearnPage() {
                 {activeSection.icon}
               </div>
               <div>
-                <h2 className="text-sm font-bold tracking-tight">{activeSection.title}</h2>
+                <h2 className="text-sm font-bold tracking-tight">{query ? 'Global Search Results' : activeSection.title}</h2>
                 <p className="text-xs text-muted-foreground">
                   {filteredCommands.length} command{filteredCommands.length !== 1 ? 's' : ''}
-                  {query && ` matching "${search}"`}
+                  {query && ` matching "${search.trim()}"`}
                 </p>
               </div>
             </div>
-            <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${colors.badge}`}>
-              {activeSection.shortTitle}
+            <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${query ? 'border-primary/25 bg-primary/10 text-primary' : colors.badge}`}>
+              {query ? 'Ranked' : activeSection.shortTitle}
             </span>
           </div>
 
@@ -630,7 +745,7 @@ export default function LearnPage() {
               >
                 <Search size={28} className="mx-auto mb-3 text-muted-foreground/30" />
                 <p className="text-sm font-medium text-muted-foreground">No commands match &ldquo;{search}&rdquo;</p>
-                <p className="mt-1 text-xs text-muted-foreground/60">Try searching in another category</p>
+                <p className="mt-1 text-xs text-muted-foreground/60">Try broader terms, synonyms, or SQL intent phrases</p>
                 <button
                   onClick={() => setSearch('')}
                   className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:border-border hover:text-foreground transition-colors"
@@ -648,7 +763,11 @@ export default function LearnPage() {
                 className="grid gap-3.5 lg:grid-cols-2"
               >
                 {filteredCommands.map((cmd) => (
-                  <CommandCard key={cmd.command} cmd={cmd} section={activeSection} />
+                  <CommandCard
+                    key={`${(commandSectionMap.get(cmd) ?? activeSection).id}-${cmd.command}`}
+                    cmd={cmd}
+                    section={commandSectionMap.get(cmd) ?? activeSection}
+                  />
                 ))}
               </motion.div>
             )}

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils/helpers';
 import type { HistoryEntry } from '@/stores/sandbox-store';
+import { SqlErrorAlert } from '@/components/visual/sql-error-alert';
 import {
   History,
   Check,
@@ -12,7 +13,6 @@ import {
   ChevronRight,
   Clock,
   CornerDownLeft,
-  XCircle,
   CheckCircle2,
   Table2,
   Copy,
@@ -169,10 +169,11 @@ export function QueryHistory({ history, onSelect, onClear, className }: QueryHis
 
                   {/* Error output */}
                   {hasError && (
-                    <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5">
-                      <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
-                      <span className="font-mono text-[11px] text-red-400">{entry.result!.error}</span>
-                    </div>
+                    <SqlErrorAlert
+                      error={entry.result!.error ?? 'SQL execution failed'}
+                      details={entry.result!.errorDetails}
+                      compact
+                    />
                   )}
 
                   {/* Success with no rows */}

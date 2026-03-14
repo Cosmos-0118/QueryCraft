@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { QueryResult } from '@/types/database';
+import type { SqlErrorDetails } from '@/types/sql-error';
 
 export interface HistoryEntry {
   query: string;
@@ -12,6 +13,7 @@ export interface HistoryEntry {
     rowCount: number;
     executionTimeMs: number;
     error?: string;
+    errorDetails?: SqlErrorDetails;
   };
 }
 
@@ -49,6 +51,7 @@ export const useSandboxStore = create<SandboxStore>()(
                 rowCount: result.rowCount,
                 executionTimeMs: result.executionTimeMs,
                 error: result.error,
+                errorDetails: result.errorDetails,
               },
             },
             ...state.queryHistory,
