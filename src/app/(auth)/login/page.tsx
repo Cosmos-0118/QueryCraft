@@ -16,6 +16,9 @@ function LoginPageContent() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Import state
   const [showImport, setShowImport] = useState(false);
@@ -48,12 +51,21 @@ function LoginPageContent() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    removeAccount(id);
-    setConfirmDeleteId(null);
-    if (selectedId === id) {
-      setSelectedId(null);
-      setPassword('');
+  const handleDelete = async (id: string) => {
+    setDeleteError('');
+    setDeleteLoading(true);
+    try {
+      await removeAccount(id, deletePassword);
+      setConfirmDeleteId(null);
+      setDeletePassword('');
+      if (selectedId === id) {
+        setSelectedId(null);
+        setPassword('');
+      }
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Unable to remove account');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -238,40 +250,61 @@ function LoginPageContent() {
 
               {/* Action buttons */}
               <div className="absolute right-2 top-1/2 flex -translate-y-1/2 gap-0.5">
-                {confirmDeleteId === account.id ? (
-                  <>
+                <button
+                  onClick={() => handleExport(account.id)}
+                  className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+                  title="Export account"
+                >
+                  <Download size={14} />
+                </button>
+                <button
+                  onClick={() => {
+                    setConfirmDeleteId(account.id);
+                    setDeletePassword('');
+                    setDeleteError('');
+                  }}
+                  className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+                  title="Remove account"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+
+              {confirmDeleteId === account.id && (
+                <div className="mt-2 rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+                  <p className="text-xs text-muted-foreground">Enter password to remove this account.</p>
+                  <input
+                    type="password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-ring"
+                    placeholder="Account password"
+                    autoFocus
+                  />
+                  {deleteError && (
+                    <p className="mt-2 text-xs text-red-500">{deleteError}</p>
+                  )}
+                  <div className="mt-3 flex justify-end gap-2">
                     <button
-                      onClick={() => handleDelete(account.id)}
-                      className="rounded-md bg-red-500/10 px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-500/20"
-                    >
-                      Remove
-                    </button>
-                    <button
-                      onClick={() => setConfirmDeleteId(null)}
+                      onClick={() => {
+                        setConfirmDeleteId(null);
+                        setDeletePassword('');
+                        setDeleteError('');
+                      }}
                       className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
                     >
                       Cancel
                     </button>
-                  </>
-                ) : (
-                  <>
                     <button
-                      onClick={() => handleExport(account.id)}
-                      className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
-                      title="Export account"
+                      onClick={() => handleDelete(account.id)}
+                      disabled={deleteLoading || !deletePassword}
+                      className="rounded-md bg-red-500/10 px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-500/20 disabled:opacity-50"
                     >
-                      <Download size={14} />
+                      {deleteLoading ? 'Removing...' : 'Remove'}
                     </button>
-                    <button
-                      onClick={() => setConfirmDeleteId(account.id)}
-                      className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
-                      title="Remove account"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </>
-                )}
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

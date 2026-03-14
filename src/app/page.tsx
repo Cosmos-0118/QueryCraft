@@ -56,11 +56,12 @@ const shouldUseLiteMode = () => {
 
 export default function Home() {
   const [clickBursts, setClickBursts] = useState<ClickBurst[]>([]);
+  const TRAIL_SEGMENTS = 7;
   const ringRef = useRef<HTMLDivElement | null>(null);
   const dotRef = useRef<HTMLDivElement | null>(null);
+  const trailSegmentRefs = useRef<Array<HTMLDivElement | null>>([]);
   const pointerTargetRef = useRef({ x: -120, y: -120 });
-  const pointerRingRef = useRef({ x: -120, y: -120 });
-  const pointerDotRef = useRef({ x: -120, y: -120 });
+  const pointerTrailRef = useRef(Array.from({ length: TRAIL_SEGMENTS }, () => ({ x: -120, y: -120 })));
   const pointerInitializedRef = useRef(false);
   const frameRef = useRef<number | null>(null);
 
@@ -106,34 +107,56 @@ export default function Home() {
   useEffect(() => {
     if (!showMouseFx) return;
 
-    const animatePointer = () => {
+    const applyPointerPosition = (x: number, y: number) => {
       const ring = ringRef.current;
       const dot = dotRef.current;
-      if (!ring || !dot) {
+
+      if (ring) {
+        ring.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) rotate(45deg)`;
+      }
+
+      if (dot) {
+        dot.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+      }
+    };
+
+    const resetTrail = (x: number, y: number) => {
+      pointerTrailRef.current.forEach((point) => {
+        point.x = x;
+        point.y = y;
+      });
+    };
+
+    const animatePointer = () => {
+      const segments = trailSegmentRefs.current;
+      if (segments.length === 0) {
         frameRef.current = null;
         return;
       }
 
       const targetX = pointerTargetRef.current.x;
       const targetY = pointerTargetRef.current.y;
+      const trailPoints = pointerTrailRef.current;
 
-      const ringDistance = Math.abs(targetX - pointerRingRef.current.x) + Math.abs(targetY - pointerRingRef.current.y);
+      for (let index = 0; index < trailPoints.length; index += 1) {
+        const previousPoint = index === 0 ? { x: targetX, y: targetY } : trailPoints[index - 1];
+        const point = trailPoints[index];
+        const smoothing = index === 0 ? 0.45 : Math.max(0.2, 0.42 - index * 0.035);
 
-      const ringLerp = ringDistance > 70 ? 0.5 : 0.3;
+        point.x += (previousPoint.x - point.x) * smoothing;
+        point.y += (previousPoint.y - point.y) * smoothing;
 
-      pointerRingRef.current.x += (targetX - pointerRingRef.current.x) * ringLerp;
-      pointerRingRef.current.y += (targetY - pointerRingRef.current.y) * ringLerp;
+        const segment = segments[index];
+        if (segment) {
+          segment.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) translate(-50%, -50%)`;
+        }
+      }
 
-      pointerDotRef.current.x = targetX;
-      pointerDotRef.current.y = targetY;
+      const tailEnd = trailPoints[trailPoints.length - 1];
+      const trailDelta = Math.abs(targetX - tailEnd.x) + Math.abs(targetY - tailEnd.y);
 
-      ring.style.transform = `translate3d(${pointerRingRef.current.x}px, ${pointerRingRef.current.y}px, 0) translate(-50%, -50%) rotate(45deg)`;
-      dot.style.transform = `translate3d(${pointerDotRef.current.x}px, ${pointerDotRef.current.y}px, 0) translate(-50%, -50%)`;
-
-      const ringDelta = Math.abs(targetX - pointerRingRef.current.x) + Math.abs(targetY - pointerRingRef.current.y);
-      const dotDelta = Math.abs(targetX - pointerDotRef.current.x) + Math.abs(targetY - pointerDotRef.current.y);
-
-      if (ringDelta < 0.15 && dotDelta < 0.15) {
+      // Sleep the animation loop while idle; pointermove restarts it.
+      if (trailDelta < 0.2) {
         frameRef.current = null;
         return;
       }
@@ -150,20 +173,11 @@ export default function Home() {
     const updatePointer = (event: PointerEvent) => {
       pointerTargetRef.current.x = event.clientX;
       pointerTargetRef.current.y = event.clientY;
+      applyPointerPosition(event.clientX, event.clientY);
 
       if (!pointerInitializedRef.current) {
         pointerInitializedRef.current = true;
-        pointerRingRef.current.x = event.clientX;
-        pointerRingRef.current.y = event.clientY;
-        pointerDotRef.current.x = event.clientX;
-        pointerDotRef.current.y = event.clientY;
-
-        const ring = ringRef.current;
-        const dot = dotRef.current;
-        if (ring && dot) {
-          ring.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0) translate(-50%, -50%) rotate(45deg)`;
-          dot.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0) translate(-50%, -50%)`;
-        }
+        resetTrail(event.clientX, event.clientY);
       }
 
       scheduleAnimation();
@@ -184,6 +198,9 @@ export default function Home() {
       pointerInitializedRef.current = false;
       pointerTargetRef.current.x = -120;
       pointerTargetRef.current.y = -120;
+
+      applyPointerPosition(-120, -120);
+
       scheduleAnimation();
     };
 
@@ -223,6 +240,21 @@ export default function Home() {
 
       {showMouseFx && (
         <>
+          {Array.from({ length: TRAIL_SEGMENTS }, (_, index) => (
+            <div
+              key={`trail-${index}`}
+              ref={(element) => {
+                trailSegmentRefs.current[index] = element;
+              }}
+              aria-hidden
+              className="pointer-events-none fixed left-0 top-0 z-[29] h-2 w-2 rounded-full bg-teal-200/70 will-change-transform"
+              style={{
+                opacity: Math.max(0.08, 0.32 - index * 0.035),
+                scale: `${Math.max(0.45, 1 - index * 0.1)}`,
+              }}
+            />
+          ))}
+
           <div
             ref={ringRef}
             aria-hidden

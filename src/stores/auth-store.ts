@@ -68,7 +68,7 @@ interface AuthStore extends AuthState {
   /** Change password for the current user */
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   /** Remove an account from the device */
-  removeAccount: (id: string) => void;
+  removeAccount: (id: string, password: string) => Promise<void>;
   /** Export an account as a portable code string */
   exportAccount: (id: string) => string;
   /** Import an account from a portable code string. Returns the imported account name. */
@@ -137,8 +137,14 @@ export const useAuthStore = create<AuthStore>()(
         });
       },
 
-      removeAccount: (id) => {
-        const { user } = get();
+      removeAccount: async (id, password) => {
+        const { user, accounts } = get();
+        const account = accounts.find((a) => a.id === id);
+        if (!account) throw new Error('Account not found');
+
+        const passwordHash = await hashPassword(password);
+        if (passwordHash !== account.passwordHash) throw new Error('Incorrect password');
+
         if (user?.id === id) {
           clearSessionUser();
         }
