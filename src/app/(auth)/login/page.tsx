@@ -4,7 +4,7 @@ import { Suspense, useState } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, Trash2, Download, Upload, Copy, Check } from 'lucide-react';
+import { Plus, Trash2, Download, Upload, Copy, Check, AlertTriangle } from 'lucide-react';
 
 function LoginPageContent() {
   const router = useRouter();
@@ -230,77 +230,113 @@ function LoginPageContent() {
       </p>
 
       {accounts.length > 0 && (
-        <div className="mt-6 space-y-2">
+        <div className="mt-6 space-y-3">
           {accounts.map((account) => (
-            <div key={account.id} className="group relative">
-              <button
-                onClick={() => { setSelectedId(account.id); setError(''); }}
-                className="flex w-full items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:bg-muted"
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-                  {account.displayName.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{account.displayName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Created {new Date(account.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-              </button>
-
-              {/* Action buttons */}
-              <div className="absolute right-2 top-1/2 flex -translate-y-1/2 gap-0.5">
-                <button
-                  onClick={() => handleExport(account.id)}
-                  className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
-                  title="Export account"
-                >
-                  <Download size={14} />
-                </button>
+            <div
+              key={account.id}
+              className={`group rounded-2xl border p-1.5 transition-all ${
+                confirmDeleteId === account.id
+                  ? 'border-red-500/30 bg-red-500/5 shadow-[0_0_0_1px_rgba(239,68,68,0.08)]'
+                  : 'border-border/80 bg-card shadow-sm hover:border-primary/20 hover:shadow-md'
+              }`}
+            >
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
-                    setConfirmDeleteId(account.id);
+                    setSelectedId(account.id);
+                    setError('');
+                    setConfirmDeleteId(null);
                     setDeletePassword('');
                     setDeleteError('');
                   }}
-                  className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
-                  title="Remove account"
+                  className="flex flex-1 items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-muted/70"
                 >
-                  <Trash2 size={14} />
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground shadow-sm">
+                    {account.displayName.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-foreground">{account.displayName}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Created {new Date(account.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
                 </button>
+
+                <div className="flex shrink-0 items-center gap-1 pr-1">
+                  <button
+                    onClick={() => handleExport(account.id)}
+                    className="rounded-lg border border-transparent p-2 text-muted-foreground transition-all hover:border-primary/15 hover:bg-primary/10 hover:text-primary"
+                    title="Export account"
+                  >
+                    <Download size={15} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setConfirmDeleteId(account.id);
+                      setDeletePassword('');
+                      setDeleteError('');
+                    }}
+                    className="rounded-lg border border-transparent p-2 text-muted-foreground transition-all hover:border-red-500/15 hover:bg-red-500/10 hover:text-red-400"
+                    title="Remove account"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
 
               {confirmDeleteId === account.id && (
-                <div className="mt-2 rounded-lg border border-red-500/20 bg-red-500/5 p-3">
-                  <p className="text-xs text-muted-foreground">Enter password to remove this account.</p>
-                  <input
-                    type="password"
-                    value={deletePassword}
-                    onChange={(e) => setDeletePassword(e.target.value)}
-                    className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-ring"
-                    placeholder="Account password"
-                    autoFocus
-                  />
-                  {deleteError && (
-                    <p className="mt-2 text-xs text-red-500">{deleteError}</p>
-                  )}
-                  <div className="mt-3 flex justify-end gap-2">
+                <div className="mx-1 mb-1 mt-2 rounded-xl border border-red-500/20 bg-[linear-gradient(180deg,rgba(239,68,68,0.12),rgba(239,68,68,0.04))] p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/12 text-red-400">
+                      <AlertTriangle size={18} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-foreground">
+                        Remove {account.displayName}?
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        Enter your password to permanently remove this local account from this device.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <label className="block text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      Confirm Password
+                    </label>
+                    <input
+                      type="password"
+                      value={deletePassword}
+                      onChange={(e) => {
+                        setDeletePassword(e.target.value);
+                        if (deleteError) setDeleteError('');
+                      }}
+                      className="h-11 w-full rounded-xl border border-red-500/15 bg-background/90 px-3.5 text-sm outline-none transition focus:border-red-400/60 focus:ring-2 focus:ring-red-500/20"
+                      placeholder="Enter your account password"
+                      autoFocus
+                    />
+                    {deleteError && (
+                      <p className="text-sm text-red-400">{deleteError}</p>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-end gap-2">
                     <button
                       onClick={() => {
                         setConfirmDeleteId(null);
                         setDeletePassword('');
                         setDeleteError('');
                       }}
-                      className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                      className="rounded-xl px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={() => handleDelete(account.id)}
                       disabled={deleteLoading || !deletePassword}
-                      className="rounded-md bg-red-500/10 px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-500/20 disabled:opacity-50"
+                      className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-500/90 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {deleteLoading ? 'Removing...' : 'Remove'}
+                      {deleteLoading ? 'Removing...' : 'Remove Account'}
                     </button>
                   </div>
                 </div>

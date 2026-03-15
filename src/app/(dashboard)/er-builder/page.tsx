@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { toPng } from 'html-to-image';
 import { useERStore } from '@/stores/er-store';
@@ -8,12 +8,13 @@ import { ERCanvas } from '@/components/er-diagram/er-canvas';
 import { ERToolbar } from '@/components/er-diagram/er-toolbar';
 import { PropertiesPanel } from '@/components/er-diagram/properties-panel';
 import { erToRelational, schemasToSQL } from '@/lib/engine/er-to-relational';
-import { TableViewer } from '@/components/visual/table-viewer';
 import type { ERDiagram } from '@/types/er-diagram';
 import {
   GraduationCap,
   Landmark,
   ArrowRightLeft,
+  ChevronLeft,
+  ChevronRight,
   ChevronDown,
   ChevronUp,
   PanelRightOpen,
@@ -83,11 +84,20 @@ export default function ERBuilderPage() {
   const [showSchema, setShowSchema] = useState(false);
   const [showPanel, setShowPanel] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [activeTableIndex, setActiveTableIndex] = useState(0);
+  const schemaSectionRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!showSchema || store.generatedTables.length === 0) return;
+
+    schemaSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [showSchema, store.generatedTables.length]);
 
   const handleConvert = useCallback(() => {
     const diagram = store.getDiagram();
     const tables = erToRelational(diagram);
     store.setGeneratedTables(tables);
+    setActiveTableIndex(0);
     setShowSchema(true);
   }, [store]);
 
@@ -120,6 +130,38 @@ export default function ERBuilderPage() {
   const entityCount = store.entities.length;
   const attrCount = store.attributes.length;
   const relCount = store.relationships.length;
+  const safeActiveTableIndex = Math.min(
+    activeTableIndex,
+    Math.max(0, store.generatedTables.length - 1),
+  );
+  const activeTable = store.generatedTables[safeActiveTableIndex];
+  const activePrimaryKeyCount = activeTable?.columns.filter((column) => column.primaryKey).length ?? 0;
+  const activeForeignKeyCount = activeTable?.columns.filter((column) => column.foreignKey).length ?? 0;
+  const activeRequiredCount = activeTable?.columns.filter((column) => !column.nullable).length ?? 0;
+
+  const getColumnKeyBadges = (column: NonNullable<typeof activeTable>['columns'][number]) => {
+    if (column.primaryKey && column.foreignKey) {
+      return [
+        { label: 'PK', className: 'bg-amber-500/12 text-amber-300' },
+        { label: 'FK', className: 'bg-sky-500/12 text-sky-300' },
+      ];
+    }
+
+    if (column.primaryKey) {
+      return [{ label: 'PK', className: 'bg-amber-500/12 text-amber-300' }];
+    }
+
+    if (column.foreignKey) {
+      return [{ label: 'FK', className: 'bg-sky-500/12 text-sky-300' }];
+    }
+
+    return [{ label: 'Attr', className: 'bg-zinc-800/70 text-zinc-500' }];
+  };
+
+  const getColumnReferenceLabel = (column: NonNullable<typeof activeTable>['columns'][number]) => {
+    if (!column.foreignKey) return null;
+    return `${column.foreignKey.table}.${column.foreignKey.column}`;
+  };
 
   return (
     <ReactFlowProvider>
@@ -218,7 +260,7 @@ export default function ERBuilderPage() {
 
         {/* Generated Schema */}
         {store.generatedTables.length > 0 && (
-          <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/80 backdrop-blur-sm">
+          <div ref={schemaSectionRef} className="rounded-xl border border-zinc-800/60 bg-zinc-900/80 backdrop-blur-sm">
             <button
               onClick={() => setShowSchema(!showSchema)}
               className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-zinc-800/30"
@@ -256,27 +298,227 @@ export default function ERBuilderPage() {
                 </div>
 
                 {/* Tables */}
-                <div className="grid gap-4 md:grid-cols-2">
-                  {store.generatedTables.map((table) => (
-                    <div key={table.name} className="overflow-hidden rounded-xl border border-zinc-800/60">
-                      <div
-                        className="flex items-center gap-2 border-b border-zinc-800/60 px-4 py-2.5"
-                        style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.06) 0%, transparent 100%)' }}
-                      >
-                        <div className="h-1.5 w-1.5 rounded-full bg-violet-400" />
-                        <h3 className="text-xs font-bold text-zinc-300">{table.name}</h3>
-                      </div>
-                      <TableViewer
-                        columns={['Column', 'Type', 'PK', 'FK']}
-                        rows={table.columns.map((c) => ({
-                          Column: c.name,
-                          Type: c.type,
-                          PK: c.primaryKey ? 'Yes' : '',
-                          FK: c.foreignKey ? `→ ${c.foreignKey.table}.${c.foreignKey.column}` : '',
-                        }))}
-                      />
+                <div className="grid gap-5 xl:grid-cols-[260px_minmax(0,1fr)]">
+                  <aside className="rounded-2xl border border-zinc-800/60 bg-zinc-950/35 p-3">
+                    <div className="px-2 pb-3 pt-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+                        Tables
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-400">
+                        Review the generated schema one table at a time.
+                      </p>
                     </div>
-                  ))}
+
+                    <div className="space-y-2">
+                      {store.generatedTables.map((table, index) => {
+                        const foreignKeyCount = table.columns.filter((column) => column.foreignKey).length;
+                        const primaryKeyCount = table.columns.filter((column) => column.primaryKey).length;
+
+                        return (
+                          <button
+                            key={table.name}
+                            onClick={() => setActiveTableIndex(index)}
+                            className={`w-full rounded-xl border px-3 py-3 text-left transition-all duration-200 ${
+                              index === safeActiveTableIndex
+                                ? 'border-violet-500/40 bg-violet-500/10 shadow-[0_0_0_1px_rgba(139,92,246,0.18)]'
+                                : 'border-zinc-800/60 bg-zinc-900/45 hover:border-zinc-700 hover:bg-zinc-900/80'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-zinc-100">{table.name}</p>
+                                <p className="mt-1 text-xs text-zinc-500">
+                                  {table.columns.length} columns
+                                </p>
+                              </div>
+                              <span className="rounded-full border border-zinc-800/80 px-2 py-1 text-[10px] font-bold text-zinc-400">
+                                {index + 1}
+                              </span>
+                            </div>
+                            <div className="mt-3 flex items-center gap-2 text-[11px] text-zinc-500">
+                              <span className="rounded-full bg-zinc-800/80 px-2 py-1">
+                                {primaryKeyCount} PK
+                              </span>
+                              <span className="rounded-full bg-zinc-800/80 px-2 py-1">
+                                {foreignKeyCount} FK
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </aside>
+
+                  {activeTable && (
+                    <section className="overflow-hidden rounded-[1.35rem] border border-zinc-800/60 bg-[linear-gradient(180deg,rgba(24,24,27,0.96),rgba(16,16,20,0.98))] shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+                      <div className="border-b border-zinc-800/60 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.14),transparent_38%),linear-gradient(180deg,rgba(39,39,42,0.55),rgba(24,24,27,0.2))] px-5 py-5">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-300/80">
+                              <span className="inline-block h-2 w-2 rounded-full bg-violet-400" />
+                              Table {safeActiveTableIndex + 1} of {store.generatedTables.length}
+                            </div>
+                            <h3 className="mt-3 text-2xl font-bold tracking-tight text-zinc-50">{activeTable.name}</h3>
+                            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+                              Inspect each generated relation before moving to the next one. Primary keys, foreign keys, and required columns are highlighted in a cleaner schema layout.
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2 self-start">
+                            <button
+                              onClick={() => setActiveTableIndex((current) => Math.max(0, current - 1))}
+                              disabled={safeActiveTableIndex === 0}
+                              className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/70 bg-zinc-950/40 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                              Previous
+                            </button>
+                            <button
+                              onClick={() => setActiveTableIndex((current) => Math.min(store.generatedTables.length - 1, current + 1))}
+                              disabled={safeActiveTableIndex === store.generatedTables.length - 1}
+                              className="inline-flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/12 px-3 py-2 text-sm font-medium text-violet-100 transition hover:bg-violet-500/18 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Next
+                              <ChevronRight className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                          <div className="rounded-2xl border border-zinc-800/70 bg-zinc-950/35 px-4 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Columns</p>
+                            <p className="mt-2 text-2xl font-bold text-zinc-50">{activeTable.columns.length}</p>
+                          </div>
+                          <div className="rounded-2xl border border-zinc-800/70 bg-zinc-950/35 px-4 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Primary Keys</p>
+                            <p className="mt-2 text-2xl font-bold text-zinc-50">{activePrimaryKeyCount}</p>
+                          </div>
+                          <div className="rounded-2xl border border-zinc-800/70 bg-zinc-950/35 px-4 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Foreign Keys</p>
+                            <p className="mt-2 text-2xl font-bold text-zinc-50">{activeForeignKeyCount}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-5">
+                        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-300">
+                            {activeRequiredCount} required
+                          </span>
+                          <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-violet-200">
+                            {activeTable.columns.length - activeRequiredCount} nullable
+                          </span>
+                          <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-200">
+                            {activeForeignKeyCount > 0 ? 'references other tables' : 'standalone relation'}
+                          </span>
+                        </div>
+
+                        <div className="overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-950/30">
+                          <div className="hidden md:block">
+                            <table className="w-full table-fixed border-collapse">
+                              <colgroup>
+                                <col className="w-[29%]" />
+                                <col className="w-[13%]" />
+                                <col className="w-[16%]" />
+                                <col className="w-[24%]" />
+                                <col className="w-[18%]" />
+                              </colgroup>
+                              <thead>
+                                <tr className="border-b border-zinc-800/60 bg-zinc-900/70 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                                  <th className="px-6 py-3 text-left">Column</th>
+                                  <th className="px-6 py-3 text-center">Type</th>
+                                  <th className="px-6 py-3 text-left">Key</th>
+                                  <th className="px-6 py-3 text-left">Reference</th>
+                                  <th className="px-6 py-3 text-center">Required</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {activeTable.columns.map((column) => (
+                                  <tr key={column.name} className="border-b border-zinc-800/60 last:border-b-0 align-middle">
+                                    <td className="px-6 py-4 align-middle">
+                                      <div className="flex min-h-14 items-center">
+                                        <p className="truncate text-sm font-semibold tracking-tight text-zinc-100">
+                                          {column.name}
+                                        </p>
+                                      </div>
+                                    </td>
+                                    <td className="px-6 py-4 align-middle">
+                                      <div className="flex min-h-14 items-center justify-center">
+                                        <span className="inline-flex min-w-[104px] items-center justify-center rounded-full border border-zinc-800/80 bg-zinc-900/90 px-3 py-1.5 text-xs font-semibold text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                                          {column.type}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="px-6 py-4 align-middle">
+                                      <div className="flex min-h-14 items-center">
+                                        <div className="inline-flex min-h-11 min-w-[116px] flex-wrap items-center gap-1.5">
+                                          {getColumnKeyBadges(column).map((badge) => (
+                                            <span key={badge.label} className={`inline-flex min-w-[46px] items-center justify-center rounded-full border border-transparent px-2.5 py-1 text-xs font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${badge.className}`}>
+                                              {badge.label}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="px-6 py-4 align-middle">
+                                      <div className="flex min-h-14 items-center">
+                                        {getColumnReferenceLabel(column) ? (
+                                          <span className="truncate text-sm text-zinc-400">
+                                            {getColumnReferenceLabel(column)}
+                                          </span>
+                                        ) : (
+                                          <span className="text-sm text-zinc-600">No reference</span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-6 py-4 align-middle">
+                                      <div className="flex min-h-14 items-center justify-center">
+                                        <span className={`inline-flex min-w-[112px] items-center justify-center rounded-full px-3 py-1.5 text-xs font-semibold ${column.nullable ? 'border border-zinc-800/80 bg-zinc-900/85 text-zinc-400' : 'border border-emerald-500/15 bg-emerald-500/12 text-emerald-300'}`}>
+                                          {column.nullable ? 'Optional' : 'Required'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className="divide-y divide-zinc-800/60 md:hidden">
+                            {activeTable.columns.map((column) => (
+                              <div key={column.name}>
+                                <div className="space-y-3 px-4 py-4 md:hidden">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold tracking-tight text-zinc-100">{column.name}</p>
+                                      <p className="mt-1 text-xs text-zinc-500">{column.type}</p>
+                                    </div>
+                                    <div className="inline-flex flex-wrap justify-end gap-1.5 rounded-full border border-zinc-800/80 bg-zinc-950/70 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                                      {getColumnKeyBadges(column).map((badge) => (
+                                        <span key={badge.label} className={`inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${badge.className}`}>
+                                          {badge.label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2 text-xs">
+                                    <span className={`inline-flex items-center rounded-full px-3 py-1.5 font-medium ${column.nullable ? 'border border-zinc-800/80 bg-zinc-900/85 text-zinc-400' : 'border border-emerald-500/15 bg-emerald-500/12 text-emerald-300'}`}>
+                                      {column.nullable ? 'Optional' : 'Required'}
+                                    </span>
+                                    {column.foreignKey && (
+                                      <span className="inline-flex items-center rounded-full border border-sky-500/15 bg-sky-500/10 px-3 py-1.5 text-sky-200">
+                                        {column.foreignKey.table}.{column.foreignKey.column}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  )}
                 </div>
               </div>
             )}
