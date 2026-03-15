@@ -17,6 +17,8 @@ import {
   Terminal,
   Database,
   UserRound,
+  Shield,
+  ScrollText,
   ChevronDown,
   Play,
   Download,
@@ -88,6 +90,17 @@ export default function SandboxPage() {
   const [triggerRows, setTriggerRows] = useState<Array<{ Trigger: string; Table: string; Statement: string }>>([]);
   const [triggerQueryError, setTriggerQueryError] = useState<string | null>(null);
   const [triggerQueryMs, setTriggerQueryMs] = useState<number | null>(null);
+  const [showProceduresPanel, setShowProceduresPanel] = useState(false);
+  const [procedureRows, setProcedureRows] = useState<Array<{ Db: string; Name: string; Type: string }>>([]);
+  const [procedureQueryError, setProcedureQueryError] = useState<string | null>(null);
+  const [procedureQueryMs, setProcedureQueryMs] = useState<number | null>(null);
+  const [selectedProcedureName, setSelectedProcedureName] = useState<string | null>(null);
+  const [selectedProcedureSql, setSelectedProcedureSql] = useState<string | null>(null);
+  const [showSecurityPanel, setShowSecurityPanel] = useState(false);
+  const [selectedSecurityUser, setSelectedSecurityUser] = useState<string>('');
+  const [grantsRows, setGrantsRows] = useState<string[]>([]);
+  const [grantsQueryError, setGrantsQueryError] = useState<string | null>(null);
+  const [grantsQueryMs, setGrantsQueryMs] = useState<number | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dbMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
@@ -119,17 +132,19 @@ export default function SandboxPage() {
   }, []);
 
   useEffect(() => {
-    if (!showTriggersPanel) return;
+    if (!showTriggersPanel && !showProceduresPanel && !showSecurityPanel) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setShowTriggersPanel(false);
+        setShowProceduresPanel(false);
+        setShowSecurityPanel(false);
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showTriggersPanel]);
+  }, [showProceduresPanel, showSecurityPanel, showTriggersPanel]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -292,6 +307,78 @@ export default function SandboxPage() {
     setTriggerQueryError(null);
   }, [execute]);
 
+  const loadProcedures = useCallback(() => {
+    const procedureResult = execute('SHOW PROCEDURE STATUS;');
+    if (procedureResult.error) {
+      setProcedureRows([]);
+      setProcedureQueryMs(null);
+      setProcedureQueryError(procedureResult.error);
+      return;
+    }
+
+    const rows = procedureResult.rows.map((row) => ({
+      Db: String(row.Db ?? ''),
+      Name: String(row.Name ?? ''),
+      Type: String(row.Type ?? 'PROCEDURE'),
+    }));
+
+    setProcedureRows(rows);
+    setProcedureQueryMs(procedureResult.executionTimeMs);
+    setProcedureQueryError(null);
+  }, [execute]);
+
+  const loadProcedureDefinition = useCallback(
+    (proc: { Db: string; Name: string }) => {
+      const qualifiedName = proc.Db ? `${proc.Db}.${proc.Name}` : proc.Name;
+      const definitionResult = execute(`SHOW CREATE PROCEDURE ${qualifiedName};`);
+      if (definitionResult.error) {
+        setSelectedProcedureName(qualifiedName);
+        setSelectedProcedureSql(`Error: ${definitionResult.error}`);
+        return;
+      }
+
+      const row = definitionResult.rows[0] ?? {};
+      const definition =
+        (row['Create Procedure'] as string | undefined) ??
+        (Object.entries(row).find(([key]) => key.toLowerCase().includes('create'))?.[1] as
+          | string
+          | undefined) ??
+        '';
+
+      setSelectedProcedureName(qualifiedName);
+      setSelectedProcedureSql(String(definition));
+    },
+    [execute],
+  );
+
+  const toSqlUserSpec = useCallback((userDisplay: string): string => {
+    const trimmed = userDisplay.trim();
+    if (!trimmed) return "'admin'@'localhost'";
+    if (trimmed.includes('@')) {
+      const [username, host] = trimmed.split('@');
+      return `'${username || 'admin'}'@'${host || 'localhost'}'`;
+    }
+    return `'${trimmed}'@'localhost'`;
+  }, []);
+
+  const loadGrantsForUser = useCallback(
+    (userDisplay: string) => {
+      const grantsResult = execute(`SHOW GRANTS FOR ${toSqlUserSpec(userDisplay)};`);
+      if (grantsResult.error) {
+        setGrantsRows([]);
+        setGrantsQueryMs(null);
+        setGrantsQueryError(grantsResult.error);
+        return;
+      }
+
+      const rows = grantsResult.rows.map((row) => String(Object.values(row)[0] ?? ''));
+      setGrantsRows(rows);
+      setGrantsQueryMs(grantsResult.executionTimeMs);
+      setGrantsQueryError(null);
+    },
+    [execute, toSqlUserSpec],
+  );
+
   const runWithActionLoading = useCallback(
     async (message: string, action: () => void) => {
       startLoading(message);
@@ -326,9 +413,20 @@ export default function SandboxPage() {
       setShowDatabases(false);
       setShowUsers(false);
       setShowTriggersPanel(false);
+      setShowProceduresPanel(false);
+      setShowSecurityPanel(false);
       setTriggerRows([]);
       setTriggerQueryError(null);
       setTriggerQueryMs(null);
+      setProcedureRows([]);
+      setProcedureQueryError(null);
+      setProcedureQueryMs(null);
+      setSelectedProcedureName(null);
+      setSelectedProcedureSql(null);
+      setSelectedSecurityUser('');
+      setGrantsRows([]);
+      setGrantsQueryError(null);
+      setGrantsQueryMs(null);
     });
   }, [reset, runWithActionLoading, store]);
 
@@ -537,6 +635,43 @@ export default function SandboxPage() {
                   {triggerRows.length}
                 </span>
               )}
+            </button>
+
+            {/* Procedures */}
+            <button
+              onClick={() => {
+                if (!showProceduresPanel) {
+                  loadProcedures();
+                }
+                setShowProceduresPanel((v) => !v);
+              }}
+              disabled={!isReady}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1.5 text-[11px] font-medium text-fuchsia-300 transition-all hover:border-fuchsia-500/50 hover:bg-fuchsia-500/20 disabled:opacity-40"
+            >
+              <ScrollText className="h-3.5 w-3.5" />
+              Procedures
+              {procedureRows.length > 0 && (
+                <span className="rounded-full bg-fuchsia-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-200">
+                  {procedureRows.length}
+                </span>
+              )}
+            </button>
+
+            {/* Security */}
+            <button
+              onClick={() => {
+                if (!showSecurityPanel) {
+                  const seedUser = activeUser || users[0] || 'admin@localhost';
+                  setSelectedSecurityUser(seedUser);
+                  loadGrantsForUser(seedUser);
+                }
+                setShowSecurityPanel((v) => !v);
+              }}
+              disabled={!isReady}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-medium text-amber-300 transition-all hover:border-amber-500/50 hover:bg-amber-500/20 disabled:opacity-40"
+            >
+              <Shield className="h-3.5 w-3.5" />
+              Security
             </button>
 
             {/* Clear */}
@@ -792,6 +927,180 @@ export default function SandboxPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showProceduresPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+          <button
+            aria-label="Close procedure inspector"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowProceduresPanel(false)}
+          />
+
+          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-fuchsia-500/25 bg-gradient-to-br from-fuchsia-500/10 via-zinc-900/95 to-zinc-950 p-4 shadow-2xl shadow-black/60 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-fuchsia-100">Procedure Inspector</h3>
+                <p className="text-[11px] text-fuchsia-200/70">
+                  {procedureRows.length} procedure{procedureRows.length === 1 ? '' : 's'}
+                  {procedureQueryMs !== null && ` · ${procedureQueryMs.toFixed(1)}ms`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={loadProcedures}
+                  className="rounded-lg border border-fuchsia-400/35 bg-fuchsia-500/10 px-2.5 py-1 text-[11px] font-medium text-fuchsia-100 transition hover:bg-fuchsia-500/20"
+                >
+                  Refresh
+                </button>
+                <button
+                  onClick={() => setShowProceduresPanel(false)}
+                  className="rounded-lg border border-zinc-700/70 bg-zinc-900/60 p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                  aria-label="Close procedure inspector"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {procedureQueryError ? (
+              <SqlErrorAlert error={procedureQueryError} compact />
+            ) : procedureRows.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-fuchsia-500/25 bg-zinc-950/50 px-4 py-6 text-center text-sm text-zinc-400">
+                No procedures found.
+              </div>
+            ) : (
+              <div className="grid max-h-[65vh] grid-cols-1 gap-3 overflow-hidden lg:grid-cols-3">
+                <div className="overflow-y-auto rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-2 lg:col-span-1">
+                  <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Procedures</div>
+                  <div className="space-y-1">
+                    {procedureRows.map((proc) => {
+                      const qualifiedName = `${proc.Db}.${proc.Name}`;
+                      const isSelected = selectedProcedureName === qualifiedName;
+                      return (
+                        <button
+                          key={qualifiedName}
+                          onClick={() => loadProcedureDefinition(proc)}
+                          className={cn(
+                            'w-full rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
+                            isSelected
+                              ? 'border-fuchsia-500/35 bg-fuchsia-500/15 text-fuchsia-100'
+                              : 'border-zinc-800/80 bg-zinc-900/70 text-zinc-300 hover:border-fuchsia-500/25 hover:bg-fuchsia-500/10',
+                          )}
+                        >
+                          <div className="truncate font-medium">{proc.Name}</div>
+                          <div className="mt-0.5 text-[10px] text-zinc-500">{proc.Db}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3 lg:col-span-2">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="text-[11px] text-zinc-400">
+                      {selectedProcedureName ? `Definition: ${selectedProcedureName}` : 'Select a procedure to view definition'}
+                    </div>
+                  </div>
+                  {selectedProcedureSql ? (
+                    <pre className="max-h-[48vh] overflow-auto rounded-lg border border-zinc-800/80 bg-zinc-950/90 p-2 font-mono text-[11px] leading-relaxed text-zinc-300">
+                      {selectedProcedureSql}
+                    </pre>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-zinc-700/70 bg-zinc-900/50 px-4 py-6 text-center text-sm text-zinc-500">
+                      Pick a procedure from the left.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showSecurityPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+          <button
+            aria-label="Close security inspector"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowSecurityPanel(false)}
+          />
+
+          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-500/10 via-zinc-900/95 to-zinc-950 p-4 shadow-2xl shadow-black/60 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-amber-100">Security Inspector</h3>
+                <p className="text-[11px] text-amber-200/70">
+                  {users.length} user{users.length === 1 ? '' : 's'}
+                  {grantsQueryMs !== null && ` · grants fetched in ${grantsQueryMs.toFixed(1)}ms`}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSecurityPanel(false)}
+                className="rounded-lg border border-zinc-700/70 bg-zinc-900/60 p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                aria-label="Close security inspector"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="grid max-h-[65vh] grid-cols-1 gap-3 overflow-hidden lg:grid-cols-3">
+              <div className="overflow-y-auto rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-2 lg:col-span-1">
+                <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Users</div>
+                <div className="space-y-1">
+                  {users.map((userName) => {
+                    const normalizedUser = userName.toLowerCase();
+                    const isSelected = selectedSecurityUser.toLowerCase() === normalizedUser;
+                    const isActive = activeUser.toLowerCase() === normalizedUser;
+                    return (
+                      <button
+                        key={userName}
+                        onClick={() => {
+                          setSelectedSecurityUser(userName);
+                          loadGrantsForUser(userName);
+                        }}
+                        className={cn(
+                          'w-full rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
+                          isSelected
+                            ? 'border-amber-500/35 bg-amber-500/15 text-amber-100'
+                            : 'border-zinc-800/80 bg-zinc-900/70 text-zinc-300 hover:border-amber-500/25 hover:bg-amber-500/10',
+                        )}
+                      >
+                        <div className="truncate font-medium">{userName}</div>
+                        <div className="mt-0.5 text-[10px] text-zinc-500">{isActive ? 'current session user' : 'available user'}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="overflow-y-auto rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3 lg:col-span-2">
+                <div className="mb-2 text-[11px] text-zinc-400">
+                  {selectedSecurityUser ? `Grants for ${selectedSecurityUser}` : 'Select a user to inspect grants'}
+                </div>
+
+                {grantsQueryError ? (
+                  <SqlErrorAlert error={grantsQueryError} compact />
+                ) : grantsRows.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-zinc-700/70 bg-zinc-900/50 px-4 py-6 text-center text-sm text-zinc-500">
+                    No grants to show.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {grantsRows.map((grant, index) => (
+                      <pre
+                        key={`${grant}-${index}`}
+                        className="overflow-x-auto rounded-lg border border-zinc-800/80 bg-zinc-950/90 p-2 font-mono text-[11px] leading-relaxed text-zinc-300"
+                      >
+                        {grant}
+                      </pre>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
