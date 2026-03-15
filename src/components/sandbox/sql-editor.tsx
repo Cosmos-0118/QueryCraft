@@ -6,7 +6,13 @@ import { EditorState } from '@codemirror/state';
 import { sql, MySQL } from '@codemirror/lang-sql';
 import { defaultKeymap } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { autocompletion, type CompletionContext, type Completion } from '@codemirror/autocomplete';
+import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  type CompletionContext,
+  type Completion,
+} from '@codemirror/autocomplete';
 import type { TableSchema } from '@/types/database';
 
 // ── MySQL keywords (ALL CAPS, matching real MySQL style) ──────────
@@ -81,6 +87,7 @@ const SQL_KEYWORDS = [
   'SHOW ENGINE', 'SHOW ENGINES', 'SHOW STORAGE ENGINES',
   'SHOW PLUGINS', 'SHOW PRIVILEGES',
   'SHOW TRIGGERS', 'SHOW EVENTS',
+  'SHOW CREATE TRIGGER', 'SHOW CREATE PROCEDURE',
   'SHOW FUNCTION STATUS', 'SHOW PROCEDURE STATUS',
   'SHOW OPEN TABLES', 'SHOW MASTER STATUS', 'SHOW SLAVE STATUS',
   'SHOW BINARY LOGS', 'SHOW BINLOG EVENTS',
@@ -119,6 +126,8 @@ const SQL_KEYWORDS = [
   'LINES TERMINATED BY', 'STARTING BY',
   // User management
   'CREATE USER', 'DROP USER', 'ALTER USER', 'RENAME USER',
+  'CREATE USER IF NOT EXISTS', 'DROP USER IF EXISTS',
+  'SHOW USERS', 'SET USER', 'CHANGE USER',
   'SET PASSWORD', 'IDENTIFIED BY',
   'GRANT', 'REVOKE', 'FLUSH PRIVILEGES',
   'GRANT ALL PRIVILEGES', 'GRANT SELECT', 'GRANT INSERT',
@@ -152,6 +161,9 @@ const SQL_KEYWORDS = [
   'CHANGE MASTER TO', 'CHANGE REPLICATION SOURCE TO',
   'START SLAVE', 'STOP SLAVE', 'START REPLICA', 'STOP REPLICA',
   'MASTER_HOST', 'MASTER_USER', 'MASTER_PASSWORD', 'MASTER_LOG_FILE', 'MASTER_LOG_POS',
+  // PL/SQL style blocks
+  'EXCEPTION', 'WHEN OTHERS THEN', 'NO_DATA_FOUND',
+  'DBMS_OUTPUT.PUT_LINE', 'RAISE_APPLICATION_ERROR',
 ];
 
 const SQL_FUNCTIONS = [
@@ -442,19 +454,85 @@ function buildCompletionSource(tables: TableSchema[]) {
     // Get the full text to understand context
     const docText = ctx.state.doc.toString();
     const textBefore = docText.slice(0, ctx.pos).toUpperCase();
+    const currentStatement = textBefore.split(';').pop()?.split('\n').pop()?.trim() ?? '';
+    const statementTokens = currentStatement.split(/\s+/).filter(Boolean);
+    const contextTokens = statementTokens.length > 1 ? statementTokens.slice(0, -1) : [];
+
+    const matchesCommandByContext = (candidate: string): boolean => {
+      if (contextTokens.length === 0 || typed.length === 0) return false;
+
+      const candidateTokens = candidate.toUpperCase().split(/\s+/).filter(Boolean);
+      if (candidateTokens.length <= contextTokens.length) return false;
+
+      for (let i = 0; i < contextTokens.length; i += 1) {
+        if (candidateTokens[i] !== contextTokens[i]) return false;
+      }
+
+      return candidateTokens[contextTokens.length].startsWith(typed.toUpperCase());
+    };
+
+    const buildContextualTail = (candidate: string): string | null => {
+      if (contextTokens.length === 0) return null;
+      const candidateTokens = candidate.split(/\s+/).filter(Boolean);
+      if (candidateTokens.length <= contextTokens.length) return null;
+
+      for (let i = 0; i < contextTokens.length; i += 1) {
+        if (candidateTokens[i]?.toUpperCase() !== contextTokens[i]) return null;
+      }
+
+      return candidateTokens.slice(contextTokens.length).join(' ');
+    };
 
     // Determine context: after FROM/JOIN → boost tables; after SELECT/WHERE/ON → boost columns
     const isAfterFrom = /(?:FROM|JOIN|INTO|UPDATE|TABLE)\s+\w*$/i.test(textBefore);
     const isAfterSelect = /(?:SELECT|WHERE|ON|BY|HAVING|SET|AND|OR)\s+\w*$/i.test(textBefore);
+    const isShowContext = /\bSHOW\s+\w*$/i.test(textBefore);
+    const isCreateContext = /\bCREATE\s+\w*$/i.test(textBefore);
+    const isGrantContext = /\bGRANT\s+\w*$/i.test(textBefore);
+    const isPlSqlContext = /\b(DECLARE|BEGIN|EXCEPTION|WHEN|DBMS_OUTPUT)\b[\s\S]*$/i.test(textBefore);
 
     // SQL Keywords
     for (const kw of SQL_KEYWORDS) {
       const kwLower = kw.toLowerCase().replace(/\s+/g, '');
-      if (kwLower.startsWith(typed.replace(/\s+/g, '')) || kw.toLowerCase().startsWith(typed)) {
+      const typedNormalized = typed.replace(/\s+/g, '');
+      const kwUpper = kw.toUpperCase();
+
+      const baseMatch = kwLower.startsWith(typedNormalized) || kw.toLowerCase().startsWith(typed);
+      const contextualTokenMatch = matchesCommandByContext(kw);
+
+      if (baseMatch || contextualTokenMatch) {
+        const isShowKeyword = kwUpper.startsWith('SHOW ');
+        const isCreateKeyword = kwUpper.startsWith('CREATE ');
+        const isGrantKeyword = kwUpper.startsWith('GRANT ') || kwUpper.startsWith('REVOKE ');
+        const isPlSqlKeyword =
+          kwUpper.includes('EXCEPTION') ||
+          kwUpper.includes('NO_DATA_FOUND') ||
+          kwUpper.includes('DBMS_OUTPUT') ||
+          kwUpper.includes('RAISE_APPLICATION_ERROR');
+
+        let boost = isAfterFrom || isAfterSelect ? -1 : 2;
+        if (contextTokens.length > 0) {
+          // Prefer command-continuation completions (e.g., SHOW TABLES) over unrelated bare keywords.
+          boost += contextualTokenMatch ? 20 : -8;
+        }
+        if (isShowContext && isShowKeyword) boost += 4;
+        if (isCreateContext && isCreateKeyword) boost += 4;
+        if (isGrantContext && isGrantKeyword) boost += 4;
+        if (isPlSqlContext && isPlSqlKeyword) boost += 4;
+
         options.push({
           label: kw,
           type: 'keyword',
-          boost: isAfterFrom || isAfterSelect ? -1 : 2,
+          apply: contextualTokenMatch
+            ? (view, _completion, insertFrom, insertTo) => {
+                const tail = buildContextualTail(kw) ?? kw;
+                view.dispatch({
+                  changes: { from: insertFrom, to: insertTo, insert: tail },
+                  selection: { anchor: insertFrom + tail.length },
+                });
+              }
+            : undefined,
+          boost,
         });
       }
     }
@@ -468,7 +546,15 @@ function buildCompletionSource(tables: TableSchema[]) {
           detail: fn.detail,
           type: 'function',
           info: fn.info,
-          apply: fn.label + '(',
+          apply: (view, _completion, from, to) => {
+            const insert = `${fn.label}()`;
+            const cursorPos = from + fn.label.length + 1;
+
+            view.dispatch({
+              changes: { from, to, insert },
+              selection: { anchor: cursorPos },
+            });
+          },
           boost: isAfterSelect ? 2 : 0,
         });
       }
@@ -507,7 +593,8 @@ function buildCompletionSource(tables: TableSchema[]) {
     }
 
     // Common snippets
-    const snippets: { label: string; template: string; detail: string; info: string }[] = [
+    const firstTable = tables[0]?.name ?? 'your_table';
+    const snippets: { label: string; template: string; detail: string; info: string; category?: 'show' | 'create' | 'grant' | 'plsql' }[] = [
       { label: 'SELECT *', template: 'SELECT * FROM ', detail: 'snippet', info: 'Select all columns from a table' },
       { label: 'SELECT COUNT', template: 'SELECT COUNT(*) FROM ', detail: 'snippet', info: 'Count all rows in a table' },
       { label: 'INSERT INTO', template: 'INSERT INTO  () VALUES ();', detail: 'snippet', info: 'Insert a row into a table' },
@@ -516,16 +603,119 @@ function buildCompletionSource(tables: TableSchema[]) {
       { label: 'UPDATE SET', template: 'UPDATE  SET  =  WHERE ;', detail: 'snippet', info: 'Update rows in a table' },
       { label: 'DELETE FROM', template: 'DELETE FROM  WHERE ;', detail: 'snippet', info: 'Delete rows from a table' },
       { label: 'GROUP BY', template: 'SELECT , COUNT(*)\nFROM \nGROUP BY \nHAVING COUNT(*) > 1;', detail: 'snippet', info: 'Group with aggregate and filter' },
+      {
+        label: 'SHOW TRIGGERS',
+        template: 'SHOW TRIGGERS;',
+        detail: 'snippet',
+        info: 'List all triggers in current database',
+        category: 'show',
+      },
+      {
+        label: 'SHOW CREATE TRIGGER',
+        template: 'SHOW CREATE TRIGGER trigger_name;',
+        detail: 'snippet',
+        info: 'Show exact SQL definition for a trigger',
+        category: 'show',
+      },
+      {
+        label: 'CREATE TRIGGER (audit)',
+        template:
+          `CREATE TRIGGER trg_${firstTable}_ai\nAFTER INSERT ON ${firstTable}\nBEGIN\n  INSERT INTO audit_log(message) VALUES ('inserted:' || NEW.id);\nEND;`,
+        detail: 'snippet',
+        info: 'Create AFTER INSERT trigger template',
+        category: 'create',
+      },
+      {
+        label: 'CREATE PROCEDURE',
+        template:
+          `CREATE PROCEDURE proc_demo(IN p_id INT)\nBEGIN\n  UPDATE ${firstTable} SET id = id WHERE id = p_id;\nEND;`,
+        detail: 'snippet',
+        info: 'Create stored procedure template (IN params)',
+        category: 'create',
+      },
+      {
+        label: 'CALL PROCEDURE',
+        template: 'CALL proc_demo(1);',
+        detail: 'snippet',
+        info: 'Execute a stored procedure',
+        category: 'create',
+      },
+      {
+        label: 'SHOW PROCEDURE STATUS',
+        template: 'SHOW PROCEDURE STATUS;',
+        detail: 'snippet',
+        info: 'List available procedures',
+        category: 'show',
+      },
+      {
+        label: 'SHOW CREATE PROCEDURE',
+        template: 'SHOW CREATE PROCEDURE proc_demo;',
+        detail: 'snippet',
+        info: 'Show exact SQL definition for a procedure',
+        category: 'show',
+      },
+      {
+        label: 'CREATE USER + GRANT',
+        template:
+          "CREATE USER IF NOT EXISTS 'analyst'@'localhost' IDENTIFIED BY 'pass';\nGRANT SELECT, EXECUTE ON main.* TO 'analyst'@'localhost';\nFLUSH PRIVILEGES;",
+        detail: 'snippet',
+        info: 'Create a user and grant basic read + execute permissions',
+        category: 'grant',
+      },
+      {
+        label: 'SHOW USERS',
+        template: 'SHOW USERS;',
+        detail: 'snippet',
+        info: 'List all users in the virtual auth model',
+        category: 'show',
+      },
+      {
+        label: 'PL/SQL EXCEPTION block',
+        template:
+          `BEGIN\n  RAISE_APPLICATION_ERROR(-20001, 'boom');\nEXCEPTION\n  WHEN OTHERS THEN\n    DBMS_OUTPUT.PUT_LINE('handled');\nEND;`,
+        detail: 'snippet',
+        info: 'Anonymous block with EXCEPTION handling',
+        category: 'plsql',
+      },
+      {
+        label: 'PL/SQL CURSOR block',
+        template:
+          `DECLARE\n  CURSOR c_data IS SELECT id FROM ${firstTable};\n  v_id NUMBER;\nBEGIN\n  OPEN c_data;\n  FETCH c_data INTO v_id;\n  DBMS_OUTPUT.PUT_LINE(v_id);\n  CLOSE c_data;\nEND;`,
+        detail: 'snippet',
+        info: 'Anonymous block with cursor lifecycle',
+        category: 'plsql',
+      },
     ];
     for (const s of snippets) {
-      if (s.label.toLowerCase().replace(/\s+/g, '').startsWith(typed.replace(/\s+/g, ''))) {
+      const snippetBaseMatch = s.label.toLowerCase().replace(/\s+/g, '').startsWith(typed.replace(/\s+/g, ''));
+      const snippetContextMatch = matchesCommandByContext(s.label);
+
+      if (snippetBaseMatch || snippetContextMatch) {
+        let snippetBoost = typed.length >= 2 ? 3 : -2;
+        if (contextTokens.length > 0) {
+          snippetBoost += snippetContextMatch ? 20 : -8;
+        }
+        if (isShowContext && s.category === 'show') snippetBoost += 5;
+        if (isCreateContext && s.category === 'create') snippetBoost += 5;
+        if (isGrantContext && s.category === 'grant') snippetBoost += 5;
+        if (isPlSqlContext && s.category === 'plsql') snippetBoost += 5;
+
         options.push({
           label: s.label,
           detail: s.detail,
           type: 'text',
           info: s.info,
-          apply: s.template,
-          boost: typed.length >= 2 ? 3 : -2,
+          apply:
+            snippetContextMatch
+              ? (view, _completion, insertFrom, insertTo) => {
+                  const tail = buildContextualTail(s.template) ?? s.template;
+                  view.dispatch({
+                    changes: { from: insertFrom, to: insertTo, insert: tail },
+                    selection: { anchor: insertFrom + tail.length },
+                  });
+                }
+              : s.template,
+          boost: snippetBoost,
         });
       }
     }
@@ -570,6 +760,7 @@ export function SqlEditor({ value, onChange, onExecute, tables = [], executionFe
       doc: value,
       extensions: [
         sql({ dialect: MySQL, schema: schemaObj, upperCaseKeywords: true }),
+        closeBrackets(),
         autocompletion({
           override: [buildCompletionSource(tables)],
           activateOnTyping: true,
@@ -585,6 +776,7 @@ export function SqlEditor({ value, onChange, onExecute, tables = [], executionFe
               return true;
             },
           },
+          ...closeBracketsKeymap,
           ...defaultKeymap,
         ]),
         EditorView.updateListener.of((update) => {

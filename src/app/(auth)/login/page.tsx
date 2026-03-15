@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
+import { useLoadingStore } from '@/stores/loading-store';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Trash2, Download, Upload, Copy, Check, AlertTriangle } from 'lucide-react';
@@ -9,6 +10,7 @@ import { Plus, Trash2, Download, Upload, Copy, Check, AlertTriangle } from 'luci
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { start: startLoading, stop: stopLoading, setMessage } = useLoadingStore();
   const nextPath = searchParams.get('next');
   const { accounts, login, removeAccount, exportAccount, importAccount } = useAuthStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -41,12 +43,14 @@ function LoginPageContent() {
     if (!selectedId) return;
     setError('');
     setLoading(true);
+    startLoading('Signing you in...');
     try {
       await login(selectedId, password);
+      setMessage('Opening your workspace...');
       router.push(redirectTo);
     } catch (err) {
+      stopLoading();
       setError(err instanceof Error ? err.message : 'Login failed');
-    } finally {
       setLoading(false);
     }
   };

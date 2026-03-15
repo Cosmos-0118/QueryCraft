@@ -76,6 +76,28 @@ function classifyError(rawMessage: string): Classification {
     };
   }
 
+  if (lower.includes('access denied')) {
+    return {
+      code: 'QC_PERMISSION_DENIED',
+      category: 'permission',
+      title: 'Permission denied',
+      message: 'Access denied for this operation.',
+      hint: 'Switch to a user with the required privileges or GRANT the missing permission.',
+      recoverable: true,
+    };
+  }
+
+  if (lower.includes('cannot drop default admin user')) {
+    return {
+      code: 'QC_PROTECTED_ADMIN',
+      category: 'permission',
+      title: 'Protected admin user',
+      message: 'Cannot drop default admin user.',
+      hint: 'Create and use other accounts, but keep the default admin account intact.',
+      recoverable: true,
+    };
+  }
+
   if (lower.includes('no such table') || lower.includes("doesn't exist")) {
     return {
       code: 'QC_TABLE_NOT_FOUND',

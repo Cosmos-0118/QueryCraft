@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAlgebraStore } from '@/stores/algebra-store';
+import { useLoadingStore } from '@/stores/loading-store';
 import { useSqlEngine } from '@/hooks/use-sql-engine';
 import { parse, algebraToSQL } from '@/lib/engine/algebra-parser';
 import { evaluateAlgebra, buildContext } from '@/lib/engine/algebra-evaluator';
@@ -15,9 +16,9 @@ import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import type { QueryResult } from '@/types/database';
 import { cn } from '@/lib/utils/helpers';
 import {
-  GraduationCap,
-  Landmark,
   Database,
+  ChevronDown,
+  RotateCcw,
   Trash2,
   BookOpen,
   Sparkles,
@@ -60,11 +61,6 @@ function jsonToSQL(data: Record<string, Record<string, unknown>[]>): string {
   return statements.join('\n');
 }
 
-const DATASETS = [
-  { name: 'University', icon: GraduationCap, data: universityData as Record<string, unknown> },
-  { name: 'Banking', icon: Landmark, data: bankingData as Record<string, unknown> },
-];
-
 const UNIVERSITY_EXAMPLES = [
   { label: 'Select high GPA', expr: 'σ[gpa > 3.5](students)' },
   { label: 'Filter + project', expr: 'π[name](σ[gpa > 3.5](students))' },
@@ -84,16 +80,22 @@ const BANKING_EXAMPLES = [
 ];
 
 export default function AlgebraPage() {
-  const { isReady, execute, loadSQL, tables, refreshTables } = useSqlEngine();
+  const { isReady, execute, loadSQL, reset, tables, refreshTables, databases, activeDatabase, switchDatabase } =
+    useSqlEngine();
   const store = useAlgebraStore();
+  const { start: startLoading, stop: stopLoading } = useLoadingStore();
   const [browserOpen, setBrowserOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [activeDataset, setActiveDataset] = useState<string | null>(null);
+  const [showGroups, setShowGroups] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importSql, setImportSql] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [groupError, setGroupError] = useState<string | null>(null);
   const [inputFeedback, setInputFeedback] = useState<'idle' | 'success' | 'error'>('idle');
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const groupMenuRef = useRef<HTMLDivElement | null>(null);
+  const defaultsBootstrappedRef = useRef(false);
 
   const triggerInputFeedback = useCallback((feedback: 'success' | 'error') => {
     if (feedbackTimeoutRef.current) {
@@ -114,13 +116,117 @@ export default function AlgebraPage() {
     };
   }, []);
 
-  const handleLoadDataset = useCallback(
-    (name: string, data: Record<string, unknown>) => {
-      loadSQL(jsonToSQL(data as Record<string, Record<string, unknown>[]>));
-      setActiveDataset(name);
+  useEffect(() => {
+    const onClickOutside = (event: MouseEvent) => {
+      if (!groupMenuRef.current) return;
+      const target = event.target as Node;
+      if (!groupMenuRef.current.contains(target)) {
+        setShowGroups(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!isReady) {
+      defaultsBootstrappedRef.current = false;
+      return;
+    }
+
+    if (defaultsBootstrappedRef.current) return;
+    defaultsBootstrappedRef.current = true;
+
+    const initialActive = activeDatabase;
+    const defaults = [
+      { name: 'university', data: universityData as Record<string, unknown> },
+      { name: 'banking', data: bankingData as Record<string, unknown> },
+    ];
+
+    defaults.forEach((dataset) => {
+      execute(`CREATE DATABASE IF NOT EXISTS "${dataset.name}"`, { persist: false });
+      const useDb = switchDatabase(dataset.name);
+      if (useDb.error) return;
+
+      const tableCheck = execute('SHOW TABLES;');
+      if (!tableCheck.error && tableCheck.rowCount > 0) return;
+
+      loadSQL(jsonToSQL(dataset.data as Record<string, Record<string, unknown>[]>), { persist: false });
+    });
+
+    const switchedBack = switchDatabase(initialActive);
+    if (switchedBack.error) {
+      switchDatabase('main');
+    }
+  }, [activeDatabase, execute, isReady, loadSQL, switchDatabase]);
+
+  const handleCreateGroup = useCallback(() => {
+    setGroupError(null);
+    const rawName = window.prompt('Enter group name');
+    if (rawName === null) return;
+
+    const groupName = rawName.trim().toLowerCase();
+    if (!groupName) {
+      setGroupError('Group name is required.');
+      return;
+    }
+
+    if (!/^[a-z][a-z0-9_]*$/.test(groupName)) {
+      setGroupError('Use lowercase letters, numbers, and underscore only (must start with a letter).');
+      return;
+    }
+
+    const createRes = execute(`CREATE DATABASE IF NOT EXISTS "${groupName}"`);
+    if (createRes.error) {
+      setGroupError(createRes.error);
+      return;
+    }
+
+    const switchRes = switchDatabase(groupName);
+    if (switchRes.error) {
+      setGroupError(switchRes.error);
+      return;
+    }
+
+    setActiveDataset(null);
+    setShowGroups(false);
+  }, [execute, switchDatabase]);
+
+  const runWithActionLoading = useCallback(
+    async (message: string, action: () => void) => {
+      startLoading(message);
+      try {
+        action();
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      } finally {
+        stopLoading();
+      }
     },
-    [loadSQL],
+    [startLoading, stopLoading],
   );
+
+  const handleClearInputOutput = useCallback(async () => {
+    await runWithActionLoading('Clearing expression and output…', () => {
+      store.clear();
+      setGroupError(null);
+      setImportError(null);
+    });
+  }, [runWithActionLoading, store]);
+
+  const handleResetWorkspace = useCallback(async () => {
+    await runWithActionLoading('Resetting algebra workspace…', () => {
+      reset();
+      store.clear();
+      store.clearHistory();
+      setActiveDataset(null);
+      setShowGroups(false);
+      setShowImport(false);
+      setImportSql('');
+      setImportError(null);
+      setGroupError(null);
+    });
+  }, [reset, runWithActionLoading, store]);
 
   const handleEvaluate = useCallback(() => {
     store.setError(null);
@@ -210,25 +316,80 @@ export default function AlgebraPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {DATASETS.map((ds) => {
-              const Icon = ds.icon;
-              return (
-                <button
-                  key={ds.name}
-                  onClick={() => handleLoadDataset(ds.name, ds.data)}
-                  disabled={!isReady}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all disabled:opacity-40',
-                    activeDataset === ds.name
-                      ? 'border-violet-500/40 bg-violet-500/15 text-violet-300'
-                      : 'border-zinc-700/50 text-zinc-400 hover:border-zinc-600 hover:bg-zinc-800/60 hover:text-zinc-300',
-                  )}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {ds.name}
-                </button>
-              );
-            })}
+            <div className="relative" ref={groupMenuRef}>
+              <button
+                onClick={() => setShowGroups((v) => !v)}
+                disabled={!isReady}
+                className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/60 bg-zinc-900/60 px-3 py-2 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-700 hover:bg-zinc-800/60 disabled:opacity-40"
+              >
+                <Database className="h-3.5 w-3.5 text-sky-300" />
+                Groups
+                <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400">
+                  {activeDatabase}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+              </button>
+
+              {showGroups && (
+                <div className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-zinc-800/70 bg-zinc-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-md">
+                  <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                    Table groups
+                  </div>
+                  <button
+                    onClick={handleCreateGroup}
+                    className="mb-2 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-2 text-left text-xs font-medium text-emerald-300 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20"
+                  >
+                    + Create Group
+                  </button>
+                  <div className="space-y-1">
+                    {databases.map((groupName) => {
+                      const normalized = groupName.toLowerCase();
+                      const isSystem = normalized === 'main' || normalized === 'university' || normalized === 'banking';
+                      const isActive = activeDatabase === groupName;
+                      return (
+                        <button
+                          key={groupName}
+                          onClick={() => {
+                            const res = switchDatabase(groupName);
+                            if (!res.error) {
+                              setShowGroups(false);
+                              setActiveDataset(
+                                normalized === 'banking'
+                                  ? 'Banking'
+                                  : normalized === 'university'
+                                    ? 'University'
+                                    : null,
+                              );
+                            }
+                          }}
+                          className={cn(
+                            'flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
+                            isActive
+                              ? isSystem
+                                ? 'border-sky-500/35 bg-sky-500/12 text-sky-100'
+                                : 'border-violet-500/35 bg-violet-500/14 text-violet-100'
+                              : isSystem
+                                ? 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-sky-500/25 hover:bg-sky-500/8'
+                                : 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-violet-500/25 hover:bg-violet-500/8',
+                          )}
+                        >
+                          <span className="truncate font-medium">{groupName}</span>
+                          <span
+                            className={cn(
+                              'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                              isSystem ? 'bg-sky-500/15 text-sky-300' : 'bg-violet-500/15 text-violet-300',
+                            )}
+                          >
+                            {isSystem ? 'system' : 'user'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="mx-1 h-5 w-px bg-zinc-700/50" />
             <button
               onClick={() => setCreateOpen(true)}
@@ -255,17 +416,27 @@ export default function AlgebraPage() {
               Browse Tables
             </button>
             <button
-              onClick={() => {
-                store.clear();
-                setActiveDataset(null);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10"
+              onClick={handleClearInputOutput}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Clear
             </button>
+            <button
+              onClick={handleResetWorkspace}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reset
+            </button>
           </div>
         </div>
+
+        {groupError && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {groupError}
+          </div>
+        )}
 
         {/* ── Import SQL Panel ─────────────── */}
         {showImport && (

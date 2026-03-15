@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSqlEngine } from '@/hooks/use-sql-engine';
 import { useSandboxStore } from '@/stores/sandbox-store';
 import { useSessionPersistence } from '@/hooks/use-session-persistence';
+import { useLoadingStore } from '@/stores/loading-store';
 import { SqlEditor } from '@/components/sandbox/sql-editor';
 import { SchemaBrowser } from '@/components/sandbox/schema-browser';
 
@@ -14,17 +15,19 @@ import { cn } from '@/lib/utils/helpers';
 import type { QueryResult } from '@/types/database';
 import {
   Terminal,
-  GraduationCap,
-  Landmark,
+  Database,
+  UserRound,
+  ChevronDown,
   Play,
   Download,
   Plus,
   ClipboardPaste,
   RotateCcw,
   CheckCircle2,
-  XCircle,
   Table2,
   History,
+  ListTree,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -55,22 +58,40 @@ function jsonToSQL(data: Record<string, Record<string, unknown>[]>): string {
   return statements.join('\n');
 }
 
-const DATASETS = [
-  { name: 'University', icon: GraduationCap, data: universityData as Record<string, unknown> },
-  { name: 'Banking', icon: Landmark, data: bankingData as Record<string, unknown> },
-];
-
 export default function SandboxPage() {
-  const { isReady, execute, loadSQL, reset, exportCSV, tables, refreshTables } = useSqlEngine();
+  const {
+    isReady,
+    execute,
+    loadSQL,
+    reset,
+    exportCSV,
+    tables,
+    refreshTables,
+    databases,
+    activeDatabase,
+    switchDatabase,
+    users,
+    activeUser,
+    switchUser,
+  } = useSqlEngine();
   const store = useSandboxStore();
+  const { start: startLoading, stop: stopLoading } = useLoadingStore();
   const [result, setResult] = useState<QueryResult | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [importSql, setImportSql] = useState('');
   const [importErrorResult, setImportErrorResult] = useState<QueryResult | null>(null);
   const [showImport, setShowImport] = useState(false);
-  const [activeDataset, setActiveDataset] = useState<string | null>(null);
+  const [showDatabases, setShowDatabases] = useState(false);
+  const [showUsers, setShowUsers] = useState(false);
   const [editorFeedback, setEditorFeedback] = useState<'idle' | 'success' | 'error'>('idle');
+  const [showTriggersPanel, setShowTriggersPanel] = useState(false);
+  const [triggerRows, setTriggerRows] = useState<Array<{ Trigger: string; Table: string; Statement: string }>>([]);
+  const [triggerQueryError, setTriggerQueryError] = useState<string | null>(null);
+  const [triggerQueryMs, setTriggerQueryMs] = useState<number | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dbMenuRef = useRef<HTMLDivElement | null>(null);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const defaultsBootstrappedRef = useRef(false);
 
   const triggerEditorFeedback = useCallback((feedback: 'success' | 'error') => {
     if (feedbackTimeoutRef.current) {
@@ -97,6 +118,117 @@ export default function SandboxPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!showTriggersPanel) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowTriggersPanel(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showTriggersPanel]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!dbMenuRef.current) return;
+      const target = event.target as Node;
+
+      if (!dbMenuRef.current.contains(target)) {
+        setShowDatabases(false);
+      }
+
+      if (userMenuRef.current && !userMenuRef.current.contains(target)) {
+        setShowUsers(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!isReady) {
+      defaultsBootstrappedRef.current = false;
+      return;
+    }
+
+    if (defaultsBootstrappedRef.current) return;
+    defaultsBootstrappedRef.current = true;
+
+    const bootstrapDefaults = () => {
+      const initialActive = activeDatabase;
+
+      const defaults = [
+        { name: 'university', data: universityData as Record<string, unknown> },
+        { name: 'banking', data: bankingData as Record<string, unknown> },
+      ];
+
+      defaults.forEach((dataset) => {
+        const createDb = execute(`CREATE DATABASE IF NOT EXISTS "${dataset.name}"`, { persist: false });
+        if (createDb.error) return;
+
+        const useDb = switchDatabase(dataset.name);
+        if (useDb.error) return;
+
+        const tableCheck = execute('SHOW TABLES;');
+        const hasTables = !tableCheck.error && tableCheck.rowCount > 0;
+        if (hasTables) return;
+
+        const sql = jsonToSQL(dataset.data as Record<string, Record<string, unknown>[]>);
+        loadSQL(sql, { persist: false });
+      });
+
+      // Cleanup for default dataset tables that accidentally landed in `main`.
+      // We only remove known default tables and only when they exist in their target DBs.
+      const parseTableNames = (res: QueryResult): Set<string> => {
+        if (res.error || res.rowCount === 0) return new Set();
+        const names = new Set<string>();
+        for (const row of res.rows) {
+          const firstVal = Object.values(row)[0];
+          if (typeof firstVal === 'string' && firstVal.trim()) names.add(firstVal);
+        }
+        return names;
+      };
+
+      const datasetTableMap = new Map<string, Set<string>>();
+      for (const dataset of defaults) {
+        const switched = switchDatabase(dataset.name);
+        if (switched.error) continue;
+        const rows = execute('SHOW TABLES;');
+        datasetTableMap.set(dataset.name, parseTableNames(rows));
+      }
+
+      const switchedMain = switchDatabase('main');
+      if (!switchedMain.error) {
+        const mainTables = parseTableNames(execute('SHOW TABLES;'));
+
+        const knownDefaultTables = new Set<string>();
+        for (const dataset of defaults) {
+          for (const table of Object.keys(dataset.data as Record<string, unknown>)) {
+            knownDefaultTables.add(table);
+          }
+        }
+
+        for (const tableName of knownDefaultTables) {
+          if (!mainTables.has(tableName)) continue;
+
+          const existsInTargetDb = Array.from(datasetTableMap.values()).some((set) => set.has(tableName));
+          if (!existsInTargetDb) continue;
+
+          execute(`DROP TABLE IF EXISTS "${tableName}";`, { persist: false });
+        }
+      }
+
+      const switchedBack = switchDatabase(initialActive);
+      if (switchedBack.error) switchDatabase('main');
+    };
+
+    bootstrapDefaults();
+  }, [activeDatabase, databases, execute, isReady, loadSQL, switchDatabase]);
+
   const handleExecute = useCallback(() => {
     const q = store.query.trim();
     if (!q) return;
@@ -110,19 +242,6 @@ export default function SandboxPage() {
     }
   }, [execute, store, triggerEditorFeedback]);
 
-  const handleLoadDataset = useCallback(
-    (name: string, data: Record<string, unknown>) => {
-      const sql = jsonToSQL(data as Record<string, Record<string, unknown>[]>);
-      const res = loadSQL(sql);
-      setResult(res);
-      setActiveDataset(name);
-      if (!res.error) {
-        store.setQuery('-- Dataset loaded! Try:\nSELECT * FROM ' + Object.keys(data)[0] + ' LIMIT 10;');
-      }
-    },
-    [loadSQL, store],
-  );
-
   const handleImportSQL = useCallback(() => {
     setImportErrorResult(null);
     const sql = importSql.trim();
@@ -135,7 +254,6 @@ export default function SandboxPage() {
     }
     setShowImport(false);
     setImportSql('');
-    setActiveDataset(null);
     const tableMatch = sql.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/i);
     if (tableMatch) {
       store.setQuery(`SELECT * FROM "${tableMatch[1]}" LIMIT 20;`);
@@ -153,6 +271,66 @@ export default function SandboxPage() {
     a.click();
     URL.revokeObjectURL(url);
   }, [result, exportCSV]);
+
+  const loadTriggers = useCallback(() => {
+    const triggerResult = execute('SHOW TRIGGERS;');
+    if (triggerResult.error) {
+      setTriggerRows([]);
+      setTriggerQueryMs(null);
+      setTriggerQueryError(triggerResult.error);
+      return;
+    }
+
+    const rows = triggerResult.rows.map((row) => ({
+      Trigger: String(row.Trigger ?? ''),
+      Table: String(row.Table ?? ''),
+      Statement: String(row.Statement ?? ''),
+    }));
+
+    setTriggerRows(rows);
+    setTriggerQueryMs(triggerResult.executionTimeMs);
+    setTriggerQueryError(null);
+  }, [execute]);
+
+  const runWithActionLoading = useCallback(
+    async (message: string, action: () => void) => {
+      startLoading(message);
+      try {
+        action();
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      } finally {
+        stopLoading();
+      }
+    },
+    [startLoading, stopLoading],
+  );
+
+  const handleClearInputOutput = useCallback(async () => {
+    await runWithActionLoading('Clearing editor and output…', () => {
+      store.setQuery('');
+      store.setResults(null);
+      setResult(null);
+    });
+  }, [runWithActionLoading, store]);
+
+  const handleResetWorkspace = useCallback(async () => {
+    await runWithActionLoading('Resetting sandbox workspace…', () => {
+      reset();
+      store.setQuery('');
+      store.setResults(null);
+      store.clearHistory();
+      setResult(null);
+      setShowImport(false);
+      setImportSql('');
+      setImportErrorResult(null);
+      setShowDatabases(false);
+      setShowUsers(false);
+      setShowTriggersPanel(false);
+      setTriggerRows([]);
+      setTriggerQueryError(null);
+      setTriggerQueryMs(null);
+    });
+  }, [reset, runWithActionLoading, store]);
 
   const tableCount = tables.length;
   const historyCount = store.queryHistory.length;
@@ -185,27 +363,138 @@ export default function SandboxPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Dataset presets */}
-            <div className="flex items-center gap-0.5 rounded-xl border border-zinc-800/60 bg-zinc-900/60 p-1 backdrop-blur-sm">
-              {DATASETS.map((ds) => {
-                const Icon = ds.icon;
-                return (
-                  <button
-                    key={ds.name}
-                    onClick={() => handleLoadDataset(ds.name, ds.data)}
-                    disabled={!isReady}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all duration-150 disabled:opacity-40',
-                      activeDataset === ds.name
-                        ? 'bg-zinc-800/80 text-emerald-300'
-                        : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200',
-                    )}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {ds.name}
-                  </button>
-                );
-              })}
+            {/* Databases dropdown */}
+            <div className="relative" ref={dbMenuRef}>
+              <button
+                onClick={() => {
+                  setShowUsers(false);
+                  setShowDatabases((v) => !v);
+                }}
+                disabled={!isReady}
+                className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/60 bg-zinc-900/60 px-3 py-2 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-700 hover:bg-zinc-800/60 disabled:opacity-40"
+              >
+                <Database className="h-3.5 w-3.5 text-sky-300" />
+                Databases
+                <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400">
+                  {activeDatabase}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+              </button>
+
+              {showDatabases && (
+                <div className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-zinc-800/70 bg-zinc-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-md">
+                  <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                    Available databases
+                  </div>
+                  <div className="space-y-1">
+                    {databases.map((dbName) => {
+                      const normalizedDbName = dbName.toLowerCase();
+                      const isSystemDb = normalizedDbName === 'main' || normalizedDbName === 'university' || normalizedDbName === 'banking';
+                      const isActiveDb = activeDatabase === dbName;
+                      return (
+                        <button
+                          key={dbName}
+                          onClick={() => {
+                            const res = switchDatabase(dbName);
+                            if (!res.error) {
+                              setShowDatabases(false);
+                            }
+                          }}
+                          className={cn(
+                            'flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
+                            isActiveDb
+                              ? isSystemDb
+                                ? 'border-sky-500/35 bg-sky-500/12 text-sky-100'
+                                : 'border-violet-500/35 bg-violet-500/14 text-violet-100'
+                              : isSystemDb
+                                ? 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-sky-500/25 hover:bg-sky-500/8'
+                                : 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-violet-500/25 hover:bg-violet-500/8',
+                          )}
+                        >
+                          <span className="truncate font-medium">{dbName}</span>
+                          <span
+                            className={cn(
+                              'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                              isSystemDb
+                                ? 'bg-sky-500/15 text-sky-300'
+                                : 'bg-violet-500/15 text-violet-300',
+                            )}
+                          >
+                            {isSystemDb ? 'system' : 'user'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Users dropdown */}
+            <div className="relative" ref={userMenuRef}>
+              <button
+                onClick={() => {
+                  setShowDatabases(false);
+                  setShowUsers((v) => !v);
+                }}
+                disabled={!isReady}
+                className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/60 bg-zinc-900/60 px-3 py-2 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-700 hover:bg-zinc-800/60 disabled:opacity-40"
+              >
+                <UserRound className="h-3.5 w-3.5 text-amber-300" />
+                Users
+                <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400">
+                  {activeUser}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+              </button>
+
+              {showUsers && (
+                <div className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-zinc-800/70 bg-zinc-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-md">
+                  <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                    Available users
+                  </div>
+                  <div className="space-y-1">
+                    {users.map((userName) => {
+                      const normalizedUser = userName.toLowerCase();
+                      const isAdmin = normalizedUser === 'admin' || normalizedUser === 'admin@localhost';
+                      const isActive = activeUser.toLowerCase() === normalizedUser;
+                      return (
+                        <button
+                          key={userName}
+                          onClick={() => {
+                            const res = switchUser(userName);
+                            if (!res.error) {
+                              setShowUsers(false);
+                            }
+                          }}
+                          className={cn(
+                            'flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
+                            isActive
+                              ? isAdmin
+                                ? 'border-amber-500/35 bg-amber-500/12 text-amber-100'
+                                : 'border-teal-500/35 bg-teal-500/14 text-teal-100'
+                              : isAdmin
+                                ? 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-amber-500/25 hover:bg-amber-500/8'
+                                : 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-teal-500/25 hover:bg-teal-500/8',
+                          )}
+                        >
+                          <span className="truncate font-medium">{userName}</span>
+                          <span
+                            className={cn(
+                              'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                              isAdmin
+                                ? 'bg-amber-500/15 text-amber-300'
+                                : 'bg-teal-500/15 text-teal-300',
+                            )}
+                          >
+                            {isAdmin ? 'admin' : 'user'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mx-0.5 h-5 w-px bg-zinc-700/50" />
@@ -230,10 +519,38 @@ export default function SandboxPage() {
               Import SQL
             </button>
 
+            {/* Triggers */}
+            <button
+              onClick={() => {
+                if (!showTriggersPanel) {
+                  loadTriggers();
+                }
+                setShowTriggersPanel((v) => !v);
+              }}
+              disabled={!isReady}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-[11px] font-medium text-cyan-300 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/20 disabled:opacity-40"
+            >
+              <ListTree className="h-3.5 w-3.5" />
+              Triggers
+              {triggerRows.length > 0 && (
+                <span className="rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-200">
+                  {triggerRows.length}
+                </span>
+              )}
+            </button>
+
+            {/* Clear */}
+            <button
+              onClick={handleClearInputOutput}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
+            >
+              Clear
+            </button>
+
             {/* Reset */}
             <button
-              onClick={() => { reset(); setActiveDataset(null); setResult(null); }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10"
+              onClick={handleResetWorkspace}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Reset
@@ -411,6 +728,73 @@ export default function SandboxPage() {
         execute={execute}
         onCreated={refreshTables}
       />
+
+      {showTriggersPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+          <button
+            aria-label="Close trigger inspector"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowTriggersPanel(false)}
+          />
+
+          <div className="relative z-10 w-full max-w-4xl rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-cyan-500/10 via-zinc-900/95 to-zinc-950 p-4 shadow-2xl shadow-black/60 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-cyan-100">Trigger Inspector</h3>
+                <p className="text-[11px] text-cyan-200/70">
+                  {triggerRows.length} trigger{triggerRows.length === 1 ? '' : 's'} in {activeDatabase}
+                  {triggerQueryMs !== null && ` · ${triggerQueryMs.toFixed(1)}ms`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={loadTriggers}
+                  className="rounded-lg border border-cyan-400/35 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-medium text-cyan-100 transition hover:bg-cyan-500/20"
+                >
+                  Refresh
+                </button>
+                <button
+                  onClick={() => setShowTriggersPanel(false)}
+                  className="rounded-lg border border-zinc-700/70 bg-zinc-900/60 p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                  aria-label="Close trigger inspector"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {triggerQueryError ? (
+              <SqlErrorAlert error={triggerQueryError} compact />
+            ) : triggerRows.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-cyan-500/25 bg-zinc-950/50 px-4 py-6 text-center text-sm text-zinc-400">
+                No triggers found in this database.
+              </div>
+            ) : (
+              <div className="max-h-[65vh] space-y-2 overflow-y-auto pr-1">
+                {triggerRows.map((trigger) => (
+                  <div
+                    key={`${trigger.Trigger}-${trigger.Table}`}
+                    className="rounded-xl border border-cyan-500/20 bg-zinc-950/60 p-3"
+                  >
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
+                        {trigger.Trigger}
+                      </span>
+                      <span className="text-[11px] text-zinc-400">on table</span>
+                      <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 font-mono text-[10px] text-zinc-200">
+                        {trigger.Table}
+                      </span>
+                    </div>
+                    <pre className="overflow-x-auto rounded-lg border border-zinc-800/80 bg-zinc-950/80 p-2 font-mono text-[11px] leading-relaxed text-zinc-300">
+                      {trigger.Statement}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
