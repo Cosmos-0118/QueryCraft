@@ -1,4 +1,4 @@
-import type { QueryResult, TableSchema, Row } from '@/types/database';
+import type { QueryResult, StatementQueryResult, TableSchema, Row } from '@/types/database';
 import { sqlErrorEngine } from '@/lib/engine/sql-error-engine';
 import { loadSqlJs, resetSqlJsLoader } from './sqljs-loader';
 import { stripComments } from './utils';
@@ -19,6 +19,17 @@ interface StoredProcedure {
   params: ProcedureParam[];
   body: string;
   definition: string;
+}
+
+interface TableColumnMeta {
+  name: string;
+  definition: string;
+}
+
+interface RebuildColumnSpec {
+  name: string;
+  definition: string;
+  sourceName?: string;
 }
 
 export class SqlExecutor {
@@ -92,6 +103,560 @@ export class SqlExecutor {
     return out;
   }
 
+  private quoteIdentifier(identifier: string): string {
+    return `"${identifier.replace(/"/g, '""')}"`;
+  }
+
+  private parseLeadingIdentifier(raw: string): { identifier: string; rest: string } | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    let match = trimmed.match(/^`([^`]+)`\s*([\s\S]*)$/);
+    if (match) return { identifier: match[1], rest: match[2] ?? '' };
+
+    match = trimmed.match(/^"([^"]+)"\s*([\s\S]*)$/);
+    if (match) return { identifier: match[1], rest: match[2] ?? '' };
+
+    match = trimmed.match(/^'([^']+)'\s*([\s\S]*)$/);
+    if (match) return { identifier: match[1], rest: match[2] ?? '' };
+
+    match = trimmed.match(/^([A-Za-z_][\w$]*)\s*([\s\S]*)$/);
+    if (match) return { identifier: match[1], rest: match[2] ?? '' };
+
+    return null;
+  }
+
+  private splitTopLevelComma(raw: string): string[] {
+    const out: string[] = [];
+    let current = '';
+    let depth = 0;
+    let inSingle = false;
+    let inDouble = false;
+    let inBacktick = false;
+
+    for (let i = 0; i < raw.length; i += 1) {
+      const ch = raw[i];
+
+      if (ch === "'" && !inDouble && !inBacktick) {
+        inSingle = !inSingle;
+        current += ch;
+        continue;
+      }
+      if (ch === '"' && !inSingle && !inBacktick) {
+        inDouble = !inDouble;
+        current += ch;
+        continue;
+      }
+      if (ch === '`' && !inSingle && !inDouble) {
+        inBacktick = !inBacktick;
+        current += ch;
+        continue;
+      }
+
+      if (!inSingle && !inDouble && !inBacktick) {
+        if (ch === '(') depth += 1;
+        if (ch === ')') depth = Math.max(0, depth - 1);
+        if (ch === ',' && depth === 0) {
+          const piece = current.trim();
+          if (piece) out.push(piece);
+          current = '';
+          continue;
+        }
+      }
+
+      current += ch;
+    }
+
+    const tail = current.trim();
+    if (tail) out.push(tail);
+    return out;
+  }
+
+  private buildColumnDefinitionFromPragma(row: unknown[]): string {
+    const name = String(row[1] ?? '');
+    const type = String(row[2] ?? 'TEXT').trim() || 'TEXT';
+    const notNull = Number(row[3] ?? 0) === 1;
+    const defaultValue = row[4];
+    const primaryKey = Number(row[5] ?? 0) === 1;
+
+    let definition = `${this.quoteIdentifier(name)} ${type}`;
+    if (primaryKey) definition += ' PRIMARY KEY';
+    if (notNull) definition += ' NOT NULL';
+    if (defaultValue !== null && defaultValue !== undefined && String(defaultValue).trim() !== '') {
+      definition += ` DEFAULT ${String(defaultValue)}`;
+    }
+    return definition;
+  }
+
+  private getTableColumnMeta(tableName: string): TableColumnMeta[] {
+    const activeDb = this.getActiveDb();
+    if (!activeDb) return [];
+
+    const pragma = activeDb.exec(`PRAGMA table_info(${this.quoteIdentifier(tableName)})`);
+    if (pragma.length === 0 || pragma[0].values.length === 0) return [];
+
+    return pragma[0].values.map((row) => ({
+      name: String(row[1] ?? ''),
+      definition: this.buildColumnDefinitionFromPragma(row),
+    }));
+  }
+
+  private normalizeAlterColumnDefinition(rawDefinition: string): string {
+    const activeDb = this.getActiveDb();
+    if (!activeDb) return rawDefinition.trim();
+
+    const dummy = `CREATE TABLE __qc_alter_norm (${rawDefinition.trim()})`;
+    const translated = translateMySQL(
+      dummy,
+      activeDb,
+      this.activeDatabase,
+      this.getCurrentUserDisplay(),
+    ).sql;
+
+    if (!translated) return rawDefinition.trim();
+    const m = translated.match(/^CREATE\s+TABLE\s+__qc_alter_norm\s*\(([^]*)\)$/i);
+    return (m?.[1] ?? rawDefinition).trim();
+  }
+
+  private rebuildTableWithSpec(
+    tableName: string,
+    columns: RebuildColumnSpec[],
+    rawSql: string,
+    startTime: number,
+  ): QueryResult {
+    const activeDb = this.getActiveDb();
+    if (!activeDb) {
+      return sqlErrorEngine.fromMessage('Database not initialized. Call init() first.', {
+        sql: rawSql,
+        startTime,
+      });
+    }
+
+    const oldTableSql = this.quoteIdentifier(tableName);
+    const tempTable = `__qc_tmp_${tableName}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const tempTableSql = this.quoteIdentifier(tempTable);
+
+    const definitions = columns.map((column) => column.definition.trim());
+    const insertColumns: string[] = [];
+    const selectColumns: string[] = [];
+    for (const column of columns) {
+      if (!column.sourceName) continue;
+      insertColumns.push(this.quoteIdentifier(column.name));
+      selectColumns.push(this.quoteIdentifier(column.sourceName));
+    }
+
+    try {
+      activeDb.run('BEGIN');
+      activeDb.run(`CREATE TABLE ${tempTableSql} (${definitions.join(', ')})`);
+      if (insertColumns.length > 0) {
+        activeDb.run(
+          `INSERT INTO ${tempTableSql} (${insertColumns.join(', ')}) SELECT ${selectColumns.join(', ')} FROM ${oldTableSql}`,
+        );
+      }
+      activeDb.run(`DROP TABLE ${oldTableSql}`);
+      activeDb.run(`ALTER TABLE ${tempTableSql} RENAME TO ${oldTableSql}`);
+      activeDb.run('COMMIT');
+
+      return {
+        columns: [],
+        rows: [],
+        rowCount: 0,
+        executionTimeMs: performance.now() - startTime,
+      };
+    } catch (error) {
+      try {
+        activeDb.run('ROLLBACK');
+      } catch {
+        // ignore rollback failure
+      }
+
+      return sqlErrorEngine.fromUnknownError(error, {
+        sql: rawSql,
+        startTime,
+      });
+    }
+  }
+
+  private replaceLeadingIdentifier(definition: string, nextName: string): string {
+    const parsed = this.parseLeadingIdentifier(definition);
+    if (!parsed) return definition;
+    return `${this.quoteIdentifier(nextName)} ${parsed.rest.trim()}`.trim();
+  }
+
+  private handleAlterTableCompatibility(rawSql: string, startTime: number): QueryResult | null {
+    const cleaned = stripComments(rawSql).trim().replace(/;$/, '').trim();
+    if (!/^ALTER\s+TABLE\b/i.test(cleaned)) return null;
+
+    const afterAlterTable = cleaned.replace(/^ALTER\s+TABLE\s+/i, '');
+    const tableParsed = this.parseLeadingIdentifier(afterAlterTable);
+    if (!tableParsed) return null;
+
+    let tableName = tableParsed.identifier;
+    const operationSegment = tableParsed.rest.trim();
+    const operations = this.splitTopLevelComma(operationSegment);
+    if (operations.length === 0) return null;
+
+    for (const operation of operations) {
+      const columnsMeta = this.getTableColumnMeta(tableName);
+      if (columnsMeta.length === 0) {
+        return sqlErrorEngine.fromMessage(`Table '${tableName}' doesn't exist`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      const modifyMatch = operation.match(/^MODIFY(?:\s+COLUMN)?\s+([\s\S]+)$/i);
+      if (modifyMatch) {
+        const replacementDefinition = this.normalizeAlterColumnDefinition(modifyMatch[1].trim());
+        const targetParsed = this.parseLeadingIdentifier(replacementDefinition);
+        if (!targetParsed) {
+          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE MODIFY syntax', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const sourceLower = targetParsed.identifier.toLowerCase();
+        if (!columnsMeta.some((column) => column.name.toLowerCase() === sourceLower)) {
+          return sqlErrorEngine.fromMessage(
+            `Unknown column '${targetParsed.identifier}' in '${tableName}'`,
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+
+        const spec: RebuildColumnSpec[] = columnsMeta.map((column) =>
+          column.name.toLowerCase() === sourceLower
+            ? {
+                name: targetParsed.identifier,
+                definition: replacementDefinition,
+                sourceName: column.name,
+              }
+            : { name: column.name, definition: column.definition, sourceName: column.name },
+        );
+
+        const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime);
+        if (result.error) return result;
+        continue;
+      }
+
+      const changeMatch = operation.match(/^CHANGE(?:\s+COLUMN)?\s+([\s\S]+)$/i);
+      if (changeMatch) {
+        const sourceParsed = this.parseLeadingIdentifier(changeMatch[1].trim());
+        if (!sourceParsed) {
+          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE CHANGE syntax', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+        const replacementDefinition = this.normalizeAlterColumnDefinition(sourceParsed.rest.trim());
+        const targetParsed = this.parseLeadingIdentifier(replacementDefinition);
+        if (!targetParsed) {
+          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE CHANGE target definition', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const sourceLower = sourceParsed.identifier.toLowerCase();
+        if (!columnsMeta.some((column) => column.name.toLowerCase() === sourceLower)) {
+          return sqlErrorEngine.fromMessage(
+            `Unknown column '${sourceParsed.identifier}' in '${tableName}'`,
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+
+        const spec: RebuildColumnSpec[] = columnsMeta.map((column) =>
+          column.name.toLowerCase() === sourceLower
+            ? {
+                name: targetParsed.identifier,
+                definition: replacementDefinition,
+                sourceName: column.name,
+              }
+            : { name: column.name, definition: column.definition, sourceName: column.name },
+        );
+
+        const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime);
+        if (result.error) return result;
+        continue;
+      }
+
+      const renameColumnMatch = operation.match(/^RENAME\s+COLUMN\s+(.+)\s+TO\s+(.+)$/i);
+      if (renameColumnMatch) {
+        const sourceParsed = this.parseLeadingIdentifier(renameColumnMatch[1]);
+        const targetParsed = this.parseLeadingIdentifier(renameColumnMatch[2]);
+        if (!sourceParsed || !targetParsed) {
+          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE RENAME COLUMN syntax', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const sourceLower = sourceParsed.identifier.toLowerCase();
+        if (!columnsMeta.some((column) => column.name.toLowerCase() === sourceLower)) {
+          return sqlErrorEngine.fromMessage(
+            `Unknown column '${sourceParsed.identifier}' in '${tableName}'`,
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+
+        const spec: RebuildColumnSpec[] = columnsMeta.map((column) =>
+          column.name.toLowerCase() === sourceLower
+            ? {
+                name: targetParsed.identifier,
+                definition: this.replaceLeadingIdentifier(
+                  column.definition,
+                  targetParsed.identifier,
+                ),
+                sourceName: column.name,
+              }
+            : { name: column.name, definition: column.definition, sourceName: column.name },
+        );
+
+        const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime);
+        if (result.error) return result;
+        continue;
+      }
+
+      const dropColumnMatch = operation.match(/^DROP(?:\s+COLUMN)?\s+(?!INDEX\b)(?!KEY\b)(.+)$/i);
+      if (dropColumnMatch) {
+        const targetParsed = this.parseLeadingIdentifier(dropColumnMatch[1]);
+        if (!targetParsed) {
+          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE DROP COLUMN syntax', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const targetLower = targetParsed.identifier.toLowerCase();
+        const remaining = columnsMeta.filter((column) => column.name.toLowerCase() !== targetLower);
+        if (remaining.length === columnsMeta.length) {
+          return sqlErrorEngine.fromMessage(
+            `Unknown column '${targetParsed.identifier}' in '${tableName}'`,
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+        if (remaining.length === 0) {
+          return sqlErrorEngine.fromMessage('Cannot drop all columns from a table.', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const spec: RebuildColumnSpec[] = remaining.map((column) => ({
+          name: column.name,
+          definition: column.definition,
+          sourceName: column.name,
+        }));
+        const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime);
+        if (result.error) return result;
+        continue;
+      }
+
+      const addColumnMatch = operation.match(
+        /^ADD(?:\s+COLUMN)?\s+(?!UNIQUE\b)(?!INDEX\b)(?!KEY\b)(?!PRIMARY\b)(?!CONSTRAINT\b)([\s\S]+)$/i,
+      );
+      if (addColumnMatch) {
+        let clauseBody = addColumnMatch[1].trim();
+        let position: { first: boolean; after?: string } | null = null;
+
+        const firstMatch = clauseBody.match(/\s+FIRST\s*$/i);
+        if (firstMatch) {
+          position = { first: true };
+          clauseBody = clauseBody.slice(0, firstMatch.index).trim();
+        } else {
+          const afterMatch = clauseBody.match(/\s+AFTER\s+(.+)$/i);
+          if (afterMatch && afterMatch.index !== undefined) {
+            const parsedAfter = this.parseLeadingIdentifier(afterMatch[1]);
+            if (!parsedAfter) {
+              return sqlErrorEngine.fromMessage('Invalid ALTER TABLE ADD COLUMN AFTER syntax', {
+                sql: rawSql,
+                startTime,
+              });
+            }
+            position = { first: false, after: parsedAfter.identifier };
+            clauseBody = clauseBody.slice(0, afterMatch.index).trim();
+          }
+        }
+
+        const normalizedDefinition = this.normalizeAlterColumnDefinition(clauseBody);
+        const newParsed = this.parseLeadingIdentifier(normalizedDefinition);
+        if (!newParsed) {
+          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE ADD COLUMN syntax', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const exists = columnsMeta.some(
+          (column) => column.name.toLowerCase() === newParsed.identifier.toLowerCase(),
+        );
+        if (exists) {
+          return sqlErrorEngine.fromMessage(
+            `Duplicate column name '${newParsed.identifier}' in '${tableName}'`,
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+
+        const spec: RebuildColumnSpec[] = columnsMeta.map((column) => ({
+          name: column.name,
+          definition: column.definition,
+          sourceName: column.name,
+        }));
+
+        const nextColumn: RebuildColumnSpec = {
+          name: newParsed.identifier,
+          definition: normalizedDefinition,
+        };
+
+        if (!position) {
+          spec.push(nextColumn);
+        } else if (position.first) {
+          spec.unshift(nextColumn);
+        } else {
+          const afterIndex = spec.findIndex(
+            (column) => column.name.toLowerCase() === (position.after ?? '').toLowerCase(),
+          );
+          if (afterIndex < 0) {
+            return sqlErrorEngine.fromMessage(
+              `Unknown column '${position.after}' in '${tableName}' for AFTER clause`,
+              {
+                sql: rawSql,
+                startTime,
+              },
+            );
+          }
+          spec.splice(afterIndex + 1, 0, nextColumn);
+        }
+
+        const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime);
+        if (result.error) return result;
+        continue;
+      }
+
+      const renameTableMatch = operation.match(/^RENAME\s+TO\s+(.+)$/i);
+      if (renameTableMatch) {
+        const nextTable = this.parseLeadingIdentifier(renameTableMatch[1]);
+        if (!nextTable) {
+          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE RENAME TO syntax', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const activeDb = this.getActiveDb();
+        if (!activeDb) {
+          return sqlErrorEngine.fromMessage('Database not initialized. Call init() first.', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        try {
+          activeDb.run(
+            `ALTER TABLE ${this.quoteIdentifier(tableName)} RENAME TO ${this.quoteIdentifier(nextTable.identifier)}`,
+          );
+        } catch (error) {
+          return sqlErrorEngine.fromUnknownError(error, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        tableName = nextTable.identifier;
+        continue;
+      }
+
+      const addIndexMatch = operation.match(
+        /^ADD\s+(UNIQUE\s+)?(?:INDEX|KEY)\s+(?:([`"']?[A-Za-z_][\w$]*[`"']?)\s*)?\(([^)]+)\)$/i,
+      );
+      if (addIndexMatch) {
+        const isUnique = Boolean(addIndexMatch[1]);
+        const explicitName = addIndexMatch[2]
+          ? this.normalizeIdentifier(addIndexMatch[2])
+          : `${tableName}_${addIndexMatch[3].replace(/[^A-Za-z0-9_]+/g, '_')}_idx`;
+        const columns = this.splitTopLevelComma(addIndexMatch[3]).map((part) => {
+          const parsed = this.parseLeadingIdentifier(part.trim());
+          return parsed ? this.quoteIdentifier(parsed.identifier) : part.trim();
+        });
+        const createIndexSql = `CREATE ${isUnique ? 'UNIQUE ' : ''}INDEX ${this.quoteIdentifier(explicitName)} ON ${this.quoteIdentifier(tableName)} (${columns.join(', ')})`;
+        const activeDb = this.getActiveDb();
+        if (!activeDb) {
+          return sqlErrorEngine.fromMessage('Database not initialized. Call init() first.', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+        try {
+          activeDb.run(createIndexSql);
+        } catch (error) {
+          return sqlErrorEngine.fromUnknownError(error, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+        continue;
+      }
+
+      const dropIndexMatch = operation.match(/^DROP\s+INDEX\s+(.+)$/i);
+      if (dropIndexMatch) {
+        const parsed = this.parseLeadingIdentifier(dropIndexMatch[1]);
+        if (!parsed) {
+          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE DROP INDEX syntax', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const activeDb = this.getActiveDb();
+        if (!activeDb) {
+          return sqlErrorEngine.fromMessage('Database not initialized. Call init() first.', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+        try {
+          activeDb.run(`DROP INDEX IF EXISTS ${this.quoteIdentifier(parsed.identifier)}`);
+        } catch (error) {
+          return sqlErrorEngine.fromUnknownError(error, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+        continue;
+      }
+
+      return sqlErrorEngine.fromMessage(
+        `Unsupported ALTER TABLE operation segment: '${operation}'.`,
+        {
+          sql: rawSql,
+          startTime,
+        },
+      );
+    }
+
+    return {
+      columns: [],
+      rows: [],
+      rowCount: 0,
+      executionTimeMs: performance.now() - startTime,
+    };
+  }
+
   private parseProcedureParams(raw: string): ProcedureParam[] {
     const source = raw.trim();
     if (!source) return [];
@@ -142,7 +707,10 @@ export class SqlExecutor {
       }
 
       const argSql = this.toSqlLiteral(args[i] ?? 'NULL');
-      const namePattern = new RegExp(`\\b${param.name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'gi');
+      const namePattern = new RegExp(
+        `\\b${param.name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`,
+        'gi',
+      );
       rewritten = rewritten.replace(namePattern, argSql);
     }
 
@@ -1018,7 +1586,9 @@ export class SqlExecutor {
       const m = norm.match(/^SHOW\s+TRIGGERS(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?\s*;?$/i);
       if (m) {
         const requestedName = m[1];
-        const dbName = requestedName ? this.resolveDatabaseName(requestedName) : this.activeDatabase;
+        const dbName = requestedName
+          ? this.resolveDatabaseName(requestedName)
+          : this.activeDatabase;
         if (!dbName) {
           return sqlErrorEngine.fromMessage(`Unknown database '${requestedName}'`, {
             sql: rawSql,
@@ -1537,6 +2107,9 @@ export class SqlExecutor {
     const permissionError = this.denyIfNoPrivilege(normalizedSql, start);
     if (permissionError) return permissionError;
 
+    const alterCompatibility = this.handleAlterTableCompatibility(normalizedSql, start);
+    if (alterCompatibility) return alterCompatibility;
+
     // Run MySQL translation
     const translated = translateMySQL(
       normalizedSql,
@@ -1650,14 +2223,33 @@ export class SqlExecutor {
       rowCount: 0,
       executionTimeMs: 0,
     };
+    const statementResults: StatementQueryResult[] = [];
 
     for (const statement of statements) {
       const result = this.execute(statement);
       finalResult = result;
-      if (result.error) return result;
+      statementResults.push({
+        statement,
+        columns: result.columns,
+        rows: result.rows,
+        rowCount: result.rowCount,
+        executionTimeMs: result.executionTimeMs,
+        error: result.error,
+        errorDetails: result.errorDetails,
+      });
+
+      if (result.error) {
+        return {
+          ...result,
+          statementResults,
+        };
+      }
     }
 
-    return finalResult;
+    return {
+      ...finalResult,
+      statementResults,
+    };
   }
 
   reset(): void {

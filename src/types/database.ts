@@ -16,6 +16,16 @@ export interface TableSchema {
 
 export type Row = Record<string, unknown>;
 
+export interface StatementQueryResult {
+  statement: string;
+  columns: string[];
+  rows: Row[];
+  rowCount: number;
+  executionTimeMs: number;
+  error?: string;
+  errorDetails?: SqlErrorDetails;
+}
+
 export interface QueryResult {
   columns: string[];
   rows: Row[];
@@ -23,4 +33,5 @@ export interface QueryResult {
   executionTimeMs: number;
   error?: string;
   errorDetails?: SqlErrorDetails;
+  statementResults?: StatementQueryResult[];
 }

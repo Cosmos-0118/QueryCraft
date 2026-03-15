@@ -84,6 +84,7 @@ interface AlgebraInputProps {
   onEvaluate: () => void;
   tables?: TableSchema[];
   tableNames?: string[];
+  historyExpressions?: string[];
   executionFeedback?: 'idle' | 'success' | 'error';
 }
 
@@ -99,7 +100,15 @@ function rankCompletion(item: CompletionItem, query: string): number {
   return 999;
 }
 
-export function AlgebraInput({ value, onChange, onEvaluate, tables = [], tableNames = [], executionFeedback = 'idle' }: AlgebraInputProps) {
+export function AlgebraInput({
+  value,
+  onChange,
+  onEvaluate,
+  tables = [],
+  tableNames = [],
+  historyExpressions = [],
+  executionFeedback = 'idle',
+}: AlgebraInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [showComplete, setShowComplete] = useState(false);
@@ -108,6 +117,8 @@ export function AlgebraInput({ value, onChange, onEvaluate, tables = [], tableNa
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ left: 0, top: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const historyIndexRef = useRef<number | null>(null);
+  const historyDraftRef = useRef('');
   const [isMac] = useState(() =>
     typeof navigator !== 'undefined' ? /Mac|iPhone|iPad|iPod/.test(navigator.platform) : false,
   );
@@ -368,8 +379,70 @@ export function AlgebraInput({ value, onChange, onEvaluate, tables = [], tableNa
           return;
         }
       }
+
+      if (!showComplete && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const history = Array.from(
+          new Set(historyExpressions.map((entry) => entry.trim()).filter(Boolean)),
+        );
+        const el = inputRef.current;
+        if (!el || history.length === 0) return;
+
+        const hasLineBeforeCursor = value.slice(0, el.selectionStart).includes('\n');
+        const hasLineAfterCursor = value.slice(el.selectionStart).includes('\n');
+
+        if (e.key === 'ArrowUp' && !hasLineBeforeCursor && el.selectionStart === el.selectionEnd) {
+          e.preventDefault();
+          const nextIndex =
+            historyIndexRef.current === null
+              ? 0
+              : Math.min(historyIndexRef.current + 1, history.length - 1);
+
+          if (historyIndexRef.current === null) {
+            historyDraftRef.current = value;
+          }
+
+          historyIndexRef.current = nextIndex;
+          const nextValue = history[nextIndex] ?? '';
+          onChange(nextValue);
+          requestAnimationFrame(() => {
+            const target = inputRef.current;
+            if (!target) return;
+            target.focus();
+            target.setSelectionRange(nextValue.length, nextValue.length);
+          });
+          return;
+        }
+
+        if (e.key === 'ArrowDown' && !hasLineAfterCursor && el.selectionStart === el.selectionEnd) {
+          if (historyIndexRef.current === null) return;
+          e.preventDefault();
+
+          const nextIndex = historyIndexRef.current - 1;
+          const nextValue = nextIndex < 0 ? historyDraftRef.current : (history[nextIndex] ?? '');
+          historyIndexRef.current = nextIndex < 0 ? null : nextIndex;
+          onChange(nextValue);
+          requestAnimationFrame(() => {
+            const target = inputRef.current;
+            if (!target) return;
+            target.focus();
+            target.setSelectionRange(nextValue.length, nextValue.length);
+          });
+          return;
+        }
+      }
     },
-    [showComplete, completions, selectedIdx, onEvaluate, handleInsert, applyCompletion, value, onChange, updateCompletions],
+    [
+      showComplete,
+      completions,
+      selectedIdx,
+      onEvaluate,
+      handleInsert,
+      applyCompletion,
+      value,
+      onChange,
+      updateCompletions,
+      historyExpressions,
+    ],
   );
 
   // Close dropdown on outside click

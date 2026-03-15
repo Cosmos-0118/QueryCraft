@@ -120,6 +120,50 @@ function classifyError(rawMessage: string): Classification {
     };
   }
 
+  if (lower.includes('no such function')) {
+    if (
+      lower.includes('var_pop') ||
+      lower.includes('variance') ||
+      lower.includes('var_samp') ||
+      lower.includes('stddev') ||
+      lower.includes('std(')
+    ) {
+      return {
+        code: 'QC_UNSUPPORTED_AGGREGATE',
+        category: 'unsupported',
+        title: 'Aggregate function compatibility issue',
+        message: 'This statistical aggregate is not directly available in the SQLite backend.',
+        hint: 'Use VAR_POP/VAR_SAMP/STDDEV forms supported by QueryCraft compatibility rewrites.',
+        recoverable: true,
+      };
+    }
+
+    return {
+      code: 'QC_FUNCTION_NOT_FOUND',
+      category: 'unsupported',
+      title: 'Function not available',
+      message: 'The query references a SQL function that is not available in this engine.',
+      hint: 'Use a SQLite-compatible equivalent or simplify the expression.',
+      recoverable: true,
+    };
+  }
+
+  if (
+    lower.includes('near "modify"') ||
+    lower.includes("near 'modify'") ||
+    lower.includes('alter table ... modify') ||
+    (lower.includes('does not support alter table') && lower.includes('modify'))
+  ) {
+    return {
+      code: 'QC_UNSUPPORTED_ALTER_MODIFY',
+      category: 'unsupported',
+      title: 'ALTER TABLE MODIFY is not supported',
+      message: 'SQLite does not support ALTER TABLE ... MODIFY.',
+      hint: 'Recreate the table with the target column definition, copy data, then rename.',
+      recoverable: true,
+    };
+  }
+
   if (
     lower.includes('syntax error') ||
     lower.includes('parse error') ||

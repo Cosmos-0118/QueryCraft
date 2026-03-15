@@ -536,6 +536,7 @@ export default function TupleCalculusPage() {
           onChange={store.setExpression}
           onEvaluate={handleEvaluate}
           tables={tables}
+          historyExpressions={store.history.map((entry) => entry.expression)}
           executionFeedback={inputFeedback}
         />
 

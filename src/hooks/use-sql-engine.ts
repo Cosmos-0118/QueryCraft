@@ -233,6 +233,28 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncEngineState]);
 
+  useEffect(() => {
+    if (isolated || typeof window === 'undefined') return;
+
+    const persistCurrentContext = () => {
+      savePersistedActiveDatabase(activeDatabaseRef.current);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        persistCurrentContext();
+      }
+    };
+
+    window.addEventListener('beforeunload', persistCurrentContext);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', persistCurrentContext);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isolated]);
+
   const execute = useCallback(
     (sql: string, options?: { persist?: boolean }): QueryResult => {
       const start = performance.now();
@@ -331,11 +353,15 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
 
       const result = executorRef.current.useDatabase(name);
       if (!result.error) {
+        activeDatabaseRef.current = name;
+        if (!isolated) {
+          savePersistedActiveDatabase(name);
+        }
         syncEngineState();
       }
       return result;
     },
-    [engineUnavailable, syncEngineState],
+    [engineUnavailable, isolated, syncEngineState],
   );
 
   const switchUser = useCallback(

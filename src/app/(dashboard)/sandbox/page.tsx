@@ -12,7 +12,7 @@ import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import { ResultPanel } from '@/components/visual/result-panel';
 import { SqlErrorAlert } from '@/components/visual/sql-error-alert';
 import { cn } from '@/lib/utils/helpers';
-import type { QueryResult } from '@/types/database';
+import type { QueryResult, StatementQueryResult } from '@/types/database';
 import {
   Terminal,
   Database,
@@ -165,6 +165,22 @@ export default function SandboxPage() {
   }, []);
 
   useEffect(() => {
+    const pendingDatabase = store.pendingDatabase;
+    if (!pendingDatabase || !isReady) return;
+
+    const switched = switchDatabase(pendingDatabase);
+    if (!switched.error) {
+      store.setPendingDatabase(null);
+      return;
+    }
+
+    const fallback = switchDatabase('main');
+    if (!fallback.error) {
+      store.setPendingDatabase(null);
+    }
+  }, [isReady, store, switchDatabase]);
+
+  useEffect(() => {
     if (!isReady) {
       defaultsBootstrappedRef.current = false;
       return;
@@ -247,15 +263,15 @@ export default function SandboxPage() {
   const handleExecute = useCallback(() => {
     const q = store.query.trim();
     if (!q) return;
-    const res = execute(q);
+    const res = loadSQL(q);
     setResult(res);
     store.setResults(res);
-    store.addToHistory(q, !res.error, res);
+    store.addToHistory(q, !res.error, res, activeDatabase);
     triggerEditorFeedback(res.error ? 'error' : 'success');
     if (!res.error) {
       store.setQuery('');
     }
-  }, [execute, store, triggerEditorFeedback]);
+  }, [activeDatabase, loadSQL, store, triggerEditorFeedback]);
 
   const handleImportSQL = useCallback(() => {
     setImportErrorResult(null);
@@ -432,6 +448,21 @@ export default function SandboxPage() {
 
   const tableCount = tables.length;
   const historyCount = store.queryHistory.length;
+  const statementResults: StatementQueryResult[] = result
+    ? result.statementResults && result.statementResults.length > 0
+      ? result.statementResults
+      : [
+          {
+            statement: store.query,
+            columns: result.columns,
+            rows: result.rows,
+            rowCount: result.rowCount,
+            executionTimeMs: result.executionTimeMs,
+            error: result.error,
+            errorDetails: result.errorDetails,
+          },
+        ]
+    : [];
 
   return (
     <>
@@ -447,7 +478,7 @@ export default function SandboxPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-zinc-100">SQL Sandbox</h1>
-              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-500">
+              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
                 <span className="flex items-center gap-1">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
                   {tableCount} table{tableCount !== 1 ? 's' : ''}
@@ -776,6 +807,7 @@ export default function SandboxPage() {
               onChange={store.setQuery}
               onExecute={handleExecute}
               tables={tables}
+              historyCommands={store.queryHistory.map((entry) => entry.query)}
               executionFeedback={editorFeedback}
               hasOutput={Boolean(result)}
             />
@@ -811,27 +843,41 @@ export default function SandboxPage() {
               <SqlErrorAlert error={result.error} details={result.errorDetails} />
             )}
 
-            {/* Results table */}
-            {result && !result.error && result.columns.length > 0 && (
-              <ResultPanel
-                columns={result.columns}
-                rows={result.rows}
-                rowCount={result.rowCount}
-                executionTimeMs={result.executionTimeMs}
-              />
-            )}
+            {/* Per-statement output */}
+            {!result?.error && statementResults.length > 0 &&
+              statementResults.map((entry, index) => {
+                const statementLabel = `Statement ${index + 1}`;
 
-            {/* Success message (no columns) */}
-            {result && !result.error && result.columns.length === 0 && (
-              <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span>
-                  Query executed successfully.{' '}
-                  {result.rowCount > 0 ? `${result.rowCount} row(s) affected.` : 'No rows returned.'}{' '}
-                  ({result.executionTimeMs.toFixed(1)}ms)
-                </span>
-              </div>
-            )}
+                if (entry.columns.length > 0) {
+                  return (
+                    <div key={`${statementLabel}-${index}`} className="space-y-1.5">
+                      <p className="px-1 text-[11px] font-medium text-zinc-500">
+                        {statementLabel}
+                      </p>
+                      <ResultPanel
+                        columns={entry.columns}
+                        rows={entry.rows}
+                        rowCount={entry.rowCount}
+                        executionTimeMs={entry.executionTimeMs}
+                      />
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={`${statementLabel}-${index}`}
+                    className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400"
+                  >
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    <span>
+                      {statementLabel}: query executed successfully.{' '}
+                      {entry.rowCount > 0 ? `${entry.rowCount} row(s) affected.` : 'No rows returned.'}{' '}
+                      ({entry.executionTimeMs.toFixed(1)}ms)
+                    </span>
+                  </div>
+                );
+              })}
           </div>
 
           {/* Sidebar */}

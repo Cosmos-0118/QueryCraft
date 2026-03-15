@@ -2,6 +2,88 @@ import type { SqlJsDatabase, TranslatedQuery } from './types';
 import type { Row } from '@/types/database';
 import { emptyOkResult, statusResult, stripComments } from './utils';
 
+function rewriteFunctionCalls(
+  sql: string,
+  functionNames: readonly string[],
+  replacementBuilder: (fnName: string, argument: string) => string,
+): string {
+  const pattern = new RegExp(`\\b(${functionNames.join('|')})\\s*\\(`, 'gi');
+  let output = '';
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(sql)) !== null) {
+    const fnName = match[1];
+    const fnStart = match.index;
+    const openParenIndex = pattern.lastIndex - 1;
+    let depth = 1;
+    let i = openParenIndex + 1;
+    let inSingle = false;
+    let inDouble = false;
+
+    for (; i < sql.length; i += 1) {
+      const ch = sql[i];
+
+      if (ch === "'" && !inDouble) {
+        inSingle = !inSingle;
+        continue;
+      }
+      if (ch === '"' && !inSingle) {
+        inDouble = !inDouble;
+        continue;
+      }
+      if (inSingle || inDouble) continue;
+
+      if (ch === '(') depth += 1;
+      if (ch === ')') {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+
+    if (depth !== 0) {
+      // Malformed call; stop rewriting to avoid corrupting query text.
+      break;
+    }
+
+    const argument = sql.slice(openParenIndex + 1, i).trim();
+    output += sql.slice(cursor, fnStart);
+    output += replacementBuilder(fnName.toUpperCase(), argument);
+    cursor = i + 1;
+    pattern.lastIndex = cursor;
+  }
+
+  return output + sql.slice(cursor);
+}
+
+function applyAggregateCompatibilityRewrites(sql: string): string {
+  return rewriteFunctionCalls(
+    sql,
+    ['VAR_POP', 'VARIANCE', 'VAR_SAMP', 'STDDEV', 'STD', 'STDDEV_POP', 'STDDEV_SAMP'],
+    (fnName, argument) => {
+      const arg = argument || 'NULL';
+      const variancePop = `(AVG((${arg}) * (${arg})) - AVG(${arg}) * AVG(${arg}))`;
+      const varianceSamp = `CASE WHEN COUNT(${arg}) > 1 THEN ${variancePop} * COUNT(${arg}) / (COUNT(${arg}) - 1) ELSE NULL END`;
+
+      switch (fnName) {
+        case 'VAR_POP':
+        case 'VARIANCE':
+          return variancePop;
+        case 'VAR_SAMP':
+          return varianceSamp;
+        case 'STD':
+        case 'STDDEV':
+        case 'STDDEV_POP':
+          return `SQRT(${variancePop})`;
+        case 'STDDEV_SAMP':
+          return `SQRT(${varianceSamp})`;
+        default:
+          return `${fnName}(${arg})`;
+      }
+    },
+  );
+}
+
 export function translateMySQL(
   raw: string,
   db: SqlJsDatabase,
@@ -430,6 +512,9 @@ export function translateMySQL(
   translated = translated.replace(/\b(?:CURRENT_USER|USER)\s*\(\s*\)/gi, `'${activeUser}'`);
   // VERSION() → sqlite_version()
   translated = translated.replace(/\bVERSION\s*\(\s*\)/gi, 'sqlite_version()');
+
+  // MySQL statistical aggregates not available in SQLite by default.
+  translated = applyAggregateCompatibilityRewrites(translated);
 
   return { sql: translated };
 }

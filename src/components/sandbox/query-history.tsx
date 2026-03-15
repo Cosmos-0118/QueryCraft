@@ -18,9 +18,37 @@ import {
   Copy,
 } from 'lucide-react';
 
+interface HistoryStatementResult {
+  statement: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+  executionTimeMs: number;
+  error?: string;
+  errorDetails?: HistoryEntry['result']['errorDetails'];
+}
+
+function toStatementResults(entry: HistoryEntry): HistoryStatementResult[] {
+  if (entry.result.statementResults && entry.result.statementResults.length > 0) {
+    return entry.result.statementResults;
+  }
+
+  return [
+    {
+      statement: entry.query,
+      columns: entry.result.columns,
+      rows: entry.result.rows,
+      rowCount: entry.result.rowCount,
+      executionTimeMs: entry.result.executionTimeMs,
+      error: entry.result.error,
+      errorDetails: entry.result.errorDetails,
+    },
+  ];
+}
+
 interface QueryHistoryProps {
   history: HistoryEntry[];
-  onSelect: (query: string) => void;
+  onSelect: (query: string, database: string) => void;
   onClear: () => void;
   className?: string;
 }
@@ -76,8 +104,8 @@ export function QueryHistory({ history, onSelect, onClear, className }: QueryHis
       <div className="max-h-[70vh] overflow-y-auto">
         {history.map((entry, i) => {
           const isExpanded = expandedIndex === i;
-          const hasResult = entry.result && entry.result.columns.length > 0;
-          const hasError = !!entry.result?.error;
+          const statementResults = toStatementResults(entry);
+          const hasResult = statementResults.some((statement) => statement.columns.length > 0);
           const isCopied = copiedIndex === i;
 
           return (
@@ -106,7 +134,7 @@ export function QueryHistory({ history, onSelect, onClear, className }: QueryHis
                   <X className="h-3 w-3 shrink-0 text-red-400" />
                 )}
                 <button
-                  onClick={() => onSelect(entry.query)}
+                  onClick={() => onSelect(entry.query, entry.database || 'main')}
                   className="min-w-0 flex-1 text-left"
                   aria-label="Load query in editor"
                 >
@@ -132,6 +160,10 @@ export function QueryHistory({ history, onSelect, onClear, className }: QueryHis
                 <Clock className="h-2.5 w-2.5 text-zinc-700" />
                 <span className="text-[10px] text-zinc-600">
                   {new Date(entry.timestamp).toLocaleTimeString()}
+                </span>
+                <span className="text-zinc-800">·</span>
+                <span className="rounded bg-zinc-800/70 px-1.5 py-0.5 text-[10px] text-zinc-500">
+                  {entry.database || 'main'}
                 </span>
                 {entry.result && (
                   <>
@@ -167,86 +199,12 @@ export function QueryHistory({ history, onSelect, onClear, className }: QueryHis
                     </pre>
                   </div>
 
-                  {/* Error output */}
-                  {hasError && (
-                    <SqlErrorAlert
-                      error={entry.result!.error ?? 'SQL execution failed'}
-                      details={entry.result!.errorDetails}
-                      compact
-                    />
-                  )}
-
-                  {/* Success with no rows */}
-                  {!hasError && !hasResult && (
-                    <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5">
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-                      <span className="text-[11px] text-emerald-400">
-                        {entry.result!.rowCount > 0
-                          ? `${entry.result!.rowCount} row(s) affected`
-                          : 'Query executed successfully'}
-                        {' · '}
-                        {entry.result!.executionTimeMs.toFixed(1)}ms
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Result table */}
-                  {hasResult && entry.result && (
-                    <div className="overflow-hidden rounded-lg border border-zinc-800/60">
-                      <div className="flex items-center gap-1.5 border-b border-zinc-800/50 bg-zinc-800/20 px-3 py-1.5">
-                        <Table2 className="h-3 w-3 text-emerald-400" />
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                          Output
-                        </span>
-                        <span className="ml-auto text-[10px] text-zinc-600">
-                          {entry.result.rowCount} row{entry.result.rowCount !== 1 ? 's' : ''}
-                          {entry.result.rows.length < entry.result.rowCount && ` (showing ${entry.result.rows.length})`}
-                        </span>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-[300px] text-[11px]">
-                          <thead>
-                            <tr className="border-b border-zinc-800/50 bg-zinc-900/50">
-                              {entry.result.columns.map((col) => (
-                                <th
-                                  key={col}
-                                  className="whitespace-nowrap px-3 py-1.5 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-zinc-500"
-                                >
-                                  {col}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {entry.result.rows.map((row, ri) => (
-                              <tr
-                                key={ri}
-                                className="border-b border-zinc-800/30 last:border-0 transition-colors hover:bg-zinc-800/20"
-                              >
-                                {entry.result!.columns.map((col) => (
-                                  <td
-                                    key={col}
-                                    className="whitespace-nowrap px-3 py-1.5 font-mono text-zinc-300"
-                                  >
-                                    {row[col] === null || row[col] === undefined ? (
-                                      <span className="text-zinc-700 italic">NULL</span>
-                                    ) : (
-                                      String(row[col])
-                                    )}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
+                  <StatementTabs statementResults={statementResults} />
 
                   {/* Quick actions */}
                   <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => onSelect(entry.query)}
+                      onClick={() => onSelect(entry.query, entry.database || 'main')}
                       className="inline-flex items-center gap-1 rounded-md bg-zinc-800/50 px-2.5 py-1 text-[10px] font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
                     >
                       <CornerDownLeft className="h-2.5 w-2.5" />
@@ -266,6 +224,103 @@ export function QueryHistory({ history, onSelect, onClear, className }: QueryHis
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function StatementTabs({ statementResults }: { statementResults: HistoryStatementResult[] }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const active = statementResults[Math.min(activeIndex, statementResults.length - 1)] ?? null;
+
+  if (!active) return null;
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-zinc-800/60">
+      {statementResults.length > 1 && (
+        <div className="flex items-center gap-1 overflow-x-auto border-b border-zinc-800/50 bg-zinc-900/60 px-2 py-1.5">
+          {statementResults.map((statement, idx) => (
+            <button
+              key={`${idx}-${statement.statement}`}
+              onClick={() => setActiveIndex(idx)}
+              className={cn(
+                'shrink-0 rounded-md border px-2 py-1 text-[10px] font-medium transition-colors',
+                idx === activeIndex
+                  ? 'border-violet-500/40 bg-violet-500/15 text-violet-300'
+                  : 'border-zinc-700/60 bg-zinc-800/50 text-zinc-500 hover:text-zinc-300',
+              )}
+            >
+              S{idx + 1}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="border-b border-zinc-800/50 bg-zinc-800/20 px-3 py-1.5">
+        <div className="flex items-center gap-1.5">
+          <Table2 className="h-3 w-3 text-emerald-400" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+            {statementResults.length > 1 ? `Statement ${activeIndex + 1}` : 'Output'}
+          </span>
+          <span className="ml-auto text-[10px] text-zinc-600">
+            {active.executionTimeMs.toFixed(1)}ms
+          </span>
+        </div>
+      </div>
+
+      {active.error ? (
+        <div className="p-2">
+          <SqlErrorAlert
+            error={active.error}
+            details={active.errorDetails}
+            compact
+          />
+        </div>
+      ) : active.columns.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[300px] text-[11px]">
+            <thead>
+              <tr className="border-b border-zinc-800/50 bg-zinc-900/50">
+                {active.columns.map((col) => (
+                  <th
+                    key={col}
+                    className="whitespace-nowrap px-3 py-1.5 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {active.rows.map((row, ri) => (
+                <tr
+                  key={ri}
+                  className="border-b border-zinc-800/30 last:border-0 transition-colors hover:bg-zinc-800/20"
+                >
+                  {active.columns.map((col) => (
+                    <td
+                      key={col}
+                      className="whitespace-nowrap px-3 py-1.5 font-mono text-zinc-300"
+                    >
+                      {row[col] === null || row[col] === undefined ? (
+                        <span className="text-zinc-700 italic">NULL</span>
+                      ) : (
+                        String(row[col])
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 rounded-b-lg border-t border-zinc-800/60 bg-emerald-500/5 px-3 py-2.5">
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+          <span className="text-[11px] text-emerald-400">
+            {active.rowCount > 0 ? `${active.rowCount} row(s) affected` : 'Query executed successfully'}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -80,4 +80,22 @@ describe('SqlExecutor DDL and DML', () => {
     const rows = executor.execute('SELECT * FROM courses ORDER BY id');
     expect(rows.rowCount).toBe(2);
   });
+
+  it('returns output for each statement when multiple SELECTs are provided', () => {
+    executor.execute('CREATE TABLE professors (id INTEGER PRIMARY KEY, name TEXT)');
+    executor.execute('CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT)');
+    executor.execute("INSERT INTO professors VALUES (1, 'Prof A')");
+    executor.execute("INSERT INTO students VALUES (1, 'Student A')");
+
+    const result = executor.loadSQL(`
+      SELECT * FROM professors LIMIT 20;
+      SELECT * FROM students LIMIT 20;
+    `);
+
+    expect(result.error).toBeUndefined();
+    expect(result.statementResults).toBeDefined();
+    expect(result.statementResults).toHaveLength(2);
+    expect(result.statementResults?.[0]?.rows[0]?.name).toBe('Prof A');
+    expect(result.statementResults?.[1]?.rows[0]?.name).toBe('Student A');
+  });
 });

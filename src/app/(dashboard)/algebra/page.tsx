@@ -552,6 +552,7 @@ export default function AlgebraPage() {
           onEvaluate={handleEvaluate}
           tables={tables}
           tableNames={tables.map((t) => t.name)}
+          historyExpressions={store.history.map((entry) => entry.expression)}
           executionFeedback={inputFeedback}
         />
 

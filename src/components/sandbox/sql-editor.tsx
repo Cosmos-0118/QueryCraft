@@ -8,6 +8,7 @@ import { defaultKeymap } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
 import {
   autocompletion,
+  completionStatus,
   closeBrackets,
   closeBracketsKeymap,
   type CompletionContext,
@@ -730,16 +731,29 @@ interface SqlEditorProps {
   onChange: (value: string) => void;
   onExecute: () => void;
   tables?: TableSchema[];
+  historyCommands?: string[];
   executionFeedback?: 'idle' | 'success' | 'error';
   hasOutput?: boolean;
   className?: string;
 }
 
-export function SqlEditor({ value, onChange, onExecute, tables = [], executionFeedback = 'idle', hasOutput = false, className }: SqlEditorProps) {
+export function SqlEditor({
+  value,
+  onChange,
+  onExecute,
+  tables = [],
+  historyCommands = [],
+  executionFeedback = 'idle',
+  hasOutput = false,
+  className,
+}: SqlEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onExecuteRef = useRef(onExecute);
   const isApplyingExternalChangeRef = useRef(false);
+  const historyCommandsRef = useRef<string[]>([]);
+  const historyIndexRef = useRef<number | null>(null);
+  const historyDraftRef = useRef('');
   const [isMac] = useState(() =>
     typeof navigator !== 'undefined' ? /Mac|iPhone|iPad|iPod/.test(navigator.platform) : false,
   );
@@ -747,6 +761,13 @@ export function SqlEditor({ value, onChange, onExecute, tables = [], executionFe
   useEffect(() => {
     onExecuteRef.current = onExecute;
   }, [onExecute]);
+
+  useEffect(() => {
+    const unique = Array.from(
+      new Set(historyCommands.map((command) => command.trim()).filter(Boolean)),
+    );
+    historyCommandsRef.current = unique;
+  }, [historyCommands]);
 
   useEffect(() => {
     if (!editorRef.current) return;
@@ -769,6 +790,76 @@ export function SqlEditor({ value, onChange, onExecute, tables = [], executionFe
         }),
         oneDark,
         keymap.of([
+          {
+            key: 'ArrowUp',
+            run: (view) => {
+              if (completionStatus(view.state) === 'active') return false;
+
+              const selection = view.state.selection.main;
+              if (!selection.empty) return false;
+
+              const line = view.state.doc.lineAt(selection.head);
+              if (line.number !== 1) return false;
+
+              const history = historyCommandsRef.current;
+              if (history.length === 0) return false;
+
+              const nextIndex =
+                historyIndexRef.current === null
+                  ? 0
+                  : Math.min(historyIndexRef.current + 1, history.length - 1);
+
+              if (historyIndexRef.current === null) {
+                historyDraftRef.current = view.state.doc.toString();
+              }
+
+              const nextCommand = history[nextIndex] ?? '';
+              historyIndexRef.current = nextIndex;
+              view.dispatch({
+                changes: {
+                  from: 0,
+                  to: view.state.doc.length,
+                  insert: nextCommand,
+                },
+                selection: { anchor: nextCommand.length },
+              });
+              return true;
+            },
+          },
+          {
+            key: 'ArrowDown',
+            run: (view) => {
+              if (completionStatus(view.state) === 'active') return false;
+
+              const selection = view.state.selection.main;
+              if (!selection.empty) return false;
+
+              const line = view.state.doc.lineAt(selection.head);
+              if (line.number !== view.state.doc.lines) return false;
+
+              if (historyIndexRef.current === null) return false;
+
+              const nextIndex = historyIndexRef.current - 1;
+              if (nextIndex < 0) {
+                historyIndexRef.current = null;
+                const draft = historyDraftRef.current;
+                view.dispatch({
+                  changes: { from: 0, to: view.state.doc.length, insert: draft },
+                  selection: { anchor: draft.length },
+                });
+                return true;
+              }
+
+              const history = historyCommandsRef.current;
+              const nextCommand = history[nextIndex] ?? '';
+              historyIndexRef.current = nextIndex;
+              view.dispatch({
+                changes: { from: 0, to: view.state.doc.length, insert: nextCommand },
+                selection: { anchor: nextCommand.length },
+              });
+              return true;
+            },
+          },
           {
             key: 'Mod-Enter',
             run: () => {
