@@ -17,10 +17,12 @@ export interface TrcHistoryEntry {
 
 interface TrcStore {
   expression: string;
+  selectedDatabase: string;
   sqlEquivalent: string;
   error: string | null;
   history: TrcHistoryEntry[];
   setExpression: (value: string) => void;
+  setSelectedDatabase: (value: string) => void;
   setSqlEquivalent: (value: string) => void;
   setError: (value: string | null) => void;
   addToHistory: (entry: Omit<TrcHistoryEntry, 'timestamp'>) => void;
@@ -32,10 +34,12 @@ export const useTrcStore = create<TrcStore>()(
   persist(
     (set) => ({
       expression: '',
+      selectedDatabase: 'main',
       sqlEquivalent: '',
       error: null,
       history: [],
       setExpression: (expression) => set({ expression }),
+      setSelectedDatabase: (selectedDatabase) => set({ selectedDatabase }),
       setSqlEquivalent: (sqlEquivalent) => set({ sqlEquivalent }),
       setError: (error) => set({ error }),
       addToHistory: (entry) =>
@@ -55,6 +59,7 @@ export const useTrcStore = create<TrcStore>()(
       partialize: (state) => ({
         expression: state.expression,
         history: state.history,
+        selectedDatabase: state.selectedDatabase,
       }),
     },
   ),

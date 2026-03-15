@@ -846,12 +846,18 @@ export class SqlExecutor {
   private parseGrantScope(raw: string): { database: string; table: string } | null {
     const cleaned = raw.trim();
     const scopeMatch = cleaned.match(/^(.+?)\.(.+)$/);
-    if (!scopeMatch) return null;
+    if (scopeMatch) {
+      const database = this.normalizeIdentifier(scopeMatch[1]);
+      const table = this.normalizeIdentifier(scopeMatch[2]);
+      if (!database || !table) return null;
+      // *  in db position means global; normalise to '*'
+      return { database: database === '*' ? '*' : database, table };
+    }
 
-    const database = this.normalizeIdentifier(scopeMatch[1]);
-    const table = this.normalizeIdentifier(scopeMatch[2]);
-    if (!database || !table) return null;
-    return { database, table };
+    // No dot: bare table name or bare '*' — scope to the active database (MySQL behaviour)
+    const identifier = this.normalizeIdentifier(cleaned);
+    if (!identifier) return null;
+    return { database: this.activeDatabase, table: identifier };
   }
 
   private getGrantEntries(userKey: string): GrantEntry[] {
@@ -956,16 +962,22 @@ export class SqlExecutor {
     return null;
   }
 
-  private hasPrivilege(privilege: SupportedPrivilege, database: string): boolean {
+  private hasPrivilege(privilege: SupportedPrivilege, database: string, table?: string): boolean {
     if (this.isCurrentUserAdmin()) return true;
 
     const userEntries = this.getGrantEntries(this.currentUserKey);
     const dbLower = database.toLowerCase();
     for (const entry of userEntries) {
       const dbMatches = entry.database === '*' || entry.database.toLowerCase() === dbLower;
-      const tableScopeAllowsDatabaseOps = entry.table === '*';
+      if (!dbMatches) continue;
 
-      if (!dbMatches || !tableScopeAllowsDatabaseOps) continue;
+      // table='*' covers all tables; a specific table name matches either exactly or when the
+      // caller passes the target table name explicitly.
+      const tableMatches =
+        entry.table === '*' ||
+        (table !== undefined && entry.table.toLowerCase() === table.toLowerCase());
+
+      if (!tableMatches) continue;
 
       if (entry.privileges.has('ALL PRIVILEGES') || entry.privileges.has(privilege)) {
         return true;
@@ -975,10 +987,21 @@ export class SqlExecutor {
     return false;
   }
 
+  private extractTargetTable(sql: string): string | undefined {
+    const norm = sql.replace(/\s+/g, ' ').trim();
+    // SELECT ... FROM table / INSERT INTO table / UPDATE table / DELETE FROM table
+    const m =
+      norm.match(/\bFROM\s+[`"']?(\w+)[`"']?/i) ??
+      norm.match(/\bINTO\s+[`"']?(\w+)[`"']?/i) ??
+      norm.match(/^UPDATE\s+[`"']?(\w+)[`"']?/i);
+    return m ? m[1] : undefined;
+  }
+
   private denyIfNoPrivilege(sql: string, startTime: number): QueryResult | null {
     const required = this.requiredPrivilegeForSql(sql);
     if (!required) return null;
-    if (this.hasPrivilege(required, this.activeDatabase)) return null;
+    const targetTable = this.extractTargetTable(sql);
+    if (this.hasPrivilege(required, this.activeDatabase, targetTable)) return null;
 
     return sqlErrorEngine.fromMessage(
       `Access denied for user '${this.getCurrentUserDisplay()}' to ${required} on database '${this.activeDatabase}'`,
@@ -2156,7 +2179,10 @@ export class SqlExecutor {
         };
       }
 
-      const { columns, values } = results[0];
+      const { columns: rawColumns, values } = results[0];
+      // Rename columns that are expanded aggregate formulas back to their original MySQL call form
+      const renames = translated.columnRenames ?? {};
+      const columns = rawColumns.map((col) => renames[col] ?? col);
       const rows: Row[] = values.map((vals) => {
         const row: Row = {};
         columns.forEach((col, i) => {

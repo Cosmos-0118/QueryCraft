@@ -30,6 +30,8 @@ import {
 import universityData from '@/../seed/datasets/university.json';
 import bankingData from '@/../seed/datasets/banking.json';
 
+const ACTIVE_DATABASE_KEY = 'querycraft-sql-active-database-v1';
+
 function jsonToSQL(data: Record<string, Record<string, unknown>[]>): string {
   const statements: string[] = [];
   for (const [table, rows] of Object.entries(data)) {
@@ -68,7 +70,18 @@ const BANKING_EXAMPLES = [
 ];
 
 export default function TupleCalculusPage() {
-  const { isReady, execute, loadSQL, reset, tables, refreshTables, databases, activeDatabase, switchDatabase } =
+  const {
+    isReady,
+    execute,
+    loadSQL,
+    reset,
+    tables,
+    refreshTables,
+    databases,
+    activeDatabase,
+    getCurrentDatabase,
+    switchDatabase,
+  } =
     useSqlEngine();
   const store = useTrcStore();
   const { start: startLoading, stop: stopLoading } = useLoadingStore();
@@ -92,6 +105,7 @@ export default function TupleCalculusPage() {
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const groupMenuRef = useRef<HTMLDivElement | null>(null);
   const defaultsBootstrappedRef = useRef(false);
+  const initialDatabaseResolvedRef = useRef(false);
 
   const triggerInputFeedback = useCallback((feedback: 'success' | 'error') => {
     if (feedbackTimeoutRef.current) {
@@ -125,6 +139,38 @@ export default function TupleCalculusPage() {
 
   useEffect(() => {
     if (!isReady) {
+      initialDatabaseResolvedRef.current = false;
+      return;
+    }
+
+    if (initialDatabaseResolvedRef.current) return;
+
+    const preferred = store.selectedDatabase?.trim();
+    if (!preferred || preferred === activeDatabase) {
+      initialDatabaseResolvedRef.current = true;
+      return;
+    }
+
+    if (!databases.includes(preferred)) return;
+
+    const switched = switchDatabase(preferred);
+    if (!switched.error) {
+      initialDatabaseResolvedRef.current = true;
+      return;
+    }
+
+    initialDatabaseResolvedRef.current = true;
+  }, [activeDatabase, databases, isReady, store, switchDatabase]);
+
+  useEffect(() => {
+    if (!initialDatabaseResolvedRef.current) return;
+    if (!isReady) return;
+    if (store.selectedDatabase === activeDatabase) return;
+    store.setSelectedDatabase(activeDatabase);
+  }, [activeDatabase, isReady, store]);
+
+  useEffect(() => {
+    if (!isReady) {
       defaultsBootstrappedRef.current = false;
       return;
     }
@@ -132,28 +178,37 @@ export default function TupleCalculusPage() {
     if (defaultsBootstrappedRef.current) return;
     defaultsBootstrappedRef.current = true;
 
-    const initialActive = activeDatabase;
+    const preferredActive =
+      typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_DATABASE_KEY)?.trim() : '';
+    const initialActive =
+      store.selectedDatabase?.trim() || getCurrentDatabase() || preferredActive || activeDatabase || 'main';
     const defaults = [
       { name: 'university', data: universityData as Record<string, unknown> },
       { name: 'banking', data: bankingData as Record<string, unknown> },
     ];
 
     defaults.forEach((dataset) => {
-      execute(`CREATE DATABASE IF NOT EXISTS "${dataset.name}"`, { persist: false });
-      const useDb = switchDatabase(dataset.name);
+      execute(`CREATE DATABASE IF NOT EXISTS "${dataset.name}"`, {
+        persist: false,
+        persistSelection: false,
+      });
+      const useDb = switchDatabase(dataset.name, { persistSelection: false });
       if (useDb.error) return;
 
-      const tableCheck = execute('SHOW TABLES;');
+      const tableCheck = execute('SHOW TABLES;', { persistSelection: false });
       if (!tableCheck.error && tableCheck.rowCount > 0) return;
 
-      loadSQL(jsonToSQL(dataset.data as Record<string, Record<string, unknown>[]>), { persist: false });
+      loadSQL(jsonToSQL(dataset.data as Record<string, Record<string, unknown>[]>), {
+        persist: false,
+        persistSelection: false,
+      });
     });
 
-    const switchedBack = switchDatabase(initialActive);
+    const switchedBack = switchDatabase(initialActive, { persistSelection: false });
     if (switchedBack.error) {
-      switchDatabase('main');
+      switchDatabase('main', { persistSelection: false });
     }
-  }, [activeDatabase, execute, isReady, loadSQL, switchDatabase]);
+  }, [activeDatabase, execute, getCurrentDatabase, isReady, loadSQL, store.selectedDatabase, switchDatabase]);
 
   const handleEvaluate = useCallback(() => {
     const expr = store.expression.trim();

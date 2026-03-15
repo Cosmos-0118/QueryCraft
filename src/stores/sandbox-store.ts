@@ -27,10 +27,12 @@ interface SandboxStore {
   query: string;
   results: QueryResult | null;
   queryHistory: HistoryEntry[];
+  lastDatabase: string;
   pendingDatabase: string | null;
   activeTab: 'results' | 'schema' | 'history';
   setQuery: (query: string) => void;
   setResults: (results: QueryResult | null) => void;
+  setLastDatabase: (database: string) => void;
   setPendingDatabase: (database: string | null) => void;
   addToHistory: (query: string, success: boolean, result: QueryResult, database: string) => void;
   clearHistory: () => void;
@@ -43,10 +45,12 @@ export const useSandboxStore = create<SandboxStore>()(
       query: '-- Write your SQL here\nSELECT 1 + 1 AS result;',
       results: null,
       queryHistory: [],
+      lastDatabase: 'main',
       pendingDatabase: null,
       activeTab: 'results',
       setQuery: (query) => set({ query }),
       setResults: (results) => set({ results }),
+      setLastDatabase: (lastDatabase) => set({ lastDatabase }),
       setPendingDatabase: (pendingDatabase) => set({ pendingDatabase }),
       addToHistory: (query, success, result, database) =>
         set((state) => ({
@@ -80,8 +84,17 @@ export const useSandboxStore = create<SandboxStore>()(
       partialize: (state) => ({
         query: state.query,
         queryHistory: state.queryHistory,
-        pendingDatabase: state.pendingDatabase,
+        lastDatabase: state.lastDatabase,
       }),
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<SandboxStore>;
+        return {
+          ...currentState,
+          ...persisted,
+          // Never replay pending navigation intent from persisted storage.
+          pendingDatabase: null,
+        };
+      },
     },
   ),
 );

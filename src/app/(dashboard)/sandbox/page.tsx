@@ -36,6 +36,8 @@ import Link from 'next/link';
 import universityData from '@/../seed/datasets/university.json';
 import bankingData from '@/../seed/datasets/banking.json';
 
+const ACTIVE_DATABASE_KEY = 'querycraft-sql-active-database-v1';
+
 function jsonToSQL(data: Record<string, Record<string, unknown>[]>): string {
   const statements: string[] = [];
   for (const [table, rows] of Object.entries(data)) {
@@ -71,6 +73,7 @@ export default function SandboxPage() {
     refreshTables,
     databases,
     activeDatabase,
+    getCurrentDatabase,
     switchDatabase,
     users,
     activeUser,
@@ -105,6 +108,7 @@ export default function SandboxPage() {
   const dbMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const defaultsBootstrappedRef = useRef(false);
+  const initialDatabaseResolvedRef = useRef(false);
 
   const triggerEditorFeedback = useCallback((feedback: 'success' | 'error') => {
     if (feedbackTimeoutRef.current) {
@@ -182,6 +186,40 @@ export default function SandboxPage() {
 
   useEffect(() => {
     if (!isReady) {
+      initialDatabaseResolvedRef.current = false;
+      return;
+    }
+
+    if (initialDatabaseResolvedRef.current) return;
+
+    const preferred = store.lastDatabase?.trim();
+    if (!preferred || preferred === activeDatabase) {
+      initialDatabaseResolvedRef.current = true;
+      return;
+    }
+
+    // If the preferred DB does not exist yet, wait for bootstrap to create it.
+    if (!databases.includes(preferred)) return;
+
+    const switched = switchDatabase(preferred);
+    if (!switched.error) {
+      initialDatabaseResolvedRef.current = true;
+      return;
+    }
+
+    // Fall back only after we've confirmed restore is not possible.
+    initialDatabaseResolvedRef.current = true;
+  }, [activeDatabase, databases, isReady, store, switchDatabase]);
+
+  useEffect(() => {
+    if (!initialDatabaseResolvedRef.current) return;
+    if (!isReady) return;
+    if (store.lastDatabase === activeDatabase) return;
+    store.setLastDatabase(activeDatabase);
+  }, [activeDatabase, isReady, store]);
+
+  useEffect(() => {
+    if (!isReady) {
       defaultsBootstrappedRef.current = false;
       return;
     }
@@ -190,7 +228,10 @@ export default function SandboxPage() {
     defaultsBootstrappedRef.current = true;
 
     const bootstrapDefaults = () => {
-      const initialActive = activeDatabase;
+      const preferredActive =
+        typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_DATABASE_KEY)?.trim() : '';
+      const initialActive =
+        store.lastDatabase?.trim() || getCurrentDatabase() || preferredActive || activeDatabase || 'main';
 
       const defaults = [
         { name: 'university', data: universityData as Record<string, unknown> },
@@ -198,18 +239,18 @@ export default function SandboxPage() {
       ];
 
       defaults.forEach((dataset) => {
-        const createDb = execute(`CREATE DATABASE IF NOT EXISTS "${dataset.name}"`, { persist: false });
+        const createDb = execute(`CREATE DATABASE IF NOT EXISTS "${dataset.name}"`, { persist: false, persistSelection: false });
         if (createDb.error) return;
 
-        const useDb = switchDatabase(dataset.name);
+        const useDb = switchDatabase(dataset.name, { persistSelection: false });
         if (useDb.error) return;
 
-        const tableCheck = execute('SHOW TABLES;');
+        const tableCheck = execute('SHOW TABLES;', { persistSelection: false });
         const hasTables = !tableCheck.error && tableCheck.rowCount > 0;
         if (hasTables) return;
 
         const sql = jsonToSQL(dataset.data as Record<string, Record<string, unknown>[]>);
-        loadSQL(sql, { persist: false });
+        loadSQL(sql, { persist: false, persistSelection: false });
       });
 
       // Cleanup for default dataset tables that accidentally landed in `main`.
@@ -226,15 +267,15 @@ export default function SandboxPage() {
 
       const datasetTableMap = new Map<string, Set<string>>();
       for (const dataset of defaults) {
-        const switched = switchDatabase(dataset.name);
+        const switched = switchDatabase(dataset.name, { persistSelection: false });
         if (switched.error) continue;
-        const rows = execute('SHOW TABLES;');
+        const rows = execute('SHOW TABLES;', { persistSelection: false });
         datasetTableMap.set(dataset.name, parseTableNames(rows));
       }
 
-      const switchedMain = switchDatabase('main');
+      const switchedMain = switchDatabase('main', { persistSelection: false });
       if (!switchedMain.error) {
-        const mainTables = parseTableNames(execute('SHOW TABLES;'));
+        const mainTables = parseTableNames(execute('SHOW TABLES;', { persistSelection: false }));
 
         const knownDefaultTables = new Set<string>();
         for (const dataset of defaults) {
@@ -249,16 +290,16 @@ export default function SandboxPage() {
           const existsInTargetDb = Array.from(datasetTableMap.values()).some((set) => set.has(tableName));
           if (!existsInTargetDb) continue;
 
-          execute(`DROP TABLE IF EXISTS "${tableName}";`, { persist: false });
+          execute(`DROP TABLE IF EXISTS "${tableName}";`, { persist: false, persistSelection: false });
         }
       }
 
-      const switchedBack = switchDatabase(initialActive);
-      if (switchedBack.error) switchDatabase('main');
+      const switchedBack = switchDatabase(initialActive, { persistSelection: false });
+      if (switchedBack.error) switchDatabase('main', { persistSelection: false });
     };
 
     bootstrapDefaults();
-  }, [activeDatabase, databases, execute, isReady, loadSQL, switchDatabase]);
+  }, [activeDatabase, databases, execute, getCurrentDatabase, isReady, loadSQL, store.lastDatabase, switchDatabase]);
 
   const handleExecute = useCallback(() => {
     const q = store.query.trim();

@@ -14,6 +14,8 @@ export type SqlJs = {
 export interface TranslatedQuery {
   sql: string | null;
   result?: QueryResult;
+  /** Maps rewritten SQLite expression → original MySQL function call for column renaming */
+  columnRenames?: Record<string, string>;
 }
 
 export type SupportedPrivilege =

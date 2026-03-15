@@ -153,25 +153,28 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
   const [engineUnavailable, setEngineUnavailable] = useState(false);
   const { start: startLoading, stop: stopLoading } = useLoadingStore();
 
-  const syncEngineState = useCallback(() => {
-    if (!executorRef.current?.isReady()) return;
-    const nextTables = executorRef.current.getTables();
-    const nextDatabases = executorRef.current.getDatabases();
-    const nextActiveDb = executorRef.current.getActiveDatabase();
-    const nextUsers = executorRef.current.getUsers();
-    const nextActiveUser = executorRef.current.getCurrentUserDisplay();
+  const syncEngineState = useCallback(
+    (options?: { persistSelection?: boolean }) => {
+      if (!executorRef.current?.isReady()) return;
+      const nextTables = executorRef.current.getTables();
+      const nextDatabases = executorRef.current.getDatabases();
+      const nextActiveDb = executorRef.current.getActiveDatabase();
+      const nextUsers = executorRef.current.getUsers();
+      const nextActiveUser = executorRef.current.getCurrentUserDisplay();
 
-    activeDatabaseRef.current = nextActiveDb;
-    setTables(nextTables);
-    setDatabases(nextDatabases);
-    setActiveDatabase(nextActiveDb);
-    setUsers(nextUsers);
-    setActiveUser(nextActiveUser);
-    if (!isolated) {
-      savePersistedActiveDatabase(nextActiveDb);
-      savePersistedActiveUser(nextActiveUser);
-    }
-  }, [isolated]);
+      activeDatabaseRef.current = nextActiveDb;
+      setTables(nextTables);
+      setDatabases(nextDatabases);
+      setActiveDatabase(nextActiveDb);
+      setUsers(nextUsers);
+      setActiveUser(nextActiveUser);
+      if (!isolated && (options?.persistSelection ?? true)) {
+        savePersistedActiveDatabase(nextActiveDb);
+        savePersistedActiveUser(nextActiveUser);
+      }
+    },
+    [isolated],
+  );
 
   useEffect(() => {
     if (!isolated) {
@@ -256,7 +259,7 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
   }, [isolated]);
 
   const execute = useCallback(
-    (sql: string, options?: { persist?: boolean }): QueryResult => {
+    (sql: string, options?: { persist?: boolean; persistSelection?: boolean }): QueryResult => {
       const start = performance.now();
 
       if (engineUnavailable) {
@@ -289,14 +292,14 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
         ];
         savePersistedStatements(persistedStatementsRef.current);
       }
-      syncEngineState();
+      syncEngineState({ persistSelection: options?.persistSelection });
       return result;
     },
     [engineUnavailable, isolated, syncEngineState],
   );
 
   const loadSQL = useCallback(
-    (sql: string, options?: { persist?: boolean }): QueryResult => {
+    (sql: string, options?: { persist?: boolean; persistSelection?: boolean }): QueryResult => {
       const start = performance.now();
 
       if (engineUnavailable) {
@@ -327,14 +330,14 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
         ];
         savePersistedStatements(persistedStatementsRef.current);
       }
-      syncEngineState();
+      syncEngineState({ persistSelection: options?.persistSelection });
       return result;
     },
     [engineUnavailable, isolated, syncEngineState],
   );
 
   const switchDatabase = useCallback(
-    (name: string): QueryResult => {
+    (name: string, options?: { persistSelection?: boolean }): QueryResult => {
       const start = performance.now();
 
       if (engineUnavailable) {
@@ -354,15 +357,19 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
       const result = executorRef.current.useDatabase(name);
       if (!result.error) {
         activeDatabaseRef.current = name;
-        if (!isolated) {
+        if (!isolated && (options?.persistSelection ?? true)) {
           savePersistedActiveDatabase(name);
         }
-        syncEngineState();
+        syncEngineState({ persistSelection: options?.persistSelection });
       }
       return result;
     },
     [engineUnavailable, isolated, syncEngineState],
   );
+
+  const getCurrentDatabase = useCallback((): string => {
+    return activeDatabaseRef.current;
+  }, []);
 
   const switchUser = useCallback(
     (name: string): QueryResult => {
@@ -447,6 +454,7 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
     refreshTables,
     databases,
     activeDatabase,
+    getCurrentDatabase,
     switchDatabase,
     users,
     activeUser,

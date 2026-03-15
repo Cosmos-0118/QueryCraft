@@ -19,6 +19,7 @@ export interface AlgebraHistoryEntry {
 
 interface AlgebraStore {
   expression: string;
+  selectedDatabase: string;
   parsedTree: AlgebraNode | null;
   steps: StepResult[];
   activeStepIndex: number;
@@ -26,6 +27,7 @@ interface AlgebraStore {
   sqlEquivalent: string;
   history: AlgebraHistoryEntry[];
   setExpression: (expr: string) => void;
+  setSelectedDatabase: (database: string) => void;
   setParsedTree: (tree: AlgebraNode | null) => void;
   setSteps: (steps: StepResult[]) => void;
   setActiveStepIndex: (index: number) => void;
@@ -40,6 +42,7 @@ export const useAlgebraStore = create<AlgebraStore>()(
   persist(
     (set) => ({
       expression: '',
+      selectedDatabase: 'main',
       parsedTree: null,
       steps: [],
       activeStepIndex: -1,
@@ -47,6 +50,7 @@ export const useAlgebraStore = create<AlgebraStore>()(
       sqlEquivalent: '',
       history: [],
       setExpression: (expression) => set({ expression }),
+      setSelectedDatabase: (selectedDatabase) => set({ selectedDatabase }),
       setParsedTree: (parsedTree) => set({ parsedTree }),
       setSteps: (steps) => set({ steps }),
       setActiveStepIndex: (activeStepIndex) => set({ activeStepIndex }),
@@ -69,7 +73,11 @@ export const useAlgebraStore = create<AlgebraStore>()(
     }),
     {
       name: 'querycraft-algebra',
-      partialize: (state) => ({ expression: state.expression, history: state.history }),
+      partialize: (state) => ({
+        expression: state.expression,
+        history: state.history,
+        selectedDatabase: state.selectedDatabase,
+      }),
     },
   ),
 );

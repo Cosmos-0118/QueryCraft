@@ -56,8 +56,13 @@ function rewriteFunctionCalls(
   return output + sql.slice(cursor);
 }
 
-function applyAggregateCompatibilityRewrites(sql: string): string {
-  return rewriteFunctionCalls(
+function applyAggregateCompatibilityRewrites(sql: string): {
+  sql: string;
+  columnRenames: Record<string, string>;
+} {
+  const columnRenames: Record<string, string> = {};
+
+  const rewritten = rewriteFunctionCalls(
     sql,
     ['VAR_POP', 'VARIANCE', 'VAR_SAMP', 'STDDEV', 'STD', 'STDDEV_POP', 'STDDEV_SAMP'],
     (fnName, argument) => {
@@ -65,23 +70,34 @@ function applyAggregateCompatibilityRewrites(sql: string): string {
       const variancePop = `(AVG((${arg}) * (${arg})) - AVG(${arg}) * AVG(${arg}))`;
       const varianceSamp = `CASE WHEN COUNT(${arg}) > 1 THEN ${variancePop} * COUNT(${arg}) / (COUNT(${arg}) - 1) ELSE NULL END`;
 
+      let expanded: string;
       switch (fnName) {
         case 'VAR_POP':
         case 'VARIANCE':
-          return variancePop;
+          expanded = variancePop;
+          break;
         case 'VAR_SAMP':
-          return varianceSamp;
+          expanded = varianceSamp;
+          break;
         case 'STD':
         case 'STDDEV':
         case 'STDDEV_POP':
-          return `SQRT(${variancePop})`;
+          expanded = `SQRT(${variancePop})`;
+          break;
         case 'STDDEV_SAMP':
-          return `SQRT(${varianceSamp})`;
+          expanded = `SQRT(${varianceSamp})`;
+          break;
         default:
           return `${fnName}(${arg})`;
       }
+
+      // Track the mapping so the caller can rename result columns
+      columnRenames[expanded] = `${fnName}(${arg})`;
+      return expanded;
     },
   );
+
+  return { sql: rewritten, columnRenames };
 }
 
 export function translateMySQL(
@@ -514,9 +530,14 @@ export function translateMySQL(
   translated = translated.replace(/\bVERSION\s*\(\s*\)/gi, 'sqlite_version()');
 
   // MySQL statistical aggregates not available in SQLite by default.
-  translated = applyAggregateCompatibilityRewrites(translated);
+  const aggregateResult = applyAggregateCompatibilityRewrites(translated);
+  translated = aggregateResult.sql;
+  const columnRenames =
+    Object.keys(aggregateResult.columnRenames).length > 0
+      ? aggregateResult.columnRenames
+      : undefined;
 
-  return { sql: translated };
+  return { sql: translated, columnRenames };
 }
 
 function buildDescribeResult(table: string, db: SqlJsDatabase): TranslatedQuery {
