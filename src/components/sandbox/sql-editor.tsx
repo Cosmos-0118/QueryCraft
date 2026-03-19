@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState } from 'react';
 import { EditorView, keymap } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
+import { EditorSelection, EditorState } from '@codemirror/state';
 import { sql, MySQL } from '@codemirror/lang-sql';
 import { defaultKeymap } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
@@ -526,12 +526,12 @@ function buildCompletionSource(tables: TableSchema[]) {
           type: 'keyword',
           apply: contextualTokenMatch
             ? (view, _completion, insertFrom, insertTo) => {
-                const tail = buildContextualTail(kw) ?? kw;
-                view.dispatch({
-                  changes: { from: insertFrom, to: insertTo, insert: tail },
-                  selection: { anchor: insertFrom + tail.length },
-                });
-              }
+              const tail = buildContextualTail(kw) ?? kw;
+              view.dispatch({
+                changes: { from: insertFrom, to: insertTo, insert: tail },
+                selection: { anchor: insertFrom + tail.length },
+              });
+            }
             : undefined,
           boost,
         });
@@ -709,12 +709,12 @@ function buildCompletionSource(tables: TableSchema[]) {
           apply:
             snippetContextMatch
               ? (view, _completion, insertFrom, insertTo) => {
-                  const tail = buildContextualTail(s.template) ?? s.template;
-                  view.dispatch({
-                    changes: { from: insertFrom, to: insertTo, insert: tail },
-                    selection: { anchor: insertFrom + tail.length },
-                  });
-                }
+                const tail = buildContextualTail(s.template) ?? s.template;
+                view.dispatch({
+                  changes: { from: insertFrom, to: insertTo, insert: tail },
+                  selection: { anchor: insertFrom + tail.length },
+                });
+              }
               : s.template,
           boost: snippetBoost,
         });
@@ -735,6 +735,7 @@ interface SqlEditorProps {
   executionFeedback?: 'idle' | 'success' | 'error';
   hasOutput?: boolean;
   className?: string;
+  focusRequestKey?: number;
 }
 
 export function SqlEditor({
@@ -746,6 +747,7 @@ export function SqlEditor({
   executionFeedback = 'idle',
   hasOutput = false,
   className,
+  focusRequestKey,
 }: SqlEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -952,23 +954,38 @@ export function SqlEditor({
     isApplyingExternalChangeRef.current = true;
     view.dispatch({
       changes: { from: 0, to: currentValue.length, insert: value },
-      selection: { anchor: value.length },
+      selection: EditorSelection.create([EditorSelection.cursor(value.length)], 0),
     });
     isApplyingExternalChangeRef.current = false;
   }, [value]);
 
+  useEffect(() => {
+    if (focusRequestKey === undefined) return;
+    const view = viewRef.current;
+    if (!view) return;
+
+    requestAnimationFrame(() => {
+      const latestView = viewRef.current;
+      if (!latestView) return;
+      const cursorPos = latestView.state.doc.length;
+      latestView.focus();
+      latestView.dispatch({
+        selection: EditorSelection.create([EditorSelection.cursor(cursorPos)], 0),
+        scrollIntoView: true,
+      });
+    });
+  }, [focusRequestKey]);
+
   return (
     <div className={`min-h-0 ${className ?? ''}`}>
       <div
-        className={`overflow-hidden rounded-xl border border-zinc-700/50 transition-[height] duration-200 ${
-          hasOutput ? 'h-[clamp(220px,36vh,420px)]' : 'h-[clamp(300px,58vh,680px)]'
-        } ${
-          executionFeedback === 'success'
+        className={`overflow-hidden rounded-xl border border-zinc-700/50 transition-[height] duration-200 ${hasOutput ? 'h-[clamp(220px,36vh,420px)]' : 'h-[clamp(300px,58vh,680px)]'
+          } ${executionFeedback === 'success'
             ? 'execute-feedback-success'
             : executionFeedback === 'error'
               ? 'execute-feedback-error'
               : ''
-        }`}
+          }`}
         style={{ background: 'linear-gradient(180deg, rgba(24,24,27,0.95) 0%, rgba(18,18,21,0.98) 100%)' }}
         ref={editorRef}
       />

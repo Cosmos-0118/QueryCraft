@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSqlEngine } from '@/hooks/use-sql-engine';
 import { useSandboxStore } from '@/stores/sandbox-store';
 import { useSessionPersistence } from '@/hooks/use-session-persistence';
@@ -12,6 +12,7 @@ import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import { ResultPanel } from '@/components/visual/result-panel';
 import { SqlErrorAlert } from '@/components/visual/sql-error-alert';
 import { cn } from '@/lib/utils/helpers';
+import { fetchSeedDatasets, type SeedDataset } from '@/lib/seed-datasets';
 import type { QueryResult, StatementQueryResult } from '@/types/database';
 import {
   Terminal,
@@ -32,9 +33,6 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-
-import universityData from '@/../seed/datasets/university.json';
-import bankingData from '@/../seed/datasets/banking.json';
 
 const ACTIVE_DATABASE_KEY = 'querycraft-sql-active-database-v1';
 
@@ -88,6 +86,7 @@ export default function SandboxPage() {
   const [showImport, setShowImport] = useState(false);
   const [showDatabases, setShowDatabases] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
+  const [editorFocusRequestKey, setEditorFocusRequestKey] = useState(0);
   const [editorFeedback, setEditorFeedback] = useState<'idle' | 'success' | 'error'>('idle');
   const [showTriggersPanel, setShowTriggersPanel] = useState(false);
   const [triggerRows, setTriggerRows] = useState<Array<{ Trigger: string; Table: string; Statement: string }>>([]);
@@ -100,6 +99,7 @@ export default function SandboxPage() {
   const [selectedProcedureName, setSelectedProcedureName] = useState<string | null>(null);
   const [selectedProcedureSql, setSelectedProcedureSql] = useState<string | null>(null);
   const [showSecurityPanel, setShowSecurityPanel] = useState(false);
+  const [seedDatasets, setSeedDatasets] = useState<SeedDataset[]>([]);
   const [selectedSecurityUser, setSelectedSecurityUser] = useState<string>('');
   const [grantsRows, setGrantsRows] = useState<string[]>([]);
   const [grantsQueryError, setGrantsQueryError] = useState<string | null>(null);
@@ -109,6 +109,10 @@ export default function SandboxPage() {
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const defaultsBootstrappedRef = useRef(false);
   const initialDatabaseResolvedRef = useRef(false);
+  const seedDatasetNames = useMemo(
+    () => new Set(seedDatasets.map((dataset) => dataset.name.toLowerCase())),
+    [seedDatasets],
+  );
 
   const triggerEditorFeedback = useCallback((feedback: 'success' | 'error') => {
     if (feedbackTimeoutRef.current) {
@@ -219,10 +223,26 @@ export default function SandboxPage() {
   }, [activeDatabase, isReady, store]);
 
   useEffect(() => {
+    const controller = new AbortController();
+
+    fetchSeedDatasets(controller.signal)
+      .then((datasets) => {
+        setSeedDatasets(datasets);
+      })
+      .catch(() => {
+        setSeedDatasets([]);
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
     if (!isReady) {
       defaultsBootstrappedRef.current = false;
       return;
     }
+
+    if (seedDatasets.length === 0) return;
 
     if (defaultsBootstrappedRef.current) return;
     defaultsBootstrappedRef.current = true;
@@ -233,10 +253,7 @@ export default function SandboxPage() {
       const initialActive =
         store.lastDatabase?.trim() || getCurrentDatabase() || preferredActive || activeDatabase || 'main';
 
-      const defaults = [
-        { name: 'university', data: universityData as Record<string, unknown> },
-        { name: 'banking', data: bankingData as Record<string, unknown> },
-      ];
+      const defaults = seedDatasets;
 
       defaults.forEach((dataset) => {
         const createDb = execute(`CREATE DATABASE IF NOT EXISTS "${dataset.name}"`, { persist: false, persistSelection: false });
@@ -299,7 +316,17 @@ export default function SandboxPage() {
     };
 
     bootstrapDefaults();
-  }, [activeDatabase, databases, execute, getCurrentDatabase, isReady, loadSQL, store.lastDatabase, switchDatabase]);
+  }, [
+    activeDatabase,
+    databases,
+    execute,
+    getCurrentDatabase,
+    isReady,
+    loadSQL,
+    seedDatasets,
+    store.lastDatabase,
+    switchDatabase,
+  ]);
 
   const handleExecute = useCallback(() => {
     const q = store.query.trim();
@@ -493,16 +520,16 @@ export default function SandboxPage() {
     ? result.statementResults && result.statementResults.length > 0
       ? result.statementResults
       : [
-          {
-            statement: store.query,
-            columns: result.columns,
-            rows: result.rows,
-            rowCount: result.rowCount,
-            executionTimeMs: result.executionTimeMs,
-            error: result.error,
-            errorDetails: result.errorDetails,
-          },
-        ]
+        {
+          statement: store.query,
+          columns: result.columns,
+          rows: result.rows,
+          rowCount: result.rowCount,
+          executionTimeMs: result.executionTimeMs,
+          error: result.error,
+          errorDetails: result.errorDetails,
+        },
+      ]
     : [];
 
   return (
@@ -559,7 +586,7 @@ export default function SandboxPage() {
                   <div className="space-y-1">
                     {databases.map((dbName) => {
                       const normalizedDbName = dbName.toLowerCase();
-                      const isSystemDb = normalizedDbName === 'main' || normalizedDbName === 'university' || normalizedDbName === 'banking';
+                      const isSystemDb = normalizedDbName === 'main' || seedDatasetNames.has(normalizedDbName);
                       const isActiveDb = activeDatabase === dbName;
                       return (
                         <button
@@ -828,7 +855,10 @@ export default function SandboxPage() {
             {tables.map((t) => (
               <button
                 key={t.name}
-                onClick={() => store.setQuery(`SELECT * FROM "${t.name}" LIMIT 20;`)}
+                onClick={() => {
+                  store.setQuery(`SELECT * FROM "${t.name}" LIMIT 20;`);
+                  setEditorFocusRequestKey((key) => key + 1);
+                }}
                 title={`Query "${t.name}"`}
                 className="group inline-flex items-center gap-1 rounded-md border border-zinc-700/40 bg-zinc-800/50 px-2.5 py-1 font-mono text-xs text-zinc-300 transition-all hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300"
               >
@@ -851,6 +881,7 @@ export default function SandboxPage() {
               historyCommands={store.queryHistory.map((entry) => entry.query)}
               executionFeedback={editorFeedback}
               hasOutput={Boolean(result)}
+              focusRequestKey={editorFocusRequestKey}
             />
 
             {/* Run bar */}

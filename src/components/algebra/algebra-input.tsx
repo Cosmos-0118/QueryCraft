@@ -86,6 +86,7 @@ interface AlgebraInputProps {
   tableNames?: string[];
   historyExpressions?: string[];
   executionFeedback?: 'idle' | 'success' | 'error';
+  focusRequestKey?: number;
 }
 
 function rankCompletion(item: CompletionItem, query: string): number {
@@ -108,6 +109,7 @@ export function AlgebraInput({
   tableNames = [],
   historyExpressions = [],
   executionFeedback = 'idle',
+  focusRequestKey,
 }: AlgebraInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -246,6 +248,20 @@ export function AlgebraInput({
     updateCompletions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
+
+  useEffect(() => {
+    if (focusRequestKey === undefined) return;
+    const el = inputRef.current;
+    if (!el) return;
+
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      const pos = input.value.length;
+      input.setSelectionRange(pos, pos);
+    });
+  }, [focusRequestKey]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -473,13 +489,12 @@ export function AlgebraInput({
 
   return (
     <div
-      className={`rounded-xl border border-zinc-700/50 bg-zinc-900/60 ${
-        executionFeedback === 'success'
+      className={`rounded-xl border border-zinc-700/50 bg-zinc-900/60 ${executionFeedback === 'success'
           ? 'execute-feedback-success'
           : executionFeedback === 'error'
             ? 'execute-feedback-error'
             : ''
-      }`}
+        }`}
     >
       <div className="flex items-center justify-between rounded-t-xl border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-2.5">
         <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
@@ -516,9 +531,8 @@ export function AlgebraInput({
                   applyCompletion(item);
                 }}
                 onMouseEnter={() => setSelectedIdx(i)}
-                className={`flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors ${
-                  i === selectedIdx ? 'bg-violet-500/15' : 'hover:bg-zinc-800/60'
-                }`}
+                className={`flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors ${i === selectedIdx ? 'bg-violet-500/15' : 'hover:bg-zinc-800/60'
+                  }`}
               >
                 <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${kindBg[item.kind]}`}>
                   {item.kind === 'operator' ? 'OP' : item.kind === 'keyword' ? 'KW' : item.kind === 'table' ? 'TBL' : item.kind === 'column' ? 'COL' : 'FN'}

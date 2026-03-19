@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAlgebraStore } from '@/stores/algebra-store';
 import { useLoadingStore } from '@/stores/loading-store';
 import { useSqlEngine } from '@/hooks/use-sql-engine';
@@ -15,6 +15,7 @@ import { TableBrowser } from '@/components/algebra/table-browser';
 import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import type { QueryResult } from '@/types/database';
 import { cn } from '@/lib/utils/helpers';
+import { fetchSeedDatasets, type SeedDataset } from '@/lib/seed-datasets';
 import {
   Database,
   ChevronDown,
@@ -28,9 +29,6 @@ import {
   ClipboardPaste,
 } from 'lucide-react';
 import Link from 'next/link';
-
-import universityData from '@/../seed/datasets/university.json';
-import bankingData from '@/../seed/datasets/banking.json';
 
 const ACTIVE_DATABASE_KEY = 'querycraft-sql-active-database-v1';
 
@@ -81,6 +79,14 @@ const BANKING_EXAMPLES = [
   { label: 'Sum balances', expr: 'γ[customer_id; SUM(balance) AS total](accounts)' },
 ];
 
+const CREDENTIA_EXAMPLES = [
+  { label: 'All students', expr: 'σ[role = "STUDENT"](users)' },
+  { label: 'Student contacts', expr: 'π[name, email](users)' },
+  { label: 'Student ↔ info join', expr: 'users ⋈ student_info' },
+  { label: 'Class enrollments', expr: 'classes ⋈ class_enrollment' },
+  { label: 'Achievements per student', expr: 'γ[studentId; COUNT(*) AS total](achievements)' },
+];
+
 export default function AlgebraPage() {
   const {
     isReady,
@@ -100,16 +106,22 @@ export default function AlgebraPage() {
   const [browserOpen, setBrowserOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [activeDataset, setActiveDataset] = useState<string | null>(null);
+  const [inputFocusRequestKey, setInputFocusRequestKey] = useState(0);
   const [showGroups, setShowGroups] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importSql, setImportSql] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [seedDatasets, setSeedDatasets] = useState<SeedDataset[]>([]);
   const [groupError, setGroupError] = useState<string | null>(null);
   const [inputFeedback, setInputFeedback] = useState<'idle' | 'success' | 'error'>('idle');
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const groupMenuRef = useRef<HTMLDivElement | null>(null);
   const defaultsBootstrappedRef = useRef(false);
   const initialDatabaseResolvedRef = useRef(false);
+  const seedDatasetNames = useMemo(
+    () => new Set(seedDatasets.map((dataset) => dataset.name.toLowerCase())),
+    [seedDatasets],
+  );
 
   const triggerInputFeedback = useCallback((feedback: 'success' | 'error') => {
     if (feedbackTimeoutRef.current) {
@@ -176,10 +188,31 @@ export default function AlgebraPage() {
   }, [activeDatabase, isReady, store]);
 
   useEffect(() => {
+    const controller = new AbortController();
+
+    fetchSeedDatasets(controller.signal)
+      .then((datasets) => {
+        setSeedDatasets(datasets);
+      })
+      .catch(() => {
+        setSeedDatasets([]);
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const normalized = activeDatabase.toLowerCase();
+    setActiveDataset(seedDatasetNames.has(normalized) ? normalized : null);
+  }, [activeDatabase, seedDatasetNames]);
+
+  useEffect(() => {
     if (!isReady) {
       defaultsBootstrappedRef.current = false;
       return;
     }
+
+    if (seedDatasets.length === 0) return;
 
     if (defaultsBootstrappedRef.current) return;
     defaultsBootstrappedRef.current = true;
@@ -188,10 +221,7 @@ export default function AlgebraPage() {
       typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_DATABASE_KEY)?.trim() : '';
     const initialActive =
       store.selectedDatabase?.trim() || getCurrentDatabase() || preferredActive || activeDatabase || 'main';
-    const defaults = [
-      { name: 'university', data: universityData as Record<string, unknown> },
-      { name: 'banking', data: bankingData as Record<string, unknown> },
-    ];
+    const defaults = seedDatasets;
 
     defaults.forEach((dataset) => {
       execute(`CREATE DATABASE IF NOT EXISTS "${dataset.name}"`, {
@@ -214,7 +244,16 @@ export default function AlgebraPage() {
     if (switchedBack.error) {
       switchDatabase('main', { persistSelection: false });
     }
-  }, [activeDatabase, execute, getCurrentDatabase, isReady, loadSQL, store.selectedDatabase, switchDatabase]);
+  }, [
+    activeDatabase,
+    execute,
+    getCurrentDatabase,
+    isReady,
+    loadSQL,
+    seedDatasets,
+    store.selectedDatabase,
+    switchDatabase,
+  ]);
 
   const handleCreateGroup = useCallback(() => {
     setGroupError(null);
@@ -307,10 +346,10 @@ export default function AlgebraPage() {
         stepCount: steps.length,
         result: finalResult
           ? {
-              columns: finalResult.columns,
-              rows: finalResult.rows.slice(0, 50),
-              rowCount: finalResult.rows.length,
-            }
+            columns: finalResult.columns,
+            rows: finalResult.rows.slice(0, 50),
+            rowCount: finalResult.rows.length,
+          }
           : undefined,
       });
       triggerInputFeedback('success');
@@ -332,6 +371,7 @@ export default function AlgebraPage() {
   const handleInsertTable = useCallback(
     (name: string) => {
       store.setExpression(store.expression + name);
+      setInputFocusRequestKey((key) => key + 1);
     },
     [store],
   );
@@ -350,7 +390,12 @@ export default function AlgebraPage() {
     setActiveDataset(null);
   }, [importSql, loadSQL]);
 
-  const examples = activeDataset === 'Banking' ? BANKING_EXAMPLES : UNIVERSITY_EXAMPLES;
+  const examples =
+    activeDataset === 'banking'
+      ? BANKING_EXAMPLES
+      : activeDataset === 'credentia'
+        ? CREDENTIA_EXAMPLES
+        : UNIVERSITY_EXAMPLES;
 
   return (
     <>
@@ -399,7 +444,7 @@ export default function AlgebraPage() {
                   <div className="space-y-1">
                     {databases.map((groupName) => {
                       const normalized = groupName.toLowerCase();
-                      const isSystem = normalized === 'main' || normalized === 'university' || normalized === 'banking';
+                      const isSystem = normalized === 'main' || seedDatasetNames.has(normalized);
                       const isActive = activeDatabase === groupName;
                       return (
                         <button
@@ -408,13 +453,7 @@ export default function AlgebraPage() {
                             const res = switchDatabase(groupName);
                             if (!res.error) {
                               setShowGroups(false);
-                              setActiveDataset(
-                                normalized === 'banking'
-                                  ? 'Banking'
-                                  : normalized === 'university'
-                                    ? 'University'
-                                    : null,
-                              );
+                              setActiveDataset(seedDatasetNames.has(normalized) ? normalized : null);
                             }
                           }}
                           className={cn(
@@ -609,6 +648,7 @@ export default function AlgebraPage() {
           tableNames={tables.map((t) => t.name)}
           historyExpressions={store.history.map((entry) => entry.expression)}
           executionFeedback={inputFeedback}
+          focusRequestKey={inputFocusRequestKey}
         />
 
         {/* ── Error ──────────────────────────── */}

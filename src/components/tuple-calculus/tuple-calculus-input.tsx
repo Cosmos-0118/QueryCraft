@@ -50,6 +50,7 @@ interface TupleCalculusInputProps {
   tables?: TableSchema[];
   historyExpressions?: string[];
   executionFeedback?: 'idle' | 'success' | 'error';
+  focusRequestKey?: number;
 }
 
 function rankCompletion(item: CompletionItem, query: string): number {
@@ -71,6 +72,7 @@ export function TupleCalculusInput({
   tables = [],
   historyExpressions = [],
   executionFeedback = 'idle',
+  focusRequestKey,
 }: TupleCalculusInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -378,6 +380,20 @@ export function TupleCalculusInput({
   }, [updateCompletions, value]);
 
   useEffect(() => {
+    if (focusRequestKey === undefined) return;
+    const el = inputRef.current;
+    if (!el) return;
+
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      const pos = input.value.length;
+      input.setSelectionRange(pos, pos);
+    });
+  }, [focusRequestKey]);
+
+  useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setShowComplete(false);
@@ -397,13 +413,12 @@ export function TupleCalculusInput({
 
   return (
     <div
-      className={`rounded-xl border border-zinc-700/50 bg-zinc-900/60 ${
-        executionFeedback === 'success'
+      className={`rounded-xl border border-zinc-700/50 bg-zinc-900/60 ${executionFeedback === 'success'
           ? 'execute-feedback-success'
           : executionFeedback === 'error'
             ? 'execute-feedback-error'
             : ''
-      }`}
+        }`}
     >
       <div className="flex items-center justify-between rounded-t-xl border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-2.5">
         <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">TRC Expression</span>
@@ -470,9 +485,8 @@ export function TupleCalculusInput({
                   applyCompletion(item);
                 }}
                 onMouseEnter={() => setSelectedIdx(i)}
-                className={`flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors ${
-                  i === selectedIdx ? 'bg-cyan-500/15' : 'hover:bg-zinc-800/60'
-                }`}
+                className={`flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors ${i === selectedIdx ? 'bg-cyan-500/15' : 'hover:bg-zinc-800/60'
+                  }`}
               >
                 <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${kindBadge[item.kind]}`}>
                   {item.kind.slice(0, 3)}

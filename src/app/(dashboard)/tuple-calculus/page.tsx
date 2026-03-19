@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useSqlEngine } from '@/hooks/use-sql-engine';
 import { useTrcStore } from '@/stores/trc-store';
@@ -12,6 +12,7 @@ import { TableBrowser } from '@/components/algebra/table-browser';
 import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import { TupleCalculusInput } from '@/components/tuple-calculus/tuple-calculus-input';
 import { cn } from '@/lib/utils/helpers';
+import { fetchSeedDatasets, type SeedDataset } from '@/lib/seed-datasets';
 import {
   FunctionSquare,
   ClipboardPaste,
@@ -26,9 +27,6 @@ import {
   XCircle,
   BookOpen,
 } from 'lucide-react';
-
-import universityData from '@/../seed/datasets/university.json';
-import bankingData from '@/../seed/datasets/banking.json';
 
 const ACTIVE_DATABASE_KEY = 'querycraft-sql-active-database-v1';
 
@@ -69,6 +67,16 @@ const BANKING_EXAMPLES = [
   { label: 'Customers with account', expr: '{ c | customers(c) ∧ ∃a (accounts(a) ∧ a.customer_id = c.customer_id) }' },
 ];
 
+const CREDENTIA_EXAMPLES = [
+  { label: 'All users', expr: '{ u | users(u) }' },
+  { label: 'Faculty users', expr: '{ <u.name, u.email> | users(u) ∧ u.role = "FACULTY" }' },
+  { label: 'Students with classes', expr: '{ s | student_info(s) ∧ ∃e (class_enrollment(e) ∧ e.studentId = s.id) }' },
+  {
+    label: 'Students with achievements',
+    expr: '{ s | student_info(s) ∧ ∃a (achievements(a) ∧ a.studentId = s.id) }',
+  },
+];
+
 export default function TupleCalculusPage() {
   const {
     isReady,
@@ -92,8 +100,10 @@ export default function TupleCalculusPage() {
   const [showGroups, setShowGroups] = useState(false);
   const [importSql, setImportSql] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [seedDatasets, setSeedDatasets] = useState<SeedDataset[]>([]);
   const [groupError, setGroupError] = useState<string | null>(null);
   const [activeDataset, setActiveDataset] = useState<string | null>(null);
+  const [inputFocusRequestKey, setInputFocusRequestKey] = useState(0);
   const [result, setResult] = useState<{
     columns: string[];
     rows: Record<string, unknown>[];
@@ -106,6 +116,10 @@ export default function TupleCalculusPage() {
   const groupMenuRef = useRef<HTMLDivElement | null>(null);
   const defaultsBootstrappedRef = useRef(false);
   const initialDatabaseResolvedRef = useRef(false);
+  const seedDatasetNames = useMemo(
+    () => new Set(seedDatasets.map((dataset) => dataset.name.toLowerCase())),
+    [seedDatasets],
+  );
 
   const triggerInputFeedback = useCallback((feedback: 'success' | 'error') => {
     if (feedbackTimeoutRef.current) {
@@ -170,10 +184,31 @@ export default function TupleCalculusPage() {
   }, [activeDatabase, isReady, store]);
 
   useEffect(() => {
+    const controller = new AbortController();
+
+    fetchSeedDatasets(controller.signal)
+      .then((datasets) => {
+        setSeedDatasets(datasets);
+      })
+      .catch(() => {
+        setSeedDatasets([]);
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const normalized = activeDatabase.toLowerCase();
+    setActiveDataset(seedDatasetNames.has(normalized) ? normalized : null);
+  }, [activeDatabase, seedDatasetNames]);
+
+  useEffect(() => {
     if (!isReady) {
       defaultsBootstrappedRef.current = false;
       return;
     }
+
+    if (seedDatasets.length === 0) return;
 
     if (defaultsBootstrappedRef.current) return;
     defaultsBootstrappedRef.current = true;
@@ -182,10 +217,7 @@ export default function TupleCalculusPage() {
       typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_DATABASE_KEY)?.trim() : '';
     const initialActive =
       store.selectedDatabase?.trim() || getCurrentDatabase() || preferredActive || activeDatabase || 'main';
-    const defaults = [
-      { name: 'university', data: universityData as Record<string, unknown> },
-      { name: 'banking', data: bankingData as Record<string, unknown> },
-    ];
+    const defaults = seedDatasets;
 
     defaults.forEach((dataset) => {
       execute(`CREATE DATABASE IF NOT EXISTS "${dataset.name}"`, {
@@ -208,7 +240,16 @@ export default function TupleCalculusPage() {
     if (switchedBack.error) {
       switchDatabase('main', { persistSelection: false });
     }
-  }, [activeDatabase, execute, getCurrentDatabase, isReady, loadSQL, store.selectedDatabase, switchDatabase]);
+  }, [
+    activeDatabase,
+    execute,
+    getCurrentDatabase,
+    isReady,
+    loadSQL,
+    seedDatasets,
+    store.selectedDatabase,
+    switchDatabase,
+  ]);
 
   const handleEvaluate = useCallback(() => {
     const expr = store.expression.trim();
@@ -346,7 +387,12 @@ export default function TupleCalculusPage() {
     });
   }, [reset, runWithActionLoading, store]);
 
-  const examples = activeDataset === 'Banking' ? BANKING_EXAMPLES : UNIVERSITY_EXAMPLES;
+  const examples =
+    activeDataset === 'banking'
+      ? BANKING_EXAMPLES
+      : activeDataset === 'credentia'
+        ? CREDENTIA_EXAMPLES
+        : UNIVERSITY_EXAMPLES;
 
   return (
     <>
@@ -391,7 +437,7 @@ export default function TupleCalculusPage() {
                   <div className="space-y-1">
                     {databases.map((groupName) => {
                       const normalized = groupName.toLowerCase();
-                      const isSystem = normalized === 'main' || normalized === 'university' || normalized === 'banking';
+                      const isSystem = normalized === 'main' || seedDatasetNames.has(normalized);
                       const isActive = activeDatabase === groupName;
                       return (
                         <button
@@ -400,13 +446,7 @@ export default function TupleCalculusPage() {
                             const res = switchDatabase(groupName);
                             if (!res.error) {
                               setShowGroups(false);
-                              setActiveDataset(
-                                normalized === 'banking'
-                                  ? 'Banking'
-                                  : normalized === 'university'
-                                    ? 'University'
-                                    : null,
-                              );
+                              setActiveDataset(seedDatasetNames.has(normalized) ? normalized : null);
                             }
                           }}
                           className={cn(
@@ -560,7 +600,10 @@ export default function TupleCalculusPage() {
             {tables.map((t) => (
               <button
                 key={t.name}
-                onClick={() => store.setExpression(`{ t | ${t.name}(t) }`)}
+                onClick={() => {
+                  store.setExpression(`{ t | ${t.name}(t) }`);
+                  setInputFocusRequestKey((key) => key + 1);
+                }}
                 className="group inline-flex items-center gap-1 rounded-md border border-zinc-700/40 bg-zinc-800/50 px-2.5 py-1 font-mono text-xs text-zinc-300 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/10 hover:text-cyan-200"
               >
                 <Table2 className="h-3 w-3 text-zinc-500 transition-colors group-hover:text-cyan-300" />
@@ -593,6 +636,7 @@ export default function TupleCalculusPage() {
           tables={tables}
           historyExpressions={store.history.map((entry) => entry.expression)}
           executionFeedback={inputFeedback}
+          focusRequestKey={inputFocusRequestKey}
         />
 
         {store.error && (

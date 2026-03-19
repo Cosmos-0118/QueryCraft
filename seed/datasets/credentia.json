@@ -1,0 +1,440 @@
+{
+    "users": [
+        {
+            "id": "cuid-1",
+            "email": "alice.wong@credentia.edu",
+            "password": "pwd_alice",
+            "name": "Alice Wong",
+            "role": "STUDENT",
+            "createdAt": "2024-09-01T08:12:00Z",
+            "updatedAt": "2024-09-01T08:12:00Z"
+        },
+        {
+            "id": "cuid-2",
+            "email": "bob.kumar@credentia.edu",
+            "password": "pwd_bob",
+            "name": "Bob Kumar",
+            "role": "STUDENT",
+            "createdAt": "2024-09-02T09:20:00Z",
+            "updatedAt": "2024-09-02T09:20:00Z"
+        },
+        {
+            "id": "cuid-3",
+            "email": "carla.ramirez@credentia.edu",
+            "password": "pwd_carla",
+            "name": "Carla Ramirez",
+            "role": "STUDENT",
+            "createdAt": "2024-09-03T10:30:00Z",
+            "updatedAt": "2024-09-03T10:30:00Z"
+        },
+        {
+            "id": "cuid-4",
+            "email": "daniel.cho@credentia.edu",
+            "password": "pwd_daniel",
+            "name": "Daniel Cho",
+            "role": "STUDENT",
+            "createdAt": "2024-09-04T11:00:00Z",
+            "updatedAt": "2024-09-04T11:00:00Z"
+        },
+        {
+            "id": "cuid-5",
+            "email": "emma.owusu@credentia.edu",
+            "password": "pwd_emma",
+            "name": "Emma Owusu",
+            "role": "STUDENT",
+            "createdAt": "2024-09-05T12:00:00Z",
+            "updatedAt": "2024-09-05T12:00:00Z"
+        },
+        {
+            "id": "cuid-6",
+            "email": "prof.jones@credentia.edu",
+            "password": "pwd_jones",
+            "name": "Dr. Henry Jones",
+            "role": "FACULTY",
+            "createdAt": "2023-08-15T07:00:00Z",
+            "updatedAt": "2024-01-10T07:00:00Z"
+        },
+        {
+            "id": "cuid-7",
+            "email": "prof.patel@credentia.edu",
+            "password": "pwd_patel",
+            "name": "Dr. Neha Patel",
+            "role": "FACULTY",
+            "createdAt": "2023-08-20T07:00:00Z",
+            "updatedAt": "2024-02-12T07:00:00Z"
+        },
+        {
+            "id": "cuid-8",
+            "email": "prof.lee@credentia.edu",
+            "password": "pwd_lee",
+            "name": "Dr. Samuel Lee",
+            "role": "FACULTY",
+            "createdAt": "2023-09-01T07:00:00Z",
+            "updatedAt": "2024-03-02T07:00:00Z"
+        },
+        {
+            "id": "cuid-9",
+            "email": "frank.chen@credentia.edu",
+            "password": "pwd_frank",
+            "name": "Frank Chen",
+            "role": "STUDENT",
+            "createdAt": "2024-09-06T13:00:00Z",
+            "updatedAt": "2024-09-06T13:00:00Z"
+        },
+        {
+            "id": "cuid-10",
+            "email": "gina.santos@credentia.edu",
+            "password": "pwd_gina",
+            "name": "Gina Santos",
+            "role": "STUDENT",
+            "createdAt": "2024-09-07T14:00:00Z",
+            "updatedAt": "2024-09-07T14:00:00Z"
+        }
+    ],
+    "student_info": [
+        {
+            "id": "s-cuid-1",
+            "userId": "cuid-1",
+            "registrationNumber": "CRD2024001",
+            "department": "Computer Science",
+            "year": 2,
+            "section": "A",
+            "facultyAdvisor": "Dr. Henry Jones",
+            "gender": "F",
+            "dateOfBirth": "2003-05-12T00:00:00Z",
+            "specialization": "AI",
+            "srmistEmail": "alice.wong@credentia.edu",
+            "personalEmail": "alice.wong@gmail.com",
+            "mobileNumber": "+1-555-0101",
+            "alternateNumber": null,
+            "isNRI": false,
+            "languagesKnown": "English, Mandarin"
+        },
+        {
+            "id": "s-cuid-2",
+            "userId": "cuid-2",
+            "registrationNumber": "CRD2024002",
+            "department": "Information Systems",
+            "year": 3,
+            "section": "B",
+            "facultyAdvisor": "Dr. Neha Patel",
+            "gender": "M",
+            "dateOfBirth": "2002-11-20T00:00:00Z",
+            "specialization": "Cybersecurity",
+            "srmistEmail": "bob.kumar@credentia.edu",
+            "personalEmail": "bob.kumar@yahoo.com",
+            "mobileNumber": "+1-555-0102",
+            "alternateNumber": null,
+            "isNRI": false,
+            "languagesKnown": "English, Hindi"
+        },
+        {
+            "id": "s-cuid-3",
+            "userId": "cuid-3",
+            "registrationNumber": "CRD2024003",
+            "department": "Design",
+            "year": 1,
+            "section": "A",
+            "facultyAdvisor": "Dr. Samuel Lee",
+            "gender": "F",
+            "dateOfBirth": "2004-02-02T00:00:00Z",
+            "specialization": "UX",
+            "srmistEmail": "carla.ramirez@credentia.edu",
+            "personalEmail": "carla.ramirez@gmail.com",
+            "mobileNumber": "+1-555-0103",
+            "alternateNumber": null,
+            "isNRI": false,
+            "languagesKnown": "Spanish, English"
+        },
+        {
+            "id": "s-cuid-4",
+            "userId": "cuid-4",
+            "registrationNumber": "CRD2024004",
+            "department": "Mathematics",
+            "year": 4,
+            "section": "C",
+            "facultyAdvisor": "Dr. Henry Jones",
+            "gender": "M",
+            "dateOfBirth": "2001-07-18T00:00:00Z",
+            "specialization": "Statistics",
+            "srmistEmail": "daniel.cho@credentia.edu",
+            "personalEmail": "daniel.cho@protonmail.com",
+            "mobileNumber": "+1-555-0104",
+            "alternateNumber": null,
+            "isNRI": false,
+            "languagesKnown": "Korean, English"
+        },
+        {
+            "id": "s-cuid-5",
+            "userId": "cuid-5",
+            "registrationNumber": "CRD2024005",
+            "department": "Biotechnology",
+            "year": 2,
+            "section": "B",
+            "facultyAdvisor": "Dr. Neha Patel",
+            "gender": "F",
+            "dateOfBirth": "2003-10-30T00:00:00Z",
+            "specialization": "Genomics",
+            "srmistEmail": "emma.owusu@credentia.edu",
+            "personalEmail": "emma.owusu@gmail.com",
+            "mobileNumber": "+1-555-0105",
+            "alternateNumber": null,
+            "isNRI": false,
+            "languagesKnown": "English"
+        },
+        {
+            "id": "s-cuid-9",
+            "userId": "cuid-9",
+            "registrationNumber": "CRD2024006",
+            "department": "Computer Science",
+            "year": 1,
+            "section": "A",
+            "facultyAdvisor": "Dr. Samuel Lee",
+            "gender": "M",
+            "dateOfBirth": "2004-08-08T00:00:00Z",
+            "specialization": "Systems",
+            "srmistEmail": "frank.chen@credentia.edu",
+            "personalEmail": "frank.chen@gmail.com",
+            "mobileNumber": "+1-555-0106",
+            "alternateNumber": null,
+            "isNRI": false,
+            "languagesKnown": "English, Cantonese"
+        },
+        {
+            "id": "s-cuid-10",
+            "userId": "cuid-10",
+            "registrationNumber": "CRD2024007",
+            "department": "Information Systems",
+            "year": 3,
+            "section": "C",
+            "facultyAdvisor": "Dr. Henry Jones",
+            "gender": "F",
+            "dateOfBirth": "2002-03-14T00:00:00Z",
+            "specialization": "Data Analytics",
+            "srmistEmail": "gina.santos@credentia.edu",
+            "personalEmail": "gina.santos@hotmail.com",
+            "mobileNumber": "+1-555-0107",
+            "alternateNumber": null,
+            "isNRI": false,
+            "languagesKnown": "English, Portuguese"
+        }
+    ],
+    "faculty_info": [
+        {
+            "id": "f-cuid-6",
+            "userId": "cuid-6",
+            "employeeId": "EMP1001",
+            "department": "Computer Science",
+            "designation": "Associate Professor",
+            "createdAt": "2023-08-15T07:00:00Z",
+            "updatedAt": "2024-01-10T07:00:00Z"
+        },
+        {
+            "id": "f-cuid-7",
+            "userId": "cuid-7",
+            "employeeId": "EMP1002",
+            "department": "Information Systems",
+            "designation": "Assistant Professor",
+            "createdAt": "2023-08-20T07:00:00Z",
+            "updatedAt": "2024-02-12T07:00:00Z"
+        },
+        {
+            "id": "f-cuid-8",
+            "userId": "cuid-8",
+            "employeeId": "EMP1003",
+            "department": "Design",
+            "designation": "Professor",
+            "createdAt": "2023-09-01T07:00:00Z",
+            "updatedAt": "2024-03-02T07:00:00Z"
+        }
+    ],
+    "classes": [
+        {
+            "id": "class-1",
+            "name": "Intro to Algorithms",
+            "uniqueCode": "CRD-CS101",
+            "facultyId": "f-cuid-6",
+            "createdAt": "2024-01-10T09:00:00Z",
+            "updatedAt": "2024-01-10T09:00:00Z"
+        },
+        {
+            "id": "class-2",
+            "name": "Web Systems",
+            "uniqueCode": "CRD-IS201",
+            "facultyId": "f-cuid-7",
+            "createdAt": "2024-01-15T09:00:00Z",
+            "updatedAt": "2024-01-15T09:00:00Z"
+        },
+        {
+            "id": "class-3",
+            "name": "Design Thinking",
+            "uniqueCode": "CRD-DS301",
+            "facultyId": "f-cuid-8",
+            "createdAt": "2024-02-01T09:00:00Z",
+            "updatedAt": "2024-02-01T09:00:00Z"
+        }
+    ],
+    "class_enrollment": [
+        {
+            "id": "enr-1",
+            "classId": "class-1",
+            "studentId": "s-cuid-1",
+            "joinedAt": "2024-02-10T10:00:00Z"
+        },
+        {
+            "id": "enr-2",
+            "classId": "class-1",
+            "studentId": "s-cuid-2",
+            "joinedAt": "2024-02-10T10:05:00Z"
+        },
+        {
+            "id": "enr-3",
+            "classId": "class-2",
+            "studentId": "s-cuid-3",
+            "joinedAt": "2024-02-12T11:00:00Z"
+        },
+        {
+            "id": "enr-4",
+            "classId": "class-2",
+            "studentId": "s-cuid-5",
+            "joinedAt": "2024-02-12T11:05:00Z"
+        },
+        {
+            "id": "enr-5",
+            "classId": "class-3",
+            "studentId": "s-cuid-3",
+            "joinedAt": "2024-03-01T12:00:00Z"
+        },
+        {
+            "id": "enr-6",
+            "classId": "class-1",
+            "studentId": "s-cuid-4",
+            "joinedAt": "2024-02-11T10:30:00Z"
+        },
+        {
+            "id": "enr-7",
+            "classId": "class-1",
+            "studentId": "s-cuid-9",
+            "joinedAt": "2024-09-10T09:15:00Z"
+        },
+        {
+            "id": "enr-8",
+            "classId": "class-2",
+            "studentId": "s-cuid-10",
+            "joinedAt": "2024-09-12T09:20:00Z"
+        }
+    ],
+    "achievements": [
+        {
+            "id": "ach-1",
+            "eventName": "Hackathon 2024",
+            "category": "TECH",
+            "type": "COMPETITION",
+            "startDate": "2024-05-01T00:00:00Z",
+            "endDate": "2024-05-03T00:00:00Z",
+            "organization": "Credentia Labs",
+            "location": "Campus",
+            "certificateUrl": null,
+            "prizePosition": "Winner",
+            "description": "Won first prize in AI track",
+            "status": "PUBLISHED",
+            "facultyRemarks": "Excellent teamwork",
+            "extractedData": null,
+            "confidence": 0.95,
+            "isVerified": true,
+            "classId": "class-1",
+            "studentId": "s-cuid-1",
+            "verifiedById": "cuid-6",
+            "submittedAt": "2024-05-04T08:00:00Z",
+            "verifiedAt": "2024-05-05T09:00:00Z",
+            "createdAt": "2024-05-04T08:00:00Z",
+            "updatedAt": "2024-05-05T09:00:00Z"
+        },
+        {
+            "id": "ach-2",
+            "eventName": "Design Expo",
+            "category": "ARTS",
+            "type": "EXHIBITION",
+            "startDate": "2024-06-10T00:00:00Z",
+            "organization": "Design Club",
+            "location": "Hall B",
+            "prizePosition": "Participant",
+            "description": "Displayed UX prototypes",
+            "status": "DRAFT",
+            "isVerified": false,
+            "classId": "class-3",
+            "studentId": "s-cuid-3",
+            "createdAt": "2024-06-05T10:00:00Z",
+            "updatedAt": "2024-06-05T10:00:00Z"
+        }
+    ],
+    "forms": [
+        {
+            "id": "form-1",
+            "title": "Course Feedback - CS101",
+            "description": "End of term feedback",
+            "fields": [
+                {
+                    "name": "rating",
+                    "type": "number"
+                },
+                {
+                    "name": "comments",
+                    "type": "text"
+                }
+            ],
+            "deadline": "2024-12-31T23:59:59Z",
+            "autoApprove": false,
+            "isUpdatable": true,
+            "classId": "class-1",
+            "createdAt": "2024-11-01T08:00:00Z",
+            "updatedAt": "2024-11-01T08:00:00Z"
+        }
+    ],
+    "form_submission": [
+        {
+            "id": "fs-1",
+            "responses": {
+                "rating": 5,
+                "comments": "Great course"
+            },
+            "status": "COMPLETED",
+            "formId": "form-1",
+            "studentId": "s-cuid-1",
+            "submittedAt": "2024-12-01T10:00:00Z",
+            "verifiedAt": null,
+            "createdAt": "2024-12-01T10:00:00Z",
+            "updatedAt": "2024-12-01T10:00:00Z"
+        }
+    ],
+    "notifications": [
+        {
+            "id": "n-1",
+            "title": "Welcome to Credentia",
+            "message": "Account created",
+            "type": "INFO",
+            "actionUrl": null,
+            "entityType": "USER",
+            "entityId": "cuid-1",
+            "isRead": false,
+            "readAt": null,
+            "userId": "cuid-1",
+            "createdAt": "2024-09-01T08:15:00Z",
+            "expiresAt": null
+        },
+        {
+            "id": "n-2",
+            "title": "Class Assigned",
+            "message": "You have been added to Intro to Algorithms",
+            "type": "INFO",
+            "actionUrl": null,
+            "entityType": "CLASS",
+            "entityId": "class-1",
+            "isRead": false,
+            "readAt": null,
+            "userId": "cuid-1",
+            "createdAt": "2024-02-10T10:01:00Z",
+            "expiresAt": null
+        }
+    ]
+}
