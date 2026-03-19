@@ -1735,7 +1735,9 @@ export class SqlExecutor {
           });
         }
 
-        this.databases.set(dbName, new this.sqlModule.Database());
+        const newDb = new this.sqlModule.Database();
+        newDb.run('PRAGMA foreign_keys = ON;');
+        this.databases.set(dbName, newDb);
         return {
           columns: [],
           rows: [],
@@ -2041,7 +2043,9 @@ export class SqlExecutor {
     this.sqlModule = SQL;
     this.databases.clear();
     this.procedures.clear();
-    this.databases.set('main', new SQL.Database());
+    const mainDb = new SQL.Database();
+    mainDb.run('PRAGMA foreign_keys = ON;');
+    this.databases.set('main', mainDb);
     this.activeDatabase = 'main';
 
     this.users.clear();

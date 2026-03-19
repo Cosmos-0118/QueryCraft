@@ -45,8 +45,27 @@ function jsonToSQL(data: Record<string, Record<string, unknown>[]>): string {
     const cols = Object.keys(rows[0]);
     const colDefs = cols.map((c) => {
       const sample = rows[0][c];
-      const t = typeof sample === 'number' ? (Number.isInteger(sample) ? 'INTEGER' : 'REAL') : 'TEXT';
-      return `"${c}" ${t}${c === 'id' ? ' PRIMARY KEY' : ''}`;
+      let t = typeof sample === 'number' ? (Number.isInteger(sample) ? 'INTEGER' : 'REAL') : 'TEXT';
+      if (c.toLowerCase() === 'year') {
+        t = 'YEAR';
+      }
+      
+      let def = `"${c}" ${t}${c === 'id' ? ' PRIMARY KEY' : ''}`;
+      
+      const fkMap: Record<string, string> = {
+        userId: 'users',
+        classId: 'classes',
+        studentId: 'student_info',
+        facultyId: 'faculty_info',
+        verifiedById: 'users',
+        formId: 'forms',
+      };
+      
+      if (fkMap[c]) {
+        def += ` REFERENCES "${fkMap[c]}"("id")`;
+      }
+      
+      return def;
     });
     statements.push(`CREATE TABLE IF NOT EXISTS "${table}" (${colDefs.join(', ')});`);
     for (const row of rows) {

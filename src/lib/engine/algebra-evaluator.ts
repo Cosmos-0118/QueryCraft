@@ -374,6 +374,33 @@ export function evaluateAlgebra(
                   ? (vals as number[]).reduce((a, b) => (Number(a) > Number(b) ? a : b))
                   : null;
               break;
+            case 'VARIANCE':
+            case 'VAR_POP':
+            case 'VAR_SAMP':
+            case 'STD':
+            case 'STDDEV':
+            case 'STDDEV_POP':
+            case 'STDDEV_SAMP': {
+              const numVals = vals as number[];
+              if (numVals.length === 0) {
+                row[agg.alias] = null;
+                break;
+              }
+              const avg = numVals.reduce((a, b) => Number(a) + Number(b), 0) / numVals.length;
+              const avgSq = numVals.reduce((a, b) => Number(a) + Number(b) * Number(b), 0) / numVals.length;
+              const varPop = Math.max(0, avgSq - avg * avg);
+              
+              if (agg.func === 'VARIANCE' || agg.func === 'VAR_POP') {
+                row[agg.alias] = Number(varPop.toFixed(4));
+              } else if (agg.func === 'VAR_SAMP') {
+                row[agg.alias] = numVals.length > 1 ? Number((varPop * numVals.length / (numVals.length - 1)).toFixed(4)) : null;
+              } else if (agg.func === 'STD' || agg.func === 'STDDEV' || agg.func === 'STDDEV_POP') {
+                row[agg.alias] = Number(Math.sqrt(varPop).toFixed(4));
+              } else if (agg.func === 'STDDEV_SAMP') {
+                row[agg.alias] = numVals.length > 1 ? Number(Math.sqrt(varPop * numVals.length / (numVals.length - 1)).toFixed(4)) : null;
+              }
+              break;
+            }
             default:
               row[agg.alias] = null;
           }

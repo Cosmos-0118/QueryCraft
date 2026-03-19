@@ -453,7 +453,6 @@ export function translateMySQL(
   translated = translated.replace(/\bTIMESTAMP\b/gi, 'TEXT');
   translated = translated.replace(/\bDATE\b/gi, 'TEXT');
   translated = translated.replace(/\bTIME\b/gi, 'TEXT');
-  translated = translated.replace(/\bYEAR\b/gi, 'INTEGER');
   translated = translated.replace(/\bTINYINT\s*\(\d+\)/gi, 'INTEGER');
   translated = translated.replace(/\bSMALLINT\b/gi, 'INTEGER');
   translated = translated.replace(/\bMEDIUMINT\b/gi, 'INTEGER');
