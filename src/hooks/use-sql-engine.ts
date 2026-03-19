@@ -286,6 +286,9 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
         if (!isolated) {
           try {
             loadedDatasets = await fetchSeedDatasets();
+            // Abort if the component unmounted or a new executor was created (Strict Mode)
+            if (executorRef.current !== executor) return;
+            
             setSeedDatasets(loadedDatasets);
             for (const ds of loadedDatasets) {
               executor.execute(`CREATE DATABASE IF NOT EXISTS "${ds.name}"`);
@@ -297,6 +300,9 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
             console.error('Failed to load seed datasets:', e);
           }
         }
+
+        // Check again after potential await
+        if (executorRef.current !== executor) return;
 
         executor.useDatabase('main');
 
