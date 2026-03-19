@@ -236,11 +236,15 @@ export function TableBrowser({ open, onClose, tables, execute }: TableBrowserPro
                                         <KeyRound className="h-2.5 w-2.5" /> PK
                                       </span>
                                     )}
-                                    {rel && (
+                                    {col.foreignKey ? (
+                                      <span className="inline-flex items-center gap-1 rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-400">
+                                        <ArrowRight className="h-2.5 w-2.5" /> FK → {col.foreignKey.table}.{col.foreignKey.column}
+                                      </span>
+                                    ) : rel ? (
                                       <span className="inline-flex items-center gap-1 rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-400">
                                         <ArrowRight className="h-2.5 w-2.5" /> FK → {rel.to}
                                       </span>
-                                    )}
+                                    ) : null}
                                   </div>
                                 </td>
                                 <td className="px-4 py-2 text-xs text-zinc-500">{col.nullable ? 'Yes' : 'No'}</td>

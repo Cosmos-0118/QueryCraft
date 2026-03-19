@@ -2222,14 +2222,30 @@ export class SqlExecutor {
     return result[0].values.map(([tableName]) => {
       const name = String(tableName);
       const pragmaResult = activeDb.exec(`PRAGMA table_info("${name}")`);
+      const fkResult = activeDb.exec(`PRAGMA foreign_key_list("${name}")`);
+
+      const fks: Record<string, { table: string; column: string }> = {};
+      if (fkResult.length > 0) {
+        for (const row of fkResult[0].values) {
+          const fromCol = String(row[3]);
+          const toTable = String(row[2]);
+          const toCol = String(row[4]);
+          fks[fromCol] = { table: toTable, column: toCol };
+        }
+      }
+
       const columns =
         pragmaResult.length > 0
-          ? pragmaResult[0].values.map((row) => ({
-              name: String(row[1]),
-              type: String(row[2]),
-              nullable: row[3] === 0,
-              primaryKey: row[5] === 1,
-            }))
+          ? pragmaResult[0].values.map((row) => {
+              const colName = String(row[1]);
+              return {
+                name: colName,
+                type: String(row[2]),
+                nullable: row[3] === 0,
+                primaryKey: row[5] === 1,
+                foreignKey: fks[colName],
+              };
+            })
           : [];
 
       return { name, columns };

@@ -56,10 +56,19 @@ export function SchemaBrowser({ tables, className }: SchemaBrowserProps) {
                 >
                   {col.primaryKey ? (
                     <KeyRound className="h-3 w-3 text-amber-400" />
+                  ) : col.foreignKey ? (
+                    <KeyRound className="h-3 w-3 text-blue-400" />
                   ) : (
                     <span className="ml-0.5 inline-block h-1 w-1 rounded-full bg-zinc-700" />
                   )}
-                  <span className="font-medium text-zinc-300">{col.name}</span>
+                  <span className="font-medium text-zinc-300">
+                    {col.name}
+                    {col.foreignKey && (
+                      <span className="ml-1.5 font-normal text-zinc-500">
+                        → {col.foreignKey.table}.{col.foreignKey.column}
+                      </span>
+                    )}
+                  </span>
                   <span className="ml-auto font-mono text-[10px] uppercase text-zinc-600">{col.type}</span>
                 </li>
               ))}

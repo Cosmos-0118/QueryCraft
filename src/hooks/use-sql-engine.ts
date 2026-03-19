@@ -557,6 +557,22 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
       executor
         .init()
         .then(() => {
+          if (!isolated && seedDatasets.length > 0) {
+            for (const ds of seedDatasets) {
+              executor.execute(`CREATE DATABASE IF NOT EXISTS "${ds.name}"`);
+              executor.useDatabase(ds.name);
+              const sql = jsonToSQL(ds.data as Record<string, Record<string, unknown>[]>);
+              executor.loadSQL(sql);
+            }
+            
+            // Default to the first seed dataset if available
+            const preferredDb = seedDatasets[0].name;
+            executor.useDatabase(preferredDb);
+            activeDatabaseRef.current = preferredDb;
+          } else {
+            executor.useDatabase('main');
+          }
+          
           setEngineUnavailable(false);
           setIsReady(true);
           syncEngineState();
@@ -572,7 +588,7 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
           activeDatabaseRef.current = 'main';
         });
     }
-  }, [isolated, syncEngineState]);
+  }, [isolated, syncEngineState, seedDatasets]);
 
   const exportCSV = useCallback((result: QueryResult): string => {
     return executorRef.current?.exportCSV(result) ?? '';

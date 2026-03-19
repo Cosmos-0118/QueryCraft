@@ -555,14 +555,31 @@ function buildDescribeResult(table: string, db: SqlJsDatabase): TranslatedQuery 
         },
       };
     }
-    const rows: Row[] = info[0].values.map((r) => ({
-      Field: r[1],
-      Type: r[2] || 'TEXT',
-      Null: r[3] === 0 ? 'YES' : 'NO',
-      Key: r[5] === 1 ? 'PRI' : '',
-      Default: r[4] ?? 'NULL',
-      Extra: '',
-    }));
+    const fkInfo = db.exec(`PRAGMA foreign_key_list("${table}")`);
+    const fks: Record<string, string> = {};
+    if (fkInfo.length > 0) {
+      for (const row of fkInfo[0].values) {
+        const fromCol = String(row[3]);
+        const toTable = String(row[2]);
+        const toCol = String(row[4]);
+        fks[fromCol] = `FK → ${toTable}(${toCol})`;
+      }
+    }
+
+    const rows: Row[] = info[0].values.map((r) => {
+      const fieldName = String(r[1]);
+      const isPk = r[5] === 1;
+      const fkDesc = fks[fieldName];
+
+      return {
+        Field: fieldName,
+        Type: r[2] || 'TEXT',
+        Null: r[3] === 0 ? 'YES' : 'NO',
+        Key: isPk ? 'PRI' : fkDesc ? 'MUL' : '',
+        Default: r[4] ?? 'NULL',
+        Extra: fkDesc ? fkDesc : '',
+      };
+    });
     return {
       sql: null,
       result: {
