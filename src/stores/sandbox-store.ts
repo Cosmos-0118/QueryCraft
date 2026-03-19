@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { QueryResult, StatementQueryResult } from '@/types/database';
 import type { SqlErrorDetails } from '@/types/sql-error';
+import { userScopedStateStorage, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
 
 interface PersistedStatementResult extends Omit<StatementQueryResult, 'rows'> {
   rows: Record<string, unknown>[];
@@ -80,7 +81,8 @@ export const useSandboxStore = create<SandboxStore>()(
       setActiveTab: (activeTab) => set({ activeTab }),
     }),
     {
-      name: 'querycraft-sandbox',
+      name: STORAGE_BASE_KEYS.sandbox,
+      storage: createJSONStorage(() => userScopedStateStorage),
       partialize: (state) => ({
         query: state.query,
         queryHistory: state.queryHistory,

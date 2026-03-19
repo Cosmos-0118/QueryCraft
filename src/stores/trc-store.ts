@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { userScopedStateStorage, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
 
 export interface TrcHistoryEntry {
   expression: string;
@@ -55,7 +56,8 @@ export const useTrcStore = create<TrcStore>()(
         }),
     }),
     {
-      name: 'querycraft-trc',
+      name: STORAGE_BASE_KEYS.trc,
+      storage: createJSONStorage(() => userScopedStateStorage),
       partialize: (state) => ({
         expression: state.expression,
         history: state.history,

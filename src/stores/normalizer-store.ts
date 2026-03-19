@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { NormalForm, FunctionalDependency, Decomposition } from '@/types/normalizer';
+import { userScopedStateStorage, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
 
 interface NormalizerStore {
   tableName: string;
@@ -54,7 +55,8 @@ export const useNormalizerStore = create<NormalizerStore>()(
         }),
     }),
     {
-      name: 'querycraft-normalizer',
+      name: STORAGE_BASE_KEYS.normalizer,
+      storage: createJSONStorage(() => userScopedStateStorage),
       partialize: (state) => ({
         tableName: state.tableName,
         columns: state.columns,

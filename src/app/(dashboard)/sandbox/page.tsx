@@ -12,7 +12,7 @@ import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import { ResultPanel } from '@/components/visual/result-panel';
 import { SqlErrorAlert } from '@/components/visual/sql-error-alert';
 import { cn } from '@/lib/utils/helpers';
-import { fetchSeedDatasets, type SeedDataset } from '@/lib/seed-datasets';
+import type { SeedDataset } from '@/lib/seed-datasets';
 import type { QueryResult, StatementQueryResult } from '@/types/database';
 import {
   Terminal,
@@ -34,31 +34,9 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-const ACTIVE_DATABASE_KEY = 'querycraft-sql-active-database-v1';
+import { getUserKey, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
 
-function jsonToSQL(data: Record<string, Record<string, unknown>[]>): string {
-  const statements: string[] = [];
-  for (const [table, rows] of Object.entries(data)) {
-    if (rows.length === 0) continue;
-    const cols = Object.keys(rows[0]);
-    const colDefs = cols.map((c) => {
-      const sample = rows[0][c];
-      const t = typeof sample === 'number' ? (Number.isInteger(sample) ? 'INTEGER' : 'REAL') : 'TEXT';
-      return `"${c}" ${t}${c === 'id' ? ' PRIMARY KEY' : ''}`;
-    });
-    statements.push(`CREATE TABLE IF NOT EXISTS "${table}" (${colDefs.join(', ')});`);
-    for (const row of rows) {
-      const vals = cols.map((c) => {
-        const v = row[c];
-        if (v === null || v === undefined) return 'NULL';
-        if (typeof v === 'number') return String(v);
-        return `'${String(v).replace(/'/g, "''")}'`;
-      });
-      statements.push(`INSERT INTO "${table}" VALUES (${vals.join(', ')});`);
-    }
-  }
-  return statements.join('\n');
-}
+
 
 export default function SandboxPage() {
   const {
@@ -76,6 +54,7 @@ export default function SandboxPage() {
     users,
     activeUser,
     switchUser,
+    seedDatasets,
   } = useSqlEngine();
   const store = useSandboxStore();
   const { start: startLoading, stop: stopLoading } = useLoadingStore();
@@ -99,7 +78,7 @@ export default function SandboxPage() {
   const [selectedProcedureName, setSelectedProcedureName] = useState<string | null>(null);
   const [selectedProcedureSql, setSelectedProcedureSql] = useState<string | null>(null);
   const [showSecurityPanel, setShowSecurityPanel] = useState(false);
-  const [seedDatasets, setSeedDatasets] = useState<SeedDataset[]>([]);
+
   const [selectedSecurityUser, setSelectedSecurityUser] = useState<string>('');
   const [grantsRows, setGrantsRows] = useState<string[]>([]);
   const [grantsQueryError, setGrantsQueryError] = useState<string | null>(null);
@@ -107,8 +86,7 @@ export default function SandboxPage() {
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dbMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
-  const defaultsBootstrappedRef = useRef(false);
-  const initialDatabaseResolvedRef = useRef(false);
+
   const seedDatasetNames = useMemo(
     () => new Set(seedDatasets.map((dataset) => dataset.name.toLowerCase())),
     [seedDatasets],
@@ -188,145 +166,10 @@ export default function SandboxPage() {
     }
   }, [isReady, store, switchDatabase]);
 
-  useEffect(() => {
-    if (!isReady) {
-      initialDatabaseResolvedRef.current = false;
-      return;
-    }
 
-    if (initialDatabaseResolvedRef.current) return;
+  // Removed all DB restore logic. Always rely on SQL engine's activeDatabase.
 
-    const preferred = store.lastDatabase?.trim();
-    if (!preferred || preferred === activeDatabase) {
-      initialDatabaseResolvedRef.current = true;
-      return;
-    }
 
-    // If the preferred DB does not exist yet, wait for bootstrap to create it.
-    if (!databases.includes(preferred)) return;
-
-    const switched = switchDatabase(preferred);
-    if (!switched.error) {
-      initialDatabaseResolvedRef.current = true;
-      return;
-    }
-
-    // Fall back only after we've confirmed restore is not possible.
-    initialDatabaseResolvedRef.current = true;
-  }, [activeDatabase, databases, isReady, store, switchDatabase]);
-
-  useEffect(() => {
-    if (!initialDatabaseResolvedRef.current) return;
-    if (!isReady) return;
-    if (store.lastDatabase === activeDatabase) return;
-    store.setLastDatabase(activeDatabase);
-  }, [activeDatabase, isReady, store]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    fetchSeedDatasets(controller.signal)
-      .then((datasets) => {
-        setSeedDatasets(datasets);
-      })
-      .catch(() => {
-        setSeedDatasets([]);
-      });
-
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    if (!isReady) {
-      defaultsBootstrappedRef.current = false;
-      return;
-    }
-
-    if (seedDatasets.length === 0) return;
-
-    if (defaultsBootstrappedRef.current) return;
-    defaultsBootstrappedRef.current = true;
-
-    const bootstrapDefaults = () => {
-      const preferredActive =
-        typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_DATABASE_KEY)?.trim() : '';
-      const initialActive =
-        store.lastDatabase?.trim() || getCurrentDatabase() || preferredActive || activeDatabase || 'main';
-
-      const defaults = seedDatasets;
-
-      defaults.forEach((dataset) => {
-        const createDb = execute(`CREATE DATABASE IF NOT EXISTS "${dataset.name}"`, { persist: false, persistSelection: false });
-        if (createDb.error) return;
-
-        const useDb = switchDatabase(dataset.name, { persistSelection: false });
-        if (useDb.error) return;
-
-        const tableCheck = execute('SHOW TABLES;', { persistSelection: false });
-        const hasTables = !tableCheck.error && tableCheck.rowCount > 0;
-        if (hasTables) return;
-
-        const sql = jsonToSQL(dataset.data as Record<string, Record<string, unknown>[]>);
-        loadSQL(sql, { persist: false, persistSelection: false });
-      });
-
-      // Cleanup for default dataset tables that accidentally landed in `main`.
-      // We only remove known default tables and only when they exist in their target DBs.
-      const parseTableNames = (res: QueryResult): Set<string> => {
-        if (res.error || res.rowCount === 0) return new Set();
-        const names = new Set<string>();
-        for (const row of res.rows) {
-          const firstVal = Object.values(row)[0];
-          if (typeof firstVal === 'string' && firstVal.trim()) names.add(firstVal);
-        }
-        return names;
-      };
-
-      const datasetTableMap = new Map<string, Set<string>>();
-      for (const dataset of defaults) {
-        const switched = switchDatabase(dataset.name, { persistSelection: false });
-        if (switched.error) continue;
-        const rows = execute('SHOW TABLES;', { persistSelection: false });
-        datasetTableMap.set(dataset.name, parseTableNames(rows));
-      }
-
-      const switchedMain = switchDatabase('main', { persistSelection: false });
-      if (!switchedMain.error) {
-        const mainTables = parseTableNames(execute('SHOW TABLES;', { persistSelection: false }));
-
-        const knownDefaultTables = new Set<string>();
-        for (const dataset of defaults) {
-          for (const table of Object.keys(dataset.data as Record<string, unknown>)) {
-            knownDefaultTables.add(table);
-          }
-        }
-
-        for (const tableName of knownDefaultTables) {
-          if (!mainTables.has(tableName)) continue;
-
-          const existsInTargetDb = Array.from(datasetTableMap.values()).some((set) => set.has(tableName));
-          if (!existsInTargetDb) continue;
-
-          execute(`DROP TABLE IF EXISTS "${tableName}";`, { persist: false, persistSelection: false });
-        }
-      }
-
-      const switchedBack = switchDatabase(initialActive, { persistSelection: false });
-      if (switchedBack.error) switchDatabase('main', { persistSelection: false });
-    };
-
-    bootstrapDefaults();
-  }, [
-    activeDatabase,
-    databases,
-    execute,
-    getCurrentDatabase,
-    isReady,
-    loadSQL,
-    seedDatasets,
-    store.lastDatabase,
-    switchDatabase,
-  ]);
 
   const handleExecute = useCallback(() => {
     const q = store.query.trim();

@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useCallback } from 'react';
-
-const SESSION_KEY = 'querycraft-session';
+import { getUserKey, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
 
 export interface SessionData {
   lastPage: string;
@@ -15,7 +14,8 @@ export interface SessionData {
 export function useSessionPersistence() {
   const restore = useCallback((): SessionData | null => {
     try {
-      const raw = localStorage.getItem(SESSION_KEY);
+      const key = getUserKey(STORAGE_BASE_KEYS.session);
+      const raw = localStorage.getItem(key);
       return raw ? (JSON.parse(raw) as SessionData) : null;
     } catch {
       return null;
@@ -33,7 +33,8 @@ export function useSessionPersistence() {
           lastLessonStep: data.lastLessonStep ?? existing?.lastLessonStep,
           timestamp: new Date().toISOString(),
         };
-        localStorage.setItem(SESSION_KEY, JSON.stringify(merged));
+        const key = getUserKey(STORAGE_BASE_KEYS.session);
+        localStorage.setItem(key, JSON.stringify(merged));
       } catch {
         // localStorage unavailable
       }

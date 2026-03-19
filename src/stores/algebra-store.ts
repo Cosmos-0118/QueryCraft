@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AlgebraNode } from '@/types/algebra';
 import type { StepResult } from '@/lib/engine/algebra-evaluator';
+import { userScopedStateStorage, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
 
 export interface AlgebraHistoryEntry {
   expression: string;
@@ -72,7 +73,8 @@ export const useAlgebraStore = create<AlgebraStore>()(
         }),
     }),
     {
-      name: 'querycraft-algebra',
+      name: STORAGE_BASE_KEYS.algebra,
+      storage: createJSONStorage(() => userScopedStateStorage),
       partialize: (state) => ({
         expression: state.expression,
         history: state.history,

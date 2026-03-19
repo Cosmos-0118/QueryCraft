@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AuthState, User, LocalAccount } from '@/types/auth';
+import { clearAllUserData } from '@/lib/utils/user-storage';
 
 const AUTH_STORAGE_KEY = 'querycraft-auth';
 const SESSION_STORAGE_KEY = 'querycraft-session';
@@ -108,8 +109,16 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       logout: () => {
+        const { user } = get();
         set({ user: null, isAuthenticated: false });
         clearSessionUser();
+
+        // Clear all user-scoped data to prevent leakage to the next login
+        if (user?.id) {
+          clearAllUserData(user.id);
+        }
+        // Also clear guest data
+        clearAllUserData('guest');
       },
 
       updateName: (newName) => {
@@ -148,6 +157,10 @@ export const useAuthStore = create<AuthStore>()(
         if (user?.id === id) {
           clearSessionUser();
         }
+
+        // Remove all user-scoped localStorage data for this account
+        clearAllUserData(id);
+
         set((s) => ({
           accounts: s.accounts.filter((a) => a.id !== id),
           ...(user?.id === id ? { user: null, isAuthenticated: false } : {}),

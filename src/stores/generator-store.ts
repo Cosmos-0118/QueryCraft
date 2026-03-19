@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type {
   GeneratorTableDef,
   GeneratorColumnDef,
@@ -7,6 +7,7 @@ import type {
   SemanticHint,
 } from '@/lib/engine/data-generator';
 import { detectHint, generateMultiTableSQL } from '@/lib/engine/data-generator';
+import { userScopedStateStorage, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
 
 interface GeneratorStore {
   tables: GeneratorTableDef[];
@@ -163,7 +164,8 @@ export const useGeneratorStore = create<GeneratorStore>()(
         }),
     }),
     {
-      name: 'querycraft-generator',
+      name: STORAGE_BASE_KEYS.generator,
+      storage: createJSONStorage(() => userScopedStateStorage),
       partialize: (state) => ({ tables: state.tables }),
     },
   ),

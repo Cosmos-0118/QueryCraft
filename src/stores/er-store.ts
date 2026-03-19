@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type {
   EREntity,
   ERAttribute,
@@ -9,6 +9,7 @@ import type {
   Cardinality,
 } from '@/types/er-diagram';
 import type { TableSchema } from '@/types/database';
+import { userScopedStateStorage, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
 
 interface Snapshot {
   entities: EREntity[];
@@ -287,7 +288,8 @@ export const useERStore = create<ERStore>()(
         }),
     }),
     {
-      name: 'querycraft-er',
+      name: STORAGE_BASE_KEYS.er,
+      storage: createJSONStorage(() => userScopedStateStorage),
       version: 1,
       partialize: (state) => ({
         entities: state.entities,

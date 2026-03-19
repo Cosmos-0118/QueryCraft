@@ -15,7 +15,7 @@ import { TableBrowser } from '@/components/algebra/table-browser';
 import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import type { QueryResult } from '@/types/database';
 import { cn } from '@/lib/utils/helpers';
-import { fetchSeedDatasets, type SeedDataset } from '@/lib/seed-datasets';
+
 import {
   Database,
   ChevronDown,
@@ -30,36 +30,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-const ACTIVE_DATABASE_KEY = 'querycraft-sql-active-database-v1';
 
-function jsonToSQL(data: Record<string, Record<string, unknown>[]>): string {
-  const statements: string[] = [];
-  for (const [table, rows] of Object.entries(data)) {
-    if (rows.length === 0) continue;
-    const cols = Object.keys(rows[0]);
-    const colDefs = cols.map((c) => {
-      const sample = rows[0][c];
-      const t =
-        typeof sample === 'number'
-          ? Number.isInteger(sample)
-            ? 'INTEGER'
-            : 'REAL'
-          : 'TEXT';
-      return `"${c}" ${t}${c === 'id' ? ' PRIMARY KEY' : ''}`;
-    });
-    statements.push(`CREATE TABLE IF NOT EXISTS "${table}" (${colDefs.join(', ')});`);
-    for (const row of rows) {
-      const vals = cols.map((c) => {
-        const v = row[c];
-        if (v === null || v === undefined) return 'NULL';
-        if (typeof v === 'number') return String(v);
-        return `'${String(v).replace(/'/g, "''")}'`;
-      });
-      statements.push(`INSERT INTO "${table}" VALUES (${vals.join(', ')});`);
-    }
-  }
-  return statements.join('\n');
-}
+
 
 const UNIVERSITY_EXAMPLES = [
   { label: 'Select high GPA', expr: 'σ[gpa > 3.5](students)' },
@@ -97,10 +69,10 @@ export default function AlgebraPage() {
     refreshTables,
     databases,
     activeDatabase,
-    getCurrentDatabase,
+
     switchDatabase,
-  } =
-    useSqlEngine();
+    seedDatasets,
+  } = useSqlEngine();
   const store = useAlgebraStore();
   const { start: startLoading, stop: stopLoading } = useLoadingStore();
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -111,13 +83,12 @@ export default function AlgebraPage() {
   const [showImport, setShowImport] = useState(false);
   const [importSql, setImportSql] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
-  const [seedDatasets, setSeedDatasets] = useState<SeedDataset[]>([]);
+
   const [groupError, setGroupError] = useState<string | null>(null);
   const [inputFeedback, setInputFeedback] = useState<'idle' | 'success' | 'error'>('idle');
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const groupMenuRef = useRef<HTMLDivElement | null>(null);
-  const defaultsBootstrappedRef = useRef(false);
-  const initialDatabaseResolvedRef = useRef(false);
+
   const seedDatasetNames = useMemo(
     () => new Set(seedDatasets.map((dataset) => dataset.name.toLowerCase())),
     [seedDatasets],
@@ -155,105 +126,10 @@ export default function AlgebraPage() {
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
-  useEffect(() => {
-    if (!isReady) {
-      initialDatabaseResolvedRef.current = false;
-      return;
-    }
 
-    if (initialDatabaseResolvedRef.current) return;
+  // Removed all DB restore logic. Always rely on SQL engine's activeDatabase.
 
-    const preferred = store.selectedDatabase?.trim();
-    if (!preferred || preferred === activeDatabase) {
-      initialDatabaseResolvedRef.current = true;
-      return;
-    }
 
-    if (!databases.includes(preferred)) return;
-
-    const switched = switchDatabase(preferred);
-    if (!switched.error) {
-      initialDatabaseResolvedRef.current = true;
-      return;
-    }
-
-    initialDatabaseResolvedRef.current = true;
-  }, [activeDatabase, databases, isReady, store, switchDatabase]);
-
-  useEffect(() => {
-    if (!initialDatabaseResolvedRef.current) return;
-    if (!isReady) return;
-    if (store.selectedDatabase === activeDatabase) return;
-    store.setSelectedDatabase(activeDatabase);
-  }, [activeDatabase, isReady, store]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    fetchSeedDatasets(controller.signal)
-      .then((datasets) => {
-        setSeedDatasets(datasets);
-      })
-      .catch(() => {
-        setSeedDatasets([]);
-      });
-
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    const normalized = activeDatabase.toLowerCase();
-    setActiveDataset(seedDatasetNames.has(normalized) ? normalized : null);
-  }, [activeDatabase, seedDatasetNames]);
-
-  useEffect(() => {
-    if (!isReady) {
-      defaultsBootstrappedRef.current = false;
-      return;
-    }
-
-    if (seedDatasets.length === 0) return;
-
-    if (defaultsBootstrappedRef.current) return;
-    defaultsBootstrappedRef.current = true;
-
-    const preferredActive =
-      typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_DATABASE_KEY)?.trim() : '';
-    const initialActive =
-      store.selectedDatabase?.trim() || getCurrentDatabase() || preferredActive || activeDatabase || 'main';
-    const defaults = seedDatasets;
-
-    defaults.forEach((dataset) => {
-      execute(`CREATE DATABASE IF NOT EXISTS "${dataset.name}"`, {
-        persist: false,
-        persistSelection: false,
-      });
-      const useDb = switchDatabase(dataset.name, { persistSelection: false });
-      if (useDb.error) return;
-
-      const tableCheck = execute('SHOW TABLES;', { persistSelection: false });
-      if (!tableCheck.error && tableCheck.rowCount > 0) return;
-
-      loadSQL(jsonToSQL(dataset.data as Record<string, Record<string, unknown>[]>), {
-        persist: false,
-        persistSelection: false,
-      });
-    });
-
-    const switchedBack = switchDatabase(initialActive, { persistSelection: false });
-    if (switchedBack.error) {
-      switchDatabase('main', { persistSelection: false });
-    }
-  }, [
-    activeDatabase,
-    execute,
-    getCurrentDatabase,
-    isReady,
-    loadSQL,
-    seedDatasets,
-    store.selectedDatabase,
-    switchDatabase,
-  ]);
 
   const handleCreateGroup = useCallback(() => {
     setGroupError(null);

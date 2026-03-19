@@ -6,10 +6,9 @@ import { splitSqlStatements } from '@/lib/engine/sql-executor/statement-splitter
 import { sqlErrorEngine } from '@/lib/engine/sql-error-engine';
 import type { QueryResult, TableSchema } from '@/types/database';
 import { useLoadingStore } from '@/stores/loading-store';
+import { getUserKey, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
+import { fetchSeedDatasets, type SeedDataset } from '@/lib/seed-datasets';
 
-const ENGINE_STATE_KEY = 'querycraft-sql-engine-state-v1';
-const ACTIVE_DATABASE_KEY = 'querycraft-sql-active-database-v1';
-const ACTIVE_USER_KEY = 'querycraft-sql-active-user-v1';
 const MAX_PERSISTED_STATEMENTS = 1000;
 
 interface PersistedEngineState {
@@ -25,6 +24,42 @@ function isMutatingSql(sql: string): boolean {
   return /\b(CREATE|INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|REPLACE|MERGE|RENAME|GRANT|REVOKE)\b/i.test(
     sql,
   );
+}
+
+function isDatabaseSwitchSql(sql: string): boolean {
+  return /^\s*USE\s+/i.test(sql);
+}
+
+function isDatabaseDDL(sql: string): boolean {
+  return /\b(CREATE|DROP)\s+(DATABASE|SCHEMA)\b/i.test(sql);
+}
+
+function shouldPersistSql(sql: string): boolean {
+  return isMutatingSql(sql) || isDatabaseSwitchSql(sql) || isDatabaseDDL(sql);
+}
+
+function jsonToSQL(data: Record<string, Record<string, unknown>[]>): string {
+  const statements: string[] = [];
+  for (const [table, rows] of Object.entries(data)) {
+    if (rows.length === 0) continue;
+    const cols = Object.keys(rows[0]);
+    const colDefs = cols.map((c) => {
+      const sample = rows[0][c];
+      const t = typeof sample === 'number' ? (Number.isInteger(sample) ? 'INTEGER' : 'REAL') : 'TEXT';
+      return `"${c}" ${t}${c === 'id' ? ' PRIMARY KEY' : ''}`;
+    });
+    statements.push(`CREATE TABLE IF NOT EXISTS "${table}" (${colDefs.join(', ')});`);
+    for (const row of rows) {
+      const vals = cols.map((c) => {
+        const v = row[c];
+        if (v === null || v === undefined) return 'NULL';
+        if (typeof v === 'number') return String(v);
+        return `'${String(v).replace(/'/g, "''")}'`;
+      });
+      statements.push(`INSERT INTO "${table}" VALUES (${vals.join(', ')});`);
+    }
+  }
+  return statements.join('\n');
 }
 
 function normalizePersistedStatement(entry: unknown): PersistedStatementRecord | null {
@@ -48,7 +83,8 @@ function normalizePersistedStatement(entry: unknown): PersistedStatementRecord |
 function loadPersistedStatements(): PersistedStatementRecord[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = localStorage.getItem(ENGINE_STATE_KEY);
+    const key = getUserKey(STORAGE_BASE_KEYS.engineState);
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as PersistedEngineState;
     if (!Array.isArray(parsed.statements)) return [];
@@ -63,8 +99,9 @@ function loadPersistedStatements(): PersistedStatementRecord[] {
 function savePersistedStatements(statements: PersistedStatementRecord[]): void {
   if (typeof window === 'undefined') return;
   try {
+    const key = getUserKey(STORAGE_BASE_KEYS.engineState);
     localStorage.setItem(
-      ENGINE_STATE_KEY,
+      key,
       JSON.stringify({
         statements: statements.slice(-MAX_PERSISTED_STATEMENTS),
       } satisfies PersistedEngineState),
@@ -77,7 +114,8 @@ function savePersistedStatements(statements: PersistedStatementRecord[]): void {
 function clearPersistedStatements(): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(ENGINE_STATE_KEY);
+    const key = getUserKey(STORAGE_BASE_KEYS.engineState);
+    localStorage.removeItem(key);
   } catch {
     // localStorage unavailable
   }
@@ -86,7 +124,8 @@ function clearPersistedStatements(): void {
 function loadPersistedActiveDatabase(): string | null {
   if (typeof window === 'undefined') return null;
   try {
-    const value = localStorage.getItem(ACTIVE_DATABASE_KEY);
+    const key = getUserKey(STORAGE_BASE_KEYS.activeDatabase);
+    const value = localStorage.getItem(key);
     return value && value.trim() ? value : null;
   } catch {
     return null;
@@ -96,7 +135,8 @@ function loadPersistedActiveDatabase(): string | null {
 function savePersistedActiveDatabase(name: string): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(ACTIVE_DATABASE_KEY, name);
+    const key = getUserKey(STORAGE_BASE_KEYS.activeDatabase);
+    localStorage.setItem(key, name);
   } catch {
     // localStorage unavailable
   }
@@ -105,7 +145,8 @@ function savePersistedActiveDatabase(name: string): void {
 function clearPersistedActiveDatabase(): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(ACTIVE_DATABASE_KEY);
+    const key = getUserKey(STORAGE_BASE_KEYS.activeDatabase);
+    localStorage.removeItem(key);
   } catch {
     // localStorage unavailable
   }
@@ -114,7 +155,8 @@ function clearPersistedActiveDatabase(): void {
 function loadPersistedActiveUser(): string | null {
   if (typeof window === 'undefined') return null;
   try {
-    const value = localStorage.getItem(ACTIVE_USER_KEY);
+    const key = getUserKey(STORAGE_BASE_KEYS.activeUser);
+    const value = localStorage.getItem(key);
     return value && value.trim() ? value : null;
   } catch {
     return null;
@@ -124,7 +166,8 @@ function loadPersistedActiveUser(): string | null {
 function savePersistedActiveUser(name: string): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(ACTIVE_USER_KEY, name);
+    const key = getUserKey(STORAGE_BASE_KEYS.activeUser);
+    localStorage.setItem(key, name);
   } catch {
     // localStorage unavailable
   }
@@ -133,10 +176,61 @@ function savePersistedActiveUser(name: string): void {
 function clearPersistedActiveUser(): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(ACTIVE_USER_KEY);
+    const key = getUserKey(STORAGE_BASE_KEYS.activeUser);
+    localStorage.removeItem(key);
   } catch {
     // localStorage unavailable
   }
+}
+
+/**
+ * During replay, ensure all referenced databases exist before executing statements.
+ * This fixes the issue where CREATE DATABASE was not persisted and tables would
+ * land in `main` or disappear.
+ */
+function replayPersistedStatements(
+  executor: SqlExecutor,
+  statements: PersistedStatementRecord[],
+): void {
+  // Phase 1: Collect all unique databases and create them
+  const referencedDatabases = new Set<string>();
+  for (const record of statements) {
+    if (record.database && record.database !== 'main') {
+      referencedDatabases.add(record.database);
+    }
+    // Also parse CREATE DATABASE from SQL itself
+    const createDbMatch = record.sql.match(
+      /CREATE\s+(?:DATABASE|SCHEMA)(?:\s+IF\s+NOT\s+EXISTS)?\s+[`"']?(\w+)[`"']?/i,
+    );
+    if (createDbMatch?.[1] && createDbMatch[1].toLowerCase() !== 'main') {
+      referencedDatabases.add(createDbMatch[1]);
+    }
+  }
+
+  for (const dbName of referencedDatabases) {
+    executor.execute(`CREATE DATABASE IF NOT EXISTS "${dbName}"`);
+  }
+
+  // Phase 2: Replay each statement in its correct database context
+  for (const record of statements) {
+    const switchResult = executor.useDatabase(record.database);
+    if (switchResult.error) {
+      // If the database doesn't exist, try creating it
+      executor.execute(`CREATE DATABASE IF NOT EXISTS "${record.database}"`);
+      const retrySwitch = executor.useDatabase(record.database);
+      if (retrySwitch.error) {
+        executor.useDatabase('main');
+      }
+    }
+
+    const stmts = splitSqlStatements(record.sql);
+    for (const statement of stmts) {
+      executor.loadSQL(statement);
+    }
+  }
+
+  // Return to main after replay
+  executor.useDatabase('main');
 }
 
 export function useSqlEngine(options?: { isolated?: boolean }) {
@@ -151,6 +245,7 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
   const [users, setUsers] = useState<string[]>([]);
   const [activeUser, setActiveUser] = useState('admin@localhost');
   const [engineUnavailable, setEngineUnavailable] = useState(false);
+  const [seedDatasets, setSeedDatasets] = useState<SeedDataset[]>([]);
   const { start: startLoading, stop: stopLoading } = useLoadingStore();
 
   const syncEngineState = useCallback(
@@ -186,25 +281,43 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
 
     executor
       .init()
-      .then(() => {
-        if (!isolated && persistedStatementsRef.current.length > 0) {
-          for (const persisted of persistedStatementsRef.current) {
-            const statements = splitSqlStatements(persisted.sql);
-            for (const statement of statements) {
-              const switched = executor.useDatabase(persisted.database);
-              if (switched.error) {
-                executor.useDatabase('main');
-              }
-              executor.loadSQL(statement);
+      .then(async () => {
+        let loadedDatasets: SeedDataset[] = [];
+        if (!isolated) {
+          try {
+            loadedDatasets = await fetchSeedDatasets();
+            setSeedDatasets(loadedDatasets);
+            for (const ds of loadedDatasets) {
+              executor.execute(`CREATE DATABASE IF NOT EXISTS "${ds.name}"`);
+              executor.useDatabase(ds.name);
+              const sql = jsonToSQL(ds.data as Record<string, Record<string, unknown>[]>);
+              executor.loadSQL(sql);
             }
+          } catch (e) {
+            console.error('Failed to load seed datasets:', e);
           }
         }
 
+        executor.useDatabase('main');
+
+        if (!isolated && persistedStatementsRef.current.length > 0) {
+          replayPersistedStatements(executor, persistedStatementsRef.current);
+        }
+
         if (!isolated) {
+          // Default to the first seed dataset if 'main' isn't preferred
+          let preferredDb = 'main';
+          
+          if (loadedDatasets.length > 0) {
+            preferredDb = loadedDatasets[0].name;
+          }
+
           const persistedActiveDb = loadPersistedActiveDatabase();
           if (persistedActiveDb) {
-            executor.useDatabase(persistedActiveDb);
+            preferredDb = persistedActiveDb;
           }
+
+          executor.useDatabase(preferredDb);
 
           const persistedActiveUser = loadPersistedActiveUser();
           if (persistedActiveUser) {
@@ -282,7 +395,7 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
 
       const result = executorRef.current.execute(sql);
       const shouldPersist = !isolated && (options?.persist ?? true);
-      if (!result.error && shouldPersist && isMutatingSql(sql)) {
+      if (!result.error && shouldPersist && shouldPersistSql(sql)) {
         persistedStatementsRef.current = [
           ...persistedStatementsRef.current,
           {
@@ -320,7 +433,7 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
 
       const result = executorRef.current.loadSQL(sql);
       const shouldPersist = !isolated && (options?.persist ?? true);
-      if (!result.error && shouldPersist && isMutatingSql(sql)) {
+      if (!result.error && shouldPersist && shouldPersistSql(sql)) {
         persistedStatementsRef.current = [
           ...persistedStatementsRef.current,
           {
@@ -459,5 +572,6 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
     users,
     activeUser,
     switchUser,
+    seedDatasets,
   };
 }
