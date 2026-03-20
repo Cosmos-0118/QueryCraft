@@ -107,8 +107,8 @@ const CREDENTIA_DIAGRAM: ERDiagram = {
     { id: 'r1', name: 'has_student_profile', cardinality: '1:1', entities: ['e1', 'e2'], position: { x: 430, y: 90 } },
     { id: 'r2', name: 'has_faculty_profile', cardinality: '1:1', entities: ['e1', 'e3'], position: { x: 90, y: 320 } },
     { id: 'r3', name: 'teaches', cardinality: '1:N', entities: ['e3', 'e4'], position: { x: 430, y: 520 } },
-    { id: 'r4', name: 'enrolls_in', cardinality: 'N:1', entities: ['e5', 'e4'], position: { x: 620, y: 300 } },
-    { id: 'r5', name: 'student_enrollment', cardinality: 'N:1', entities: ['e5', 'e2'], position: { x: 620, y: 200 } },
+    { id: 'r4', name: 'enrolls_in', cardinality: '1:N', entities: ['e4', 'e5'], position: { x: 620, y: 300 } },
+    { id: 'r5', name: 'student_enrollment', cardinality: '1:N', entities: ['e2', 'e5'], position: { x: 620, y: 200 } },
   ],
 };
 
