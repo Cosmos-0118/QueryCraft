@@ -12,6 +12,7 @@ import type { ERDiagram } from '@/types/er-diagram';
 import {
   GraduationCap,
   Landmark,
+  School,
   ArrowRightLeft,
   ChevronLeft,
   ChevronRight,
@@ -74,6 +75,40 @@ const BANKING_DIAGRAM: ERDiagram = {
   relationships: [
     { id: 'r1', name: 'has', cardinality: '1:N', entities: ['e1', 'e2'], position: { x: 430, y: 110 } },
     { id: 'r2', name: 'maintained_at', cardinality: '1:N', entities: ['e3', 'e2'], position: { x: 620, y: 320 } },
+  ],
+};
+
+const CREDENTIA_DIAGRAM: ERDiagram = {
+  entities: [
+    { id: 'e1', name: 'User', isWeak: false, position: { x: 80, y: 120 } },
+    { id: 'e2', name: 'StudentInfo', isWeak: false, position: { x: 760, y: 100 } },
+    { id: 'e3', name: 'FacultyInfo', isWeak: false, position: { x: 80, y: 520 } },
+    { id: 'e4', name: 'Class', isWeak: false, position: { x: 760, y: 500 } },
+    { id: 'e5', name: 'ClassEnrollment', isWeak: true, position: { x: 430, y: 300 } },
+  ],
+  attributes: [
+    { id: 'a1', name: 'id', kind: 'key', entityId: 'e1', position: { x: -50, y: 60 } },
+    { id: 'a2', name: 'email', kind: 'regular', entityId: 'e1', position: { x: -85, y: 140 } },
+    { id: 'a3', name: 'role', kind: 'regular', entityId: 'e1', position: { x: -30, y: 220 } },
+    { id: 'a4', name: 'id', kind: 'key', entityId: 'e2', position: { x: 980, y: 40 } },
+    { id: 'a5', name: 'userId', kind: 'regular', entityId: 'e2', position: { x: 980, y: 120 } },
+    { id: 'a6', name: 'registrationNumber', kind: 'regular', entityId: 'e2', position: { x: 980, y: 200 } },
+    { id: 'a7', name: 'id', kind: 'key', entityId: 'e3', position: { x: -70, y: 640 } },
+    { id: 'a8', name: 'userId', kind: 'regular', entityId: 'e3', position: { x: -100, y: 560 } },
+    { id: 'a9', name: 'employeeId', kind: 'regular', entityId: 'e3', position: { x: -90, y: 480 } },
+    { id: 'a10', name: 'id', kind: 'key', entityId: 'e4', position: { x: 1000, y: 430 } },
+    { id: 'a11', name: 'uniqueCode', kind: 'regular', entityId: 'e4', position: { x: 990, y: 520 } },
+    { id: 'a12', name: 'facultyId', kind: 'regular', entityId: 'e4', position: { x: 980, y: 610 } },
+    { id: 'a13', name: 'id', kind: 'key', entityId: 'e5', position: { x: 360, y: 170 } },
+    { id: 'a14', name: 'classId', kind: 'regular', entityId: 'e5', position: { x: 250, y: 330 } },
+    { id: 'a15', name: 'studentId', kind: 'regular', entityId: 'e5', position: { x: 610, y: 320 } },
+  ],
+  relationships: [
+    { id: 'r1', name: 'has_student_profile', cardinality: '1:1', entities: ['e1', 'e2'], position: { x: 430, y: 90 } },
+    { id: 'r2', name: 'has_faculty_profile', cardinality: '1:1', entities: ['e1', 'e3'], position: { x: 90, y: 320 } },
+    { id: 'r3', name: 'teaches', cardinality: '1:N', entities: ['e3', 'e4'], position: { x: 430, y: 520 } },
+    { id: 'r4', name: 'enrolls_in', cardinality: 'N:1', entities: ['e5', 'e4'], position: { x: 620, y: 300 } },
+    { id: 'r5', name: 'student_enrollment', cardinality: 'N:1', entities: ['e5', 'e2'], position: { x: 620, y: 200 } },
   ],
 };
 
@@ -208,6 +243,14 @@ export default function ERBuilderPage() {
               >
                 <Landmark className="h-3.5 w-3.5" />
                 Banking
+              </button>
+              <button
+                onClick={() => store.loadDiagram(CREDENTIA_DIAGRAM)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition-all duration-150 hover:bg-zinc-800/60 hover:text-zinc-200"
+                title="Load Credentia preset"
+              >
+                <School className="h-3.5 w-3.5" />
+                Credentia
               </button>
             </div>
 
