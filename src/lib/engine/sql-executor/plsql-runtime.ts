@@ -10,6 +10,7 @@ interface RuntimeState {
   vars: Map<string, unknown>;
   cursors: Map<string, string>;
   openCursors: Map<string, CursorState>;
+  notFoundAssignments: Array<{ name: string; value: unknown }>;
   output: string[];
 }
 
@@ -77,8 +78,99 @@ function mergeCompoundStatements(statements: string[]): string[] {
   return merged;
 }
 
+function splitRuntimeStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let buffer = '';
+  let inSingle = false;
+  let inDouble = false;
+  let inBacktick = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let index = 0; index < sql.length; index += 1) {
+    const ch = sql[index];
+    const next = index + 1 < sql.length ? sql[index + 1] : '';
+
+    if (inLineComment) {
+      buffer += ch;
+      if (ch === '\n') {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      buffer += ch;
+      if (ch === '*' && next === '/') {
+        buffer += '/';
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (!inSingle && !inDouble && !inBacktick) {
+      if (ch === '-' && next === '-') {
+        buffer += ch;
+        buffer += next;
+        inLineComment = true;
+        index += 1;
+        continue;
+      }
+
+      if (ch === '/' && next === '*') {
+        buffer += ch;
+        buffer += next;
+        inBlockComment = true;
+        index += 1;
+        continue;
+      }
+    }
+
+    if (!inDouble && !inBacktick && ch === "'") {
+      inSingle = !inSingle;
+      buffer += ch;
+      continue;
+    }
+
+    if (!inSingle && !inBacktick && ch === '"') {
+      inDouble = !inDouble;
+      buffer += ch;
+      continue;
+    }
+
+    if (!inSingle && !inDouble && ch === '`') {
+      inBacktick = !inBacktick;
+      buffer += ch;
+      continue;
+    }
+
+    if (!inSingle && !inDouble && !inBacktick && ch === ';') {
+      const statement = buffer.trim();
+      if (statement) {
+        statements.push(`${statement};`);
+      }
+      buffer = '';
+      continue;
+    }
+
+    buffer += ch;
+  }
+
+  const tail = buffer.trim();
+  if (tail) {
+    statements.push(tail.endsWith(';') ? tail : `${tail};`);
+  }
+
+  return statements;
+}
+
 function key(name: string): string {
   return name.toLowerCase();
+}
+
+function normalizeVarName(name: string): string {
+  return key(name.replace(/^[:@]/, ''));
 }
 
 function parseLiteral(raw: string, vars: Map<string, unknown>): unknown {
@@ -89,7 +181,7 @@ function parseLiteral(raw: string, vars: Map<string, unknown>): unknown {
   if (/^'.*'$/.test(token)) return token.slice(1, -1).replace(/''/g, "'");
   if (/^-?\d+(?:\.\d+)?$/.test(token)) return Number(token);
 
-  const varValue = vars.get(key(token));
+  const varValue = vars.get(normalizeVarName(token));
   return varValue ?? token;
 }
 
@@ -109,14 +201,14 @@ function evalCondition(cond: string, vars: Map<string, unknown>): boolean {
 
   const isNull = text.match(/^(\w+)\s+IS\s+(NOT\s+)?NULL$/i);
   if (isNull) {
-    const value = vars.get(key(isNull[1]));
+    const value = vars.get(normalizeVarName(isNull[1]));
     const wantNot = Boolean(isNull[2]);
     return wantNot ? value !== null && value !== undefined : value === null || value === undefined;
   }
 
-  const cmp = text.match(/^(\w+)\s*(=|<>|!=|>=|<=|>|<)\s*(.+)$/i);
+  const cmp = text.match(/^([@]?\w+)\s*(=|<>|!=|>=|<=|>|<)\s*(.+)$/i);
   if (cmp) {
-    const left = vars.get(key(cmp[1]));
+    const left = vars.get(normalizeVarName(cmp[1]));
     const right = parseLiteral(cmp[3], vars);
     switch (cmp[2]) {
       case '=':
@@ -137,7 +229,7 @@ function evalCondition(cond: string, vars: Map<string, unknown>): boolean {
     }
   }
 
-  const direct = vars.get(key(text));
+  const direct = vars.get(normalizeVarName(text));
   return Boolean(direct);
 }
 
@@ -162,18 +254,37 @@ function runStatement(
   }
 
   if (options?.allowDeclarations) {
-    const cursorDecl = stmt.match(/^CURSOR\s+(\w+)\s+IS\s+([\s\S]+)$/i);
+    const cursorDecl =
+      stmt.match(/^CURSOR\s+(\w+)\s+IS\s+([\s\S]+)$/i) ??
+      stmt.match(/^DECLARE\s+(\w+)\s+CURSOR\s+FOR\s+([\s\S]+)$/i);
     if (cursorDecl) {
       state.cursors.set(key(cursorDecl[1]), cursorDecl[2].trim());
       return { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
     }
 
+    const notFoundHandler = stmt.match(
+      /^DECLARE\s+CONTINUE\s+HANDLER\s+FOR\s+NOT\s+FOUND\s+SET\s+(\w+)\s*=\s*([\s\S]+)$/i,
+    );
+    if (notFoundHandler) {
+      state.notFoundAssignments.push({
+        name: normalizeVarName(notFoundHandler[1]),
+        value: evalConcatExpr(notFoundHandler[2], state.vars),
+      });
+      return { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
+    }
+
     const varDecl =
-      stmt.match(/^(\w+)\s+[^:;]+(?::=|DEFAULT)\s+([\s\S]+)$/i) ?? stmt.match(/^(\w+)\s+[^:;]+$/i);
-    if (varDecl && !/^SELECT\b/i.test(stmt)) {
+      stmt.match(/^(?:DECLARE\s+)?(\w+)\s+[^:;]+(?::=|DEFAULT)\s+([\s\S]+)$/i) ??
+      stmt.match(/^(?:DECLARE\s+)?(\w+)\s+[^:;]+$/i);
+    if (
+      varDecl &&
+      !/^(SELECT|OPEN|FETCH|CLOSE|IF|FOR|WHILE|SET|UPDATE|INSERT|DELETE|CALL|DBMS_OUTPUT|RAISE_APPLICATION_ERROR)\b/i.test(
+        stmt,
+      )
+    ) {
       const varName = varDecl[1];
       const initExpr = varDecl[2];
-      state.vars.set(key(varName), initExpr ? evalConcatExpr(initExpr, state.vars) : null);
+      state.vars.set(normalizeVarName(varName), initExpr ? evalConcatExpr(initExpr, state.vars) : null);
       return { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
     }
   }
@@ -194,11 +305,11 @@ function runStatement(
     const result = context.executeSql(substituteBindVars(cursorSql, state.vars));
     if (result.error) return result;
     state.openCursors.set(cursorName, { rows: result.rows, position: 0 });
-    state.vars.set(`${cursorName}%notfound`, result.rows.length === 0);
+      state.vars.set(`${cursorName}%notfound`, result.rows.length === 0);
     return { columns: [], rows: [], rowCount: 0, executionTimeMs: result.executionTimeMs };
   }
 
-  const fetchCursor = stmt.match(/^FETCH\s+(\w+)\s+INTO\s+([\w\s,]+)$/i);
+  const fetchCursor = stmt.match(/^FETCH\s+(\w+)\s+INTO\s+([@\w\s,]+)$/i);
   if (fetchCursor) {
     const cursorName = key(fetchCursor[1]);
     const opened = state.openCursors.get(cursorName);
@@ -218,14 +329,17 @@ function runStatement(
       .filter(Boolean);
     const row = opened.rows[opened.position];
     if (!row) {
-      vars.forEach((name) => state.vars.set(key(name), null));
+      vars.forEach((name) => state.vars.set(normalizeVarName(name), null));
       state.vars.set(`${cursorName}%notfound`, true);
+      state.notFoundAssignments.forEach((assignment) => {
+        state.vars.set(assignment.name, assignment.value);
+      });
       return { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
     }
 
     const values = Object.values(row);
     vars.forEach((name, idx) => {
-      state.vars.set(key(name), values[idx] ?? null);
+      state.vars.set(normalizeVarName(name), values[idx] ?? null);
     });
     opened.position += 1;
     state.vars.set(`${cursorName}%notfound`, opened.position > opened.rows.length);
@@ -274,9 +388,15 @@ function runStatement(
     return last;
   }
 
-  const assignStmt = stmt.match(/^(\w+)\s*:=\s*([\s\S]+)$/i);
+  const assignStmt = stmt.match(/^([@]?\w+)\s*:=\s*([\s\S]+)$/i);
   if (assignStmt) {
-    state.vars.set(key(assignStmt[1]), evalConcatExpr(assignStmt[2], state.vars));
+    state.vars.set(normalizeVarName(assignStmt[1]), evalConcatExpr(assignStmt[2], state.vars));
+    return { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
+  }
+
+  const setStmt = stmt.match(/^SET\s+([@]?\w+)\s*=\s*([\s\S]+)$/i);
+  if (setStmt) {
+    state.vars.set(normalizeVarName(setStmt[1]), evalConcatExpr(setStmt[2], state.vars));
     return { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
   }
 
@@ -300,7 +420,7 @@ function runStatement(
     };
   }
 
-  const selectInto = stmt.match(/^SELECT\s+([\s\S]+?)\s+INTO\s+([\w\s,]+)\s+FROM\s+([\s\S]+)$/i);
+  const selectInto = stmt.match(/^SELECT\s+([\s\S]+?)\s+INTO\s+([@\w\s,]+)\s+FROM\s+([\s\S]+)$/i);
   if (selectInto) {
     const projection = selectInto[1].trim();
     const intoVars = selectInto[2]
@@ -321,7 +441,7 @@ function runStatement(
       };
     }
     const values = Object.values(row);
-    intoVars.forEach((name, idx) => state.vars.set(key(name), values[idx] ?? null));
+    intoVars.forEach((name, idx) => state.vars.set(normalizeVarName(name), values[idx] ?? null));
     return { columns: [], rows: [], rowCount: 1, executionTimeMs: res.executionTimeMs };
   }
 
@@ -398,7 +518,11 @@ function handleException(
 
 export function isPlSqlBlock(sql: string): boolean {
   const src = sql.trim();
-  return /^(DECLARE\b|BEGIN\b)/i.test(src) && /END\s*;?\s*\/?\s*$/i.test(src);
+  if (/^(DECLARE\b|BEGIN\b)/i.test(src) && /END\s*;?\s*\/?\s*$/i.test(src)) {
+    return true;
+  }
+
+  return /^(DECLARE\b|CURSOR\b|OPEN\b|FETCH\b|CLOSE\b|IF\b|DBMS_OUTPUT\.PUT_LINE\b|RAISE_APPLICATION_ERROR\b)/i.test(src);
 }
 
 export function runPlSqlBlock(sql: string, context: RuntimeContext): QueryResult {
@@ -407,13 +531,31 @@ export function runPlSqlBlock(sql: string, context: RuntimeContext): QueryResult
     /^(?:DECLARE\s+([\s\S]*?)\s+)?BEGIN\s+([\s\S]*?)(?:\s+EXCEPTION\s+([\s\S]*?))?\s+END\s*;?$/i,
   );
   if (!bodyMatch) {
-    return {
-      columns: [],
-      rows: [],
-      rowCount: 0,
-      executionTimeMs: 0,
-      error: 'Invalid PL/SQL block syntax',
+    const state: RuntimeState = {
+      vars: new Map<string, unknown>(),
+      cursors: new Map<string, string>(),
+      openCursors: new Map<string, CursorState>(),
+      notFoundAssignments: [],
+      output: [],
     };
+
+    let last: QueryResult = { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
+    const statements = mergeCompoundStatements(splitRuntimeStatements(trimmed));
+    for (const statement of statements) {
+      last = runStatement(statement, state, context, { allowDeclarations: true });
+      if (last.error) return last;
+    }
+
+    if (state.output.length > 0) {
+      return {
+        columns: ['output'],
+        rows: state.output.map((line) => ({ output: line })),
+        rowCount: state.output.length,
+        executionTimeMs: last.executionTimeMs,
+      };
+    }
+
+    return last;
   }
 
   const declareSection = bodyMatch[1] ?? '';
@@ -424,6 +566,7 @@ export function runPlSqlBlock(sql: string, context: RuntimeContext): QueryResult
     vars: new Map<string, unknown>(),
     cursors: new Map<string, string>(),
     openCursors: new Map<string, CursorState>(),
+    notFoundAssignments: [],
     output: [],
   };
 
@@ -436,7 +579,7 @@ export function runPlSqlBlock(sql: string, context: RuntimeContext): QueryResult
 
   const bodyStatements = mergeCompoundStatements(splitSqlStatements(beginSection));
   for (const statement of bodyStatements) {
-    last = runStatement(statement, state, context);
+    last = runStatement(statement, state, context, { allowDeclarations: true });
     if (last.error) {
       if (!exceptionSection.trim()) return last;
       last = handleException(last.error, exceptionSection, state, context);

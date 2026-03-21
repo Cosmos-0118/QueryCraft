@@ -5,6 +5,7 @@ import { stripComments } from './utils';
 import { translateMySQL } from './translation';
 import { splitSqlStatements } from './statement-splitter';
 import { isPlSqlBlock, runPlSqlBlock } from './plsql-runtime';
+import { extractCursorDefinitions, normalizeMySqlTriggerDefinition } from './mysql-compat';
 import type { SqlJs, SqlJsDatabase, SupportedPrivilege, DbUser, GrantEntry } from './types';
 import { SUPPORTED_PRIVILEGES } from './types';
 
@@ -18,6 +19,22 @@ interface StoredProcedure {
   name: string;
   params: ProcedureParam[];
   body: string;
+  definition: string;
+}
+
+interface StoredTrigger {
+  database: string;
+  name: string;
+  table: string;
+  definition: string;
+  sqliteDefinition: string;
+}
+
+interface StoredCursor {
+  database: string;
+  procedureName: string;
+  name: string;
+  query: string;
   definition: string;
 }
 
@@ -36,13 +53,39 @@ export class SqlExecutor {
   private sqlModule: SqlJs | null = null;
   private databases = new Map<string, SqlJsDatabase>();
   private procedures = new Map<string, StoredProcedure>();
+  private triggers = new Map<string, StoredTrigger>();
+  private cursors = new Map<string, StoredCursor>();
   private activeDatabase = 'main';
   private users = new Map<string, DbUser>();
   private grants = new Map<string, GrantEntry[]>();
   private currentUserKey = 'admin@localhost';
+  private readonly runtimeCursorScope = 'session';
 
   private procedureKey(database: string, name: string): string {
     return `${database.toLowerCase()}.${name.toLowerCase()}`;
+  }
+
+  private triggerKey(database: string, name: string): string {
+    return `${database.toLowerCase()}.${name.toLowerCase()}`;
+  }
+
+  private cursorKey(database: string, procedureName: string, cursorName: string): string {
+    return `${database.toLowerCase()}.${procedureName.toLowerCase()}.${cursorName.toLowerCase()}`;
+  }
+
+  private registerRuntimeCursorMetadata(sql: string, database: string): void {
+    const extracted = extractCursorDefinitions(sql);
+    if (extracted.length === 0) return;
+
+    for (const cursor of extracted) {
+      this.cursors.set(this.cursorKey(database, this.runtimeCursorScope, cursor.name), {
+        database,
+        procedureName: this.runtimeCursorScope,
+        name: cursor.name,
+        query: cursor.query,
+        definition: cursor.definition,
+      });
+    }
   }
 
   private parseQualifiedName(raw: string): { database?: string; name: string } | null {
@@ -61,6 +104,40 @@ export class SqlExecutor {
       return { database: parts[0], name: parts[1] };
     }
     return null;
+  }
+
+  private parseCursorReference(
+    raw: string,
+  ): { database?: string; procedureName?: string; name: string } | null {
+    const cleaned = raw.trim().replace(/;$/, '');
+    if (!cleaned) return null;
+
+    const parts = cleaned
+      .split('.')
+      .map((part) => this.normalizeIdentifier(part))
+      .filter(Boolean);
+
+    if (parts.length === 1) {
+      return { name: parts[0] };
+    }
+    if (parts.length === 2) {
+      return { procedureName: parts[0], name: parts[1] };
+    }
+    if (parts.length === 3) {
+      return { database: parts[0], procedureName: parts[1], name: parts[2] };
+    }
+
+    return null;
+  }
+
+  private clearProcedureMetadata(database: string, procedureName: string): void {
+    this.procedures.delete(this.procedureKey(database, procedureName));
+
+    for (const key of Array.from(this.cursors.keys())) {
+      if (key.startsWith(`${database.toLowerCase()}.${procedureName.toLowerCase()}.`)) {
+        this.cursors.delete(key);
+      }
+    }
   }
 
   private splitCommaSafe(raw: string): string[] {
@@ -759,7 +836,7 @@ export class SqlExecutor {
     }
 
     try {
-      const result = this.loadSQL(substituted.sql);
+      const result = this.execute(`BEGIN ${substituted.sql.trim()} END;`);
       if (result.error) return result;
       return {
         columns: [],
@@ -1643,14 +1720,32 @@ export class SqlExecutor {
             WHERE type='trigger'
             ORDER BY name`,
         );
-        const rows: Row[] =
-          result.length > 0
-            ? result[0].values.map(([name, table, statement]) => ({
-                Trigger: String(name),
-                Table: String(table),
-                Statement: String(statement ?? ''),
-              }))
-            : [];
+        const rowsByTrigger = new Map<string, Row>();
+
+        if (result.length > 0) {
+          result[0].values.forEach(([name, table, statement]) => {
+            const triggerName = String(name);
+            rowsByTrigger.set(triggerName.toLowerCase(), {
+              Trigger: triggerName,
+              Table: String(table),
+              Statement: String(statement ?? ''),
+            });
+          });
+        }
+
+        Array.from(this.triggers.values())
+          .filter((trigger) => trigger.database === dbName)
+          .forEach((trigger) => {
+            rowsByTrigger.set(trigger.name.toLowerCase(), {
+              Trigger: trigger.name,
+              Table: trigger.table,
+              Statement: trigger.definition,
+            });
+          });
+
+        const rows = Array.from(rowsByTrigger.values()).sort((a, b) =>
+          String(a.Trigger).localeCompare(String(b.Trigger)),
+        );
 
         return {
           columns: ['Trigger', 'Table', 'Statement'],
@@ -1683,18 +1778,21 @@ export class SqlExecutor {
           });
         }
 
+        const storedTrigger = this.triggers.get(this.triggerKey(dbName, parsed.name));
         const escapedName = parsed.name.replace(/'/g, "''");
         const result = db.exec(
           `SELECT sql FROM sqlite_master WHERE type='trigger' AND LOWER(name)=LOWER('${escapedName}')`,
         );
-        if (result.length === 0 || result[0].values.length === 0) {
+        if (!storedTrigger && (result.length === 0 || result[0].values.length === 0)) {
           return sqlErrorEngine.fromMessage(`Unknown trigger '${parsed.name}'`, {
             sql: rawSql,
             startTime,
           });
         }
 
-        const statement = String(result[0].values[0][0] ?? '');
+        const statement = storedTrigger
+          ? storedTrigger.definition
+          : String(result[0].values[0][0] ?? '');
         return {
           columns: ['Trigger', 'Create Trigger'],
           rows: [{ Trigger: parsed.name, 'Create Trigger': statement }],
@@ -1786,9 +1884,96 @@ export class SqlExecutor {
             this.procedures.delete(key);
           }
         }
+        for (const key of Array.from(this.triggers.keys())) {
+          if (key.startsWith(`${dbName.toLowerCase()}.`)) {
+            this.triggers.delete(key);
+          }
+        }
+        for (const key of Array.from(this.cursors.keys())) {
+          if (key.startsWith(`${dbName.toLowerCase()}.`)) {
+            this.cursors.delete(key);
+          }
+        }
         if (this.activeDatabase === dbName) {
           this.activeDatabase = 'main';
         }
+        return {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          executionTimeMs: performance.now() - startTime,
+        };
+      }
+    }
+
+    {
+      const normalizedTrigger = normalizeMySqlTriggerDefinition(rawSql);
+      if (normalizedTrigger) {
+        const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
+        const parsedName = this.parseQualifiedName(normalizedTrigger.name);
+        if (!parsedName) {
+          return sqlErrorEngine.fromMessage('Invalid trigger name in CREATE TRIGGER', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const dbName = parsedName.database
+          ? (this.resolveDatabaseName(parsedName.database) ?? parsedName.database)
+          : this.activeDatabase;
+        const db = this.databases.get(dbName);
+        if (!db) {
+          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        if (!this.hasPrivilege('CREATE', dbName)) {
+          return sqlErrorEngine.fromMessage(
+            `Access denied for user '${this.getCurrentUserDisplay()}' to CREATE trigger in database '${dbName}'`,
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+
+        const triggerKey = this.triggerKey(dbName, parsedName.name);
+        if (this.triggers.has(triggerKey)) {
+          if (hasIfNotExists) {
+            return {
+              columns: [],
+              rows: [],
+              rowCount: 0,
+              executionTimeMs: performance.now() - startTime,
+            };
+          }
+
+          return sqlErrorEngine.fromMessage(`Trigger '${parsedName.name}' already exists`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        try {
+          db.run(normalizedTrigger.sqliteSql);
+        } catch (error) {
+          return sqlErrorEngine.fromUnknownError(error, {
+            sql: rawSql,
+            translatedSql: normalizedTrigger.sqliteSql,
+            startTime,
+          });
+        }
+
+        this.triggers.set(triggerKey, {
+          database: dbName,
+          name: parsedName.name,
+          table: normalizedTrigger.table,
+          definition: normalizedTrigger.definition,
+          sqliteDefinition: normalizedTrigger.sqliteSql,
+        });
+
         return {
           columns: [],
           rows: [],
@@ -1859,6 +2044,77 @@ export class SqlExecutor {
           definition: rawSql.trim().replace(/;$/, ''),
         });
 
+        for (const cursor of extractCursorDefinitions(createRoutine[3] ?? '')) {
+          this.cursors.set(this.cursorKey(dbName, procName, cursor.name), {
+            database: dbName,
+            procedureName: procName,
+            name: cursor.name,
+            query: cursor.query,
+            definition: cursor.definition,
+          });
+        }
+
+        return {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          executionTimeMs: performance.now() - startTime,
+        };
+      }
+    }
+
+    {
+      const m = norm.match(/^DROP\s+TRIGGER(?:\s+IF\s+EXISTS)?\s+(.+)\s*;?$/i);
+      if (m) {
+        const hasIfExists = /\bIF\s+EXISTS\b/i.test(norm);
+        const parsed = this.parseQualifiedName(m[1]);
+        if (!parsed) {
+          return sqlErrorEngine.fromMessage('Invalid trigger name in DROP TRIGGER', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const dbName = parsed.database
+          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
+          : this.activeDatabase;
+        if (!this.hasPrivilege('DROP', dbName)) {
+          return sqlErrorEngine.fromMessage(
+            `Access denied for user '${this.getCurrentUserDisplay()}' to DROP trigger in database '${dbName}'`,
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+
+        const db = this.databases.get(dbName);
+        if (!db) {
+          if (hasIfExists) {
+            return {
+              columns: [],
+              rows: [],
+              rowCount: 0,
+              executionTimeMs: performance.now() - startTime,
+            };
+          }
+
+          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        try {
+          db.run(`DROP TRIGGER IF EXISTS ${this.quoteIdentifier(parsed.name)}`);
+        } catch (error) {
+          return sqlErrorEngine.fromUnknownError(error, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        this.triggers.delete(this.triggerKey(dbName, parsed.name));
         return {
           columns: [],
           rows: [],
@@ -1909,7 +2165,7 @@ export class SqlExecutor {
           });
         }
 
-        this.procedures.delete(procKey);
+        this.clearProcedureMetadata(dbName, parsed.name);
         return {
           columns: [],
           rows: [],
@@ -1937,6 +2193,84 @@ export class SqlExecutor {
           columns: ['Db', 'Name', 'Type'],
           rows,
           rowCount: rows.length,
+          executionTimeMs: performance.now() - startTime,
+        };
+      }
+    }
+
+    {
+      const m = norm.match(
+        /^SHOW\s+CURSORS(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?(?:\s+LIKE\s+'([^']+)')?\s*;?$/i,
+      );
+      if (m) {
+        const requestedName = m[1];
+        const dbName = requestedName
+          ? (this.resolveDatabaseName(requestedName) ?? requestedName)
+          : this.activeDatabase;
+        const likePattern = m[2]?.toLowerCase();
+
+        const rows = Array.from(this.cursors.values())
+          .filter((cursor) => cursor.database === dbName)
+          .filter((cursor) => !likePattern || cursor.name.toLowerCase().includes(likePattern))
+          .sort((a, b) =>
+            `${a.procedureName}.${a.name}`.localeCompare(`${b.procedureName}.${b.name}`),
+          )
+          .map((cursor) => ({
+            Db: cursor.database,
+            Procedure: cursor.procedureName,
+            Cursor: cursor.name,
+            Query: cursor.query,
+          }));
+
+        return {
+          columns: ['Db', 'Procedure', 'Cursor', 'Query'],
+          rows,
+          rowCount: rows.length,
+          executionTimeMs: performance.now() - startTime,
+        };
+      }
+    }
+
+    {
+      const m = norm.match(/^SHOW\s+CREATE\s+CURSOR\s+(.+)\s*;?$/i);
+      if (m) {
+        const parsed = this.parseCursorReference(m[1]);
+        if (!parsed) {
+          return sqlErrorEngine.fromMessage('Invalid cursor name in SHOW CREATE CURSOR', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const matches = Array.from(this.cursors.values()).filter((cursor) => {
+          const dbMatches = parsed.database ? cursor.database === parsed.database : true;
+          const procedureMatches = parsed.procedureName
+            ? cursor.procedureName === parsed.procedureName
+            : true;
+          return (
+            dbMatches &&
+            procedureMatches &&
+            cursor.name.toLowerCase() === parsed.name.toLowerCase()
+          );
+        });
+
+        if (matches.length === 0) {
+          return sqlErrorEngine.fromMessage(`Unknown cursor '${parsed.name}'`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const cursor = matches[0];
+        return {
+          columns: ['Cursor', 'Create Cursor'],
+          rows: [
+            {
+              Cursor: `${cursor.procedureName}.${cursor.name}`,
+              'Create Cursor': cursor.definition,
+            },
+          ],
+          rowCount: 1,
           executionTimeMs: performance.now() - startTime,
         };
       }
@@ -2043,6 +2377,8 @@ export class SqlExecutor {
     this.sqlModule = SQL;
     this.databases.clear();
     this.procedures.clear();
+    this.triggers.clear();
+    this.cursors.clear();
     const mainDb = new SQL.Database();
     mainDb.run('PRAGMA foreign_keys = ON;');
     this.databases.set('main', mainDb);
@@ -2111,6 +2447,8 @@ export class SqlExecutor {
     const normalizedSql = sql.trim();
 
     if (isPlSqlBlock(normalizedSql)) {
+      this.registerRuntimeCursorMetadata(normalizedSql, this.activeDatabase);
+
       const plSqlResult = runPlSqlBlock(normalizedSql, {
         executeSql: (statement) => this.execute(statement),
       });
@@ -2304,6 +2642,8 @@ export class SqlExecutor {
     }
     this.databases.clear();
     this.procedures.clear();
+    this.triggers.clear();
+    this.cursors.clear();
     this.sqlModule = null;
     this.activeDatabase = 'main';
     this.users.clear();

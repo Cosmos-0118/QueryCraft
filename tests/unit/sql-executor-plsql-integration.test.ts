@@ -33,6 +33,29 @@ describe('SqlExecutor PL/SQL integration', () => {
     expect(result.rows[0]?.output).toBe('Alice');
   });
 
+  it('executes a MySQL-style cursor batch with @variables', () => {
+    const result = executor.loadSQL(`
+      DECLARE cur_students CURSOR FOR SELECT name FROM students ORDER BY id;
+      SET @student_name = NULL;
+      OPEN cur_students;
+      FETCH cur_students INTO @student_name;
+      DBMS_OUTPUT.PUT_LINE(@student_name);
+      CLOSE cur_students;
+    `);
+
+    expect(result.error).toBeUndefined();
+    expect(result.columns).toEqual(['output']);
+    expect(result.rows[0]?.output).toBe('Alice');
+
+    const show = executor.execute('SHOW CURSORS;');
+    expect(show.error).toBeUndefined();
+    expect(show.rows.some((row) => row.Procedure === 'session' && row.Cursor === 'cur_students')).toBe(true);
+
+    const definition = executor.execute('SHOW CREATE CURSOR session.cur_students;');
+    expect(definition.error).toBeUndefined();
+    expect(String(definition.rows[0]?.['Create Cursor'] ?? '')).toContain('DECLARE cur_students CURSOR FOR');
+  });
+
   it('supports SELECT INTO with variable binds', () => {
     const result = executor.execute(`
       DECLARE

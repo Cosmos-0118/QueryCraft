@@ -2,9 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AuthState, User, LocalAccount } from '@/types/auth';
 import { clearAllUserData } from '@/lib/utils/user-storage';
-
-const AUTH_STORAGE_KEY = 'querycraft-auth';
-const SESSION_STORAGE_KEY = 'querycraft-session';
+import { AUTH_SESSION_STORAGE_KEY, AUTH_STORAGE_KEY } from '@/lib/auth/storage';
 
 interface SessionPayload {
   user: User;
@@ -23,7 +21,7 @@ async function hashPassword(password: string): Promise<string> {
 function loadSessionUser(): User | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    const raw = sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SessionPayload;
     if (!parsed?.user?.id || !parsed.user.displayName || !parsed.user.createdAt) {
@@ -38,7 +36,10 @@ function loadSessionUser(): User | null {
 function saveSessionUser(user: User) {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ user } satisfies SessionPayload));
+    sessionStorage.setItem(
+      AUTH_SESSION_STORAGE_KEY,
+      JSON.stringify({ user } satisfies SessionPayload),
+    );
   } catch {
     // sessionStorage unavailable
   }
@@ -47,7 +48,7 @@ function saveSessionUser(user: User) {
 function clearSessionUser() {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    sessionStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
   } catch {
     // sessionStorage unavailable
   }
@@ -109,16 +110,8 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       logout: () => {
-        const { user } = get();
         set({ user: null, isAuthenticated: false });
         clearSessionUser();
-
-        // Clear all user-scoped data to prevent leakage to the next login
-        if (user?.id) {
-          clearAllUserData(user.id);
-        }
-        // Also clear guest data
-        clearAllUserData('guest');
       },
 
       updateName: (newName) => {

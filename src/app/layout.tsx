@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import { ThemeProvider } from '@/components/theme-provider';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { RouteChangeLoader } from '@/components/route-change-loader';
+import { UserScopedStateSync } from '@/components/user-scoped-state-sync';
 import './globals.css';
 
 const geistSans = Geist({
@@ -37,6 +38,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
+          <UserScopedStateSync />
           <LoadingOverlay />
           <Suspense>
             <RouteChangeLoader />

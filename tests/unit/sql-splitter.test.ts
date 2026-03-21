@@ -51,4 +51,23 @@ describe('SQL statement splitter', () => {
     expect(statements[0]).toContain("INSERT INTO audit_log(message) VALUES ('raise done')");
     expect(statements[1].trim().toUpperCase()).toBe('SELECT 1;');
   });
+
+  it('supports custom DELIMITER blocks for MySQL routines', () => {
+    const sql = `
+      DELIMITER $$
+      CREATE TRIGGER trg_students_ai
+      AFTER INSERT ON students FOR EACH ROW
+      BEGIN
+        INSERT INTO audit_log(message) VALUES (NEW.name);
+      END$$
+      DELIMITER ;
+      SELECT * FROM students;
+    `;
+
+    const statements = splitSqlStatements(sql);
+    expect(statements).toHaveLength(2);
+    expect(statements[0].toUpperCase()).toContain('CREATE TRIGGER');
+    expect(statements[0].toUpperCase()).toContain('FOR EACH ROW');
+    expect(statements[1].trim().toUpperCase()).toBe('SELECT * FROM STUDENTS;');
+  });
 });

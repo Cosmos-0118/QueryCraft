@@ -1,0 +1,43 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { SqlExecutor } from '@/lib/engine/sql-executor';
+
+describe('SqlExecutor cursors', () => {
+  let executor: SqlExecutor;
+
+  beforeEach(async () => {
+    executor = new SqlExecutor();
+    await executor.init();
+    executor.loadSQL(`
+      CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT);
+      INSERT INTO students VALUES (1, 'Alice');
+    `);
+  });
+
+  it('registers cursor metadata and executes procedures that use MySQL-style cursor declarations', () => {
+    const create = executor.execute(`
+      CREATE PROCEDURE scan_students()
+      BEGIN
+        DECLARE c_students CURSOR FOR SELECT id FROM students ORDER BY id;
+        DECLARE v_id INT DEFAULT 0;
+        OPEN c_students;
+        FETCH c_students INTO v_id;
+        CLOSE c_students;
+      END;
+    `);
+
+    expect(create.error).toBeUndefined();
+
+    const show = executor.execute('SHOW CURSORS;');
+    expect(show.error).toBeUndefined();
+    expect(show.rows.some((row) => row.Cursor === 'c_students')).toBe(true);
+
+    const definition = executor.execute('SHOW CREATE CURSOR scan_students.c_students;');
+    expect(definition.error).toBeUndefined();
+    expect(String(definition.rows[0]?.['Create Cursor'] ?? '')).toContain(
+      'DECLARE c_students CURSOR FOR',
+    );
+
+    const call = executor.execute('CALL scan_students();');
+    expect(call.error).toBeUndefined();
+  });
+});

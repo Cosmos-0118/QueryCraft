@@ -319,16 +319,21 @@ const SECTIONS: Section[] = [
   },
   {
     id: 'plsql',
-    title: 'PL/SQL & Procedures',
-    shortTitle: 'PL/SQL',
+    title: 'MySQL Routines, Cursors & Triggers',
+    shortTitle: 'MySQL Routines',
     icon: <Terminal size={15} />,
     color: 'amber',
     gradient: 'from-yellow-400 to-amber-500',
     commands: [
       {
+        command: 'DELIMITER',
+        description: 'Changes the statement terminator so MySQL routine and trigger bodies can contain semicolons safely.',
+        example: `DELIMITER $$\nCREATE PROCEDURE proc_demo()\nBEGIN\n  SELECT 1;\nEND$$\nDELIMITER ;`,
+      },
+      {
         command: 'CREATE PROCEDURE',
-        description: 'Creates a stored procedure — a reusable block of SQL statements.',
-        example: `CREATE PROCEDURE raise_gpa(IN sid INT, IN amount DECIMAL)\nBEGIN\n  UPDATE students SET gpa = gpa + amount WHERE id = sid;\nEND;`,
+        description: 'Creates a MySQL-style stored procedure with IN parameters and a BEGIN ... END body.',
+        example: `DELIMITER $$\nCREATE PROCEDURE raise_gpa(IN sid INT, IN amount DECIMAL(3,2))\nBEGIN\n  UPDATE students\n  SET gpa = gpa + amount\n  WHERE id = sid;\nEND$$\nDELIMITER ;`,
       },
       { command: 'CALL', description: 'Executes a stored procedure.', example: 'CALL raise_gpa(1, 0.10);' },
       { command: 'DROP PROCEDURE', description: 'Deletes a stored procedure.', example: 'DROP PROCEDURE raise_gpa;' },
@@ -336,32 +341,58 @@ const SECTIONS: Section[] = [
       { command: 'SHOW PROCEDURE STATUS', description: 'Lists stored procedures visible in the current context.', example: 'SHOW PROCEDURE STATUS;' },
       { command: 'SHOW CREATE PROCEDURE', description: 'Shows the CREATE statement for a procedure.', example: 'SHOW CREATE PROCEDURE raise_gpa;' },
       {
-        command: 'CREATE FUNCTION',
-        description: 'Creates a function that returns a value.',
-        example: `CREATE FUNCTION get_gpa(sid INT) RETURNS DECIMAL\nBEGIN\n  DECLARE result DECIMAL(3,2);\n  SELECT gpa INTO result FROM students WHERE id = sid;\n  RETURN result;\nEND;`,
+        command: 'DECLARE variable',
+        description: 'Declares a local variable inside a routine or cursor batch, optionally with a DEFAULT value.',
+        example: `DECLARE done INT DEFAULT 0;\nDECLARE student_name VARCHAR(100);`,
+      },
+      {
+        command: 'DECLARE CURSOR',
+        description: 'Declares a MySQL cursor for row-by-row reads inside a procedure or direct sandbox batch.',
+        example: 'DECLARE cur_students CURSOR FOR SELECT name FROM students ORDER BY id;',
+      },
+      {
+        command: 'DECLARE CONTINUE HANDLER',
+        description: 'Adds a MySQL handler for cursor exhaustion or other routine conditions.',
+        example: 'DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;',
+      },
+      {
+        command: 'OPEN / FETCH / CLOSE',
+        description: 'Runs the cursor lifecycle and fetches row values into variables or MySQL session variables.',
+        example: `SET @student_name = NULL;\nOPEN cur_students;\nFETCH cur_students INTO @student_name;\nCLOSE cur_students;`,
+      },
+      {
+        command: 'SHOW CURSORS',
+        description: 'Lists cursor declarations that were discovered inside stored procedures.',
+        example: 'SHOW CURSORS;',
+      },
+      {
+        command: 'SHOW CREATE CURSOR',
+        description: 'Shows the original declaration captured for a stored cursor.',
+        example: 'SHOW CREATE CURSOR raise_gpa.cur_students;',
+      },
+      {
+        command: 'MySQL cursor batch',
+        description: 'Runs a direct MySQL-style cursor batch in the sandbox without wrapping it in BEGIN ... END.',
+        example: `DECLARE cur_students CURSOR FOR SELECT name FROM students ORDER BY id;\nSET @student_name = NULL;\nOPEN cur_students;\nFETCH cur_students INTO @student_name;\nDBMS_OUTPUT.PUT_LINE(@student_name);\nCLOSE cur_students;`,
       },
       {
         command: 'CREATE TRIGGER',
-        description: 'Automatically executes code when an INSERT, UPDATE, or DELETE occurs.',
-        example: `CREATE TRIGGER log_update\nAFTER UPDATE ON students\nFOR EACH ROW\nBEGIN\n  INSERT INTO audit_log (action, student_id, changed_at)\n  VALUES ('UPDATE', NEW.id, NOW());\nEND;`,
+        description: 'Creates a MySQL-style trigger using DELIMITER and FOR EACH ROW syntax.',
+        example: `DELIMITER $$\nCREATE TRIGGER log_update\nAFTER UPDATE ON students\nFOR EACH ROW\nBEGIN\n  INSERT INTO audit_log (action, student_id, changed_at)\n  VALUES ('UPDATE', NEW.id, NOW());\nEND$$\nDELIMITER ;`,
       },
       { command: 'DROP TRIGGER', description: 'Deletes an existing trigger.', example: 'DROP TRIGGER log_update;' },
+      { command: 'DROP TRIGGER IF EXISTS', description: 'Deletes a trigger only if it exists.', example: 'DROP TRIGGER IF EXISTS log_update;' },
       { command: 'SHOW TRIGGERS', description: 'Lists triggers in the active database.', example: 'SHOW TRIGGERS;' },
       { command: 'SHOW CREATE TRIGGER', description: 'Shows the CREATE statement for a trigger.', example: 'SHOW CREATE TRIGGER log_update;' },
       {
-        command: 'DECLARE / SET',
-        description: 'Declares and assigns variables inside a PL/SQL block.',
-        example: `DECLARE @total INT;\nSET @total = (SELECT COUNT(*) FROM students);`,
+        command: 'SET',
+        description: 'Assigns a scalar value to a local variable or session-style @variable during procedural execution.',
+        example: `SET done = 0;\nSET @student_name = 'Alice';`,
       },
       {
         command: 'IF ... ELSE',
-        description: 'Conditional logic inside stored procedures.',
-        example: `IF @total > 100 THEN\n  SELECT 'Large class';\nELSE\n  SELECT 'Small class';\nEND IF;`,
-      },
-      {
-        command: 'CURSOR',
-        description: 'Iterates over rows one by one in a procedure.',
-        example: `DECLARE cur CURSOR FOR SELECT name FROM students;\nOPEN cur;\nFETCH cur INTO @sname;\nCLOSE cur;`,
+        description: 'Conditional logic supported inside routines and anonymous procedural blocks.',
+        example: `IF done = 1 THEN\n  DBMS_OUTPUT.PUT_LINE('cursor exhausted');\nELSE\n  DBMS_OUTPUT.PUT_LINE('row fetched');\nEND IF;`,
       },
     ],
   },
@@ -489,15 +520,15 @@ const SECTIONS: Section[] = [
 /* ──────────────────── Color Map ──────────────────── */
 
 const COLOR_MAP: Record<string, { pill: string; pillBg: string; border: string; badge: string; glow: string; codeText: string }> = {
-  sky:    { pill: 'text-sky-400',    pillBg: 'bg-sky-500/15 border-sky-500/25',    border: 'border-sky-500/20',    badge: 'bg-sky-500/15 text-sky-300 border-sky-500/20',    glow: 'shadow-sky-500/10',    codeText: 'text-sky-300' },
+  sky: { pill: 'text-sky-400', pillBg: 'bg-sky-500/15 border-sky-500/25', border: 'border-sky-500/20', badge: 'bg-sky-500/15 text-sky-300 border-sky-500/20', glow: 'shadow-sky-500/10', codeText: 'text-sky-300' },
   violet: { pill: 'text-violet-400', pillBg: 'bg-violet-500/15 border-violet-500/25', border: 'border-violet-500/20', badge: 'bg-violet-500/15 text-violet-300 border-violet-500/20', glow: 'shadow-violet-500/10', codeText: 'text-violet-300' },
-  emerald:{ pill: 'text-emerald-400',pillBg: 'bg-emerald-500/15 border-emerald-500/25', border: 'border-emerald-500/20', badge: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20', glow: 'shadow-emerald-500/10', codeText: 'text-emerald-300' },
-  cyan:   { pill: 'text-cyan-400',   pillBg: 'bg-cyan-500/15 border-cyan-500/25',   border: 'border-cyan-500/20',   badge: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/20',   glow: 'shadow-cyan-500/10',   codeText: 'text-cyan-300' },
-  amber:  { pill: 'text-amber-400',  pillBg: 'bg-amber-500/15 border-amber-500/25',  border: 'border-amber-500/20',  badge: 'bg-amber-500/15 text-amber-300 border-amber-500/20',  glow: 'shadow-amber-500/10',  codeText: 'text-amber-300' },
-  blue:   { pill: 'text-blue-400',   pillBg: 'bg-blue-500/15 border-blue-500/25',   border: 'border-blue-500/20',   badge: 'bg-blue-500/15 text-blue-300 border-blue-500/20',   glow: 'shadow-blue-500/10',   codeText: 'text-blue-300' },
-  rose:   { pill: 'text-rose-400',   pillBg: 'bg-rose-500/15 border-rose-500/25',   border: 'border-rose-500/20',   badge: 'bg-rose-500/15 text-rose-300 border-rose-500/20',   glow: 'shadow-rose-500/10',   codeText: 'text-rose-300' },
+  emerald: { pill: 'text-emerald-400', pillBg: 'bg-emerald-500/15 border-emerald-500/25', border: 'border-emerald-500/20', badge: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20', glow: 'shadow-emerald-500/10', codeText: 'text-emerald-300' },
+  cyan: { pill: 'text-cyan-400', pillBg: 'bg-cyan-500/15 border-cyan-500/25', border: 'border-cyan-500/20', badge: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/20', glow: 'shadow-cyan-500/10', codeText: 'text-cyan-300' },
+  amber: { pill: 'text-amber-400', pillBg: 'bg-amber-500/15 border-amber-500/25', border: 'border-amber-500/20', badge: 'bg-amber-500/15 text-amber-300 border-amber-500/20', glow: 'shadow-amber-500/10', codeText: 'text-amber-300' },
+  blue: { pill: 'text-blue-400', pillBg: 'bg-blue-500/15 border-blue-500/25', border: 'border-blue-500/20', badge: 'bg-blue-500/15 text-blue-300 border-blue-500/20', glow: 'shadow-blue-500/10', codeText: 'text-blue-300' },
+  rose: { pill: 'text-rose-400', pillBg: 'bg-rose-500/15 border-rose-500/25', border: 'border-rose-500/20', badge: 'bg-rose-500/15 text-rose-300 border-rose-500/20', glow: 'shadow-rose-500/10', codeText: 'text-rose-300' },
   orange: { pill: 'text-orange-400', pillBg: 'bg-orange-500/15 border-orange-500/25', border: 'border-orange-500/20', badge: 'bg-orange-500/15 text-orange-300 border-orange-500/20', glow: 'shadow-orange-500/10', codeText: 'text-orange-300' },
-  lime:   { pill: 'text-lime-400',   pillBg: 'bg-lime-500/15 border-lime-500/25',   border: 'border-lime-500/20',   badge: 'bg-lime-500/15 text-lime-300 border-lime-500/20',   glow: 'shadow-lime-500/10',   codeText: 'text-lime-300' },
+  lime: { pill: 'text-lime-400', pillBg: 'bg-lime-500/15 border-lime-500/25', border: 'border-lime-500/20', badge: 'bg-lime-500/15 text-lime-300 border-lime-500/20', glow: 'shadow-lime-500/10', codeText: 'text-lime-300' },
 };
 
 const TOTAL_COMMANDS = SECTIONS.reduce((sum, s) => sum + s.commands.length, 0);
@@ -739,21 +770,21 @@ export default function LearnPage() {
               </div>
               <div className="relative">
                 <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Try: left join null values, normalize 3nf, create trigger..."
-                className="h-12 w-full rounded-xl border border-border/70 bg-background/95 py-2 pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground/55 outline-none transition-all focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
-              />
-              {search && (
-                <button
-                  onClick={() => setSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
-                >
-                  <X size={13} />
-                </button>
-              )}
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Try: left join null values, normalize 3nf, create trigger..."
+                  className="h-12 w-full rounded-xl border border-border/70 bg-background/95 py-2 pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground/55 outline-none transition-all focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -769,11 +800,10 @@ export default function LearnPage() {
                 <button
                   key={section.id}
                   onClick={() => setActiveTab(section.id)}
-                  className={`relative inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
-                    isActive
+                  className={`relative inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${isActive
                       ? `${c.pillBg} ${c.pill}`
                       : 'border-border/60 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground'
-                  } ${!hasMatch && !isActive ? 'opacity-30' : ''}`}
+                    } ${!hasMatch && !isActive ? 'opacity-30' : ''}`}
                 >
                   <span className={isActive ? c.pill : ''}>{section.icon}</span>
                   {section.shortTitle}

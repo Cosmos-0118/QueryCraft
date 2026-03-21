@@ -29,6 +29,8 @@ export function splitSqlStatements(sql: string): string[] {
   let inBacktick = false;
   let inLineComment = false;
   let inBlockComment = false;
+  let currentDelimiter = ';';
+  let lineHasOnlyWhitespace = true;
 
   let firstWords: string[] = [];
   let blockDepth = 0;
@@ -91,9 +93,22 @@ export function splitSqlStatements(sql: string): string[] {
     const ch = source[i];
     const next = i + 1 < source.length ? source[i + 1] : '';
 
+    if (!inSingle && !inDouble && !inBacktick && !inLineComment && !inBlockComment && lineHasOnlyWhitespace) {
+      const delimiterMatch = source.slice(i).match(/^DELIMITER\s+(\S+)/i);
+      if (delimiterMatch) {
+        currentDelimiter = delimiterMatch[1];
+        while (i < source.length && source[i] !== '\n') i += 1;
+        lineHasOnlyWhitespace = true;
+        continue;
+      }
+    }
+
     if (inLineComment) {
       buffer += ch;
-      if (ch === '\n') inLineComment = false;
+      if (ch === '\n') {
+        inLineComment = false;
+        lineHasOnlyWhitespace = true;
+      }
       i += 1;
       continue;
     }
@@ -105,6 +120,7 @@ export function splitSqlStatements(sql: string): string[] {
         inBlockComment = false;
         i += 2;
       } else {
+        if (ch === '\n') lineHasOnlyWhitespace = true;
         i += 1;
       }
       continue;
@@ -150,20 +166,33 @@ export function splitSqlStatements(sql: string): string[] {
       const { word, end } = readWord(source, i);
       captureWord(word, end);
       buffer += source.slice(i, end);
+      lineHasOnlyWhitespace = false;
       i = end;
       continue;
     }
 
-    if (!inSingle && !inDouble && !inBacktick && ch === ';' && blockDepth === 0) {
+    if (
+      !inSingle &&
+      !inDouble &&
+      !inBacktick &&
+      blockDepth === 0 &&
+      source.startsWith(currentDelimiter, i)
+    ) {
       const stmt = buffer.trim();
       if (stmt) statements.push(`${stmt};`);
       buffer = '';
       resetStatementState();
-      i += 1;
+      i += currentDelimiter.length;
+      lineHasOnlyWhitespace = false;
       continue;
     }
 
     buffer += ch;
+    if (ch === '\n') {
+      lineHasOnlyWhitespace = true;
+    } else if (!/\s/.test(ch)) {
+      lineHasOnlyWhitespace = false;
+    }
     i += 1;
   }
 

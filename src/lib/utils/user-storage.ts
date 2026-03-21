@@ -2,33 +2,17 @@
  * User-scoped localStorage helper.
  *
  * Every feature store and the SQL-engine persistence layer call `getUserKey(baseKey)`
- * to produce a key like `querycraft:<userId>:sandbox`.  This ensures that data
+ * to produce a key like `querycraft:<userId>:sandbox`. This ensures that data
  * belonging to one user account never leaks into another.
  *
  * When no user is logged in the fallback prefix is `querycraft:guest:`.
  */
 
-const AUTH_STORAGE_KEY = 'querycraft-auth';
-
-/** Read the current user id from the auth store's persisted state. */
-function readCurrentUserId(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    // Zustand persist wraps state – the shape is { state: { ... }, version: … }
-    const state = parsed?.state ?? parsed;
-    const user = state?.user;
-    return typeof user?.id === 'string' && user.id ? user.id : null;
-  } catch {
-    return null;
-  }
-}
+import { readCurrentBrowserUserId } from '@/lib/auth/storage';
 
 /** Prefix that scopes all localStorage keys to the current user session. */
 export function getUserStoragePrefix(): string {
-  const userId = readCurrentUserId();
+  const userId = readCurrentBrowserUserId();
   return `querycraft:${userId ?? 'guest'}:`;
 }
 
@@ -66,7 +50,7 @@ export function clearAllUserData(userId: string): void {
  * Called on logout to prevent data from bleeding into the next session.
  */
 export function clearCurrentUserData(): void {
-  const userId = readCurrentUserId();
+  const userId = readCurrentBrowserUserId();
   if (userId) {
     clearAllUserData(userId);
   }

@@ -656,6 +656,44 @@ function buildCompletionSource(tables: TableSchema[]) {
         category: 'show',
       },
       {
+        label: 'MySQL CURSOR batch',
+        template:
+          `DECLARE c_${firstTable} CURSOR FOR SELECT id FROM ${firstTable} ORDER BY id;\nSET @row_id = NULL;\nOPEN c_${firstTable};\nFETCH c_${firstTable} INTO @row_id;\nDBMS_OUTPUT.PUT_LINE(@row_id);\nCLOSE c_${firstTable};`,
+        detail: 'snippet',
+        info: 'Run a MySQL-style cursor batch directly in the sandbox',
+        category: 'plsql',
+      },
+      {
+        label: 'MySQL CURSOR procedure',
+        template:
+          `DELIMITER $$\nCREATE PROCEDURE proc_${firstTable}_cursor()\nBEGIN\n  DECLARE done INT DEFAULT 0;\n  DECLARE v_id INT DEFAULT NULL;\n  DECLARE c_${firstTable} CURSOR FOR SELECT id FROM ${firstTable} ORDER BY id;\n  DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;\n\n  OPEN c_${firstTable};\n  FETCH c_${firstTable} INTO v_id;\n  CLOSE c_${firstTable};\nEND$$\nDELIMITER ;`,
+        detail: 'snippet',
+        info: 'Create a MySQL-style procedure with cursor declarations and handler syntax',
+        category: 'create',
+      },
+      {
+        label: 'SHOW CURSORS',
+        template: 'SHOW CURSORS;',
+        detail: 'snippet',
+        info: 'List stored cursor declarations discovered in procedures',
+        category: 'show',
+      },
+      {
+        label: 'SHOW CREATE CURSOR',
+        template: 'SHOW CREATE CURSOR proc_demo.c_data;',
+        detail: 'snippet',
+        info: 'Show the declaration for a stored cursor',
+        category: 'show',
+      },
+      {
+        label: 'MySQL TRIGGER (delimiter)',
+        template:
+          `DELIMITER $$\nCREATE TRIGGER trg_${firstTable}_bi\nBEFORE INSERT ON ${firstTable} FOR EACH ROW\nBEGIN\n  SET NEW.id = NEW.id;\nEND$$\nDELIMITER ;`,
+        detail: 'snippet',
+        info: 'MySQL-style trigger template with DELIMITER and FOR EACH ROW',
+        category: 'create',
+      },
+      {
         label: 'CREATE USER + GRANT',
         template:
           "CREATE USER IF NOT EXISTS 'analyst'@'localhost' IDENTIFIED BY 'pass';\nGRANT SELECT, EXECUTE ON main.* TO 'analyst'@'localhost';\nFLUSH PRIVILEGES;",
