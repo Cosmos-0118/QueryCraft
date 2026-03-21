@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useSqlEngine } from '@/hooks/use-sql-engine';
 import { useSandboxStore } from '@/stores/sandbox-store';
 import { useSessionPersistence } from '@/hooks/use-session-persistence';
@@ -12,7 +13,6 @@ import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import { ResultPanel } from '@/components/visual/result-panel';
 import { SqlErrorAlert } from '@/components/visual/sql-error-alert';
 import { cn } from '@/lib/utils/helpers';
-import type { SeedDataset } from '@/lib/seed-datasets';
 import type { QueryResult, StatementQueryResult } from '@/types/database';
 import {
   Terminal,
@@ -34,7 +34,37 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-import { getUserKey, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
+type FloatingMenuPosition = {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+};
+
+function getFloatingMenuPosition(anchor: HTMLElement): FloatingMenuPosition {
+  const rect = anchor.getBoundingClientRect();
+  const viewportMargin = 12;
+  const gap = 8;
+  const width = 256;
+  const desiredHeight = 320;
+
+  const spaceBelow = window.innerHeight - rect.bottom - viewportMargin;
+  const spaceAbove = rect.top - viewportMargin;
+  const placeAbove = spaceBelow < 180 && spaceAbove > spaceBelow;
+  const top = placeAbove
+    ? Math.max(viewportMargin, rect.top - gap - Math.min(desiredHeight, Math.max(spaceAbove, 160)))
+    : rect.bottom + gap;
+  const maxHeight = Math.max(
+    160,
+    Math.min(desiredHeight, placeAbove ? rect.top - gap - viewportMargin : window.innerHeight - top - viewportMargin),
+  );
+  const left = Math.min(
+    Math.max(viewportMargin, rect.right - width),
+    window.innerWidth - width - viewportMargin,
+  );
+
+  return { top, left, width, maxHeight };
+}
 
 
 
@@ -49,7 +79,6 @@ export default function SandboxPage() {
     refreshTables,
     databases,
     activeDatabase,
-    getCurrentDatabase,
     switchDatabase,
     users,
     activeUser,
@@ -65,6 +94,8 @@ export default function SandboxPage() {
   const [showImport, setShowImport] = useState(false);
   const [showDatabases, setShowDatabases] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
+  const [dbMenuPosition, setDbMenuPosition] = useState<FloatingMenuPosition | null>(null);
+  const [userMenuPosition, setUserMenuPosition] = useState<FloatingMenuPosition | null>(null);
   const [editorFocusRequestKey, setEditorFocusRequestKey] = useState(0);
   const [editorFeedback, setEditorFeedback] = useState<'idle' | 'success' | 'error'>('idle');
   const [showTriggersPanel, setShowTriggersPanel] = useState(false);
@@ -77,6 +108,14 @@ export default function SandboxPage() {
   const [procedureQueryMs, setProcedureQueryMs] = useState<number | null>(null);
   const [selectedProcedureName, setSelectedProcedureName] = useState<string | null>(null);
   const [selectedProcedureSql, setSelectedProcedureSql] = useState<string | null>(null);
+  const [showCursorsPanel, setShowCursorsPanel] = useState(false);
+  const [cursorRows, setCursorRows] = useState<
+    Array<{ Db: string; Procedure: string; Cursor: string; Query: string }>
+  >([]);
+  const [cursorQueryError, setCursorQueryError] = useState<string | null>(null);
+  const [cursorQueryMs, setCursorQueryMs] = useState<number | null>(null);
+  const [selectedCursorName, setSelectedCursorName] = useState<string | null>(null);
+  const [selectedCursorSql, setSelectedCursorSql] = useState<string | null>(null);
   const [showSecurityPanel, setShowSecurityPanel] = useState(false);
 
   const [selectedSecurityUser, setSelectedSecurityUser] = useState<string>('');
@@ -86,6 +125,10 @@ export default function SandboxPage() {
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dbMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const dbMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const userMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dbMenuPanelRef = useRef<HTMLDivElement | null>(null);
+  const userMenuPanelRef = useRef<HTMLDivElement | null>(null);
 
   const seedDatasetNames = useMemo(
     () => new Set(seedDatasets.map((dataset) => dataset.name.toLowerCase())),
@@ -103,6 +146,16 @@ export default function SandboxPage() {
     }, 700);
   }, []);
 
+  const updateDbMenuPosition = useCallback(() => {
+    if (!dbMenuButtonRef.current) return;
+    setDbMenuPosition(getFloatingMenuPosition(dbMenuButtonRef.current));
+  }, []);
+
+  const updateUserMenuPosition = useCallback(() => {
+    if (!userMenuButtonRef.current) return;
+    setUserMenuPosition(getFloatingMenuPosition(userMenuButtonRef.current));
+  }, []);
+
   // Auto-save session
   const { save } = useSessionPersistence();
   useEffect(() => {
@@ -118,30 +171,38 @@ export default function SandboxPage() {
   }, []);
 
   useEffect(() => {
-    if (!showTriggersPanel && !showProceduresPanel && !showSecurityPanel) return;
+    if (!showTriggersPanel && !showProceduresPanel && !showCursorsPanel && !showSecurityPanel) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setShowTriggersPanel(false);
         setShowProceduresPanel(false);
+        setShowCursorsPanel(false);
         setShowSecurityPanel(false);
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showProceduresPanel, showSecurityPanel, showTriggersPanel]);
+  }, [showCursorsPanel, showProceduresPanel, showSecurityPanel, showTriggersPanel]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (!dbMenuRef.current) return;
       const target = event.target as Node;
 
-      if (!dbMenuRef.current.contains(target)) {
+      if (
+        dbMenuRef.current &&
+        !dbMenuRef.current.contains(target) &&
+        !dbMenuPanelRef.current?.contains(target)
+      ) {
         setShowDatabases(false);
       }
 
-      if (userMenuRef.current && !userMenuRef.current.contains(target)) {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(target) &&
+        !userMenuPanelRef.current?.contains(target)
+      ) {
         setShowUsers(false);
       }
     };
@@ -149,6 +210,34 @@ export default function SandboxPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!showDatabases) return;
+
+    updateDbMenuPosition();
+    const handleViewportChange = () => updateDbMenuPosition();
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [showDatabases, updateDbMenuPosition]);
+
+  useEffect(() => {
+    if (!showUsers) return;
+
+    updateUserMenuPosition();
+    const handleViewportChange = () => updateUserMenuPosition();
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [showUsers, updateUserMenuPosition]);
 
   useEffect(() => {
     const pendingDatabase = store.pendingDatabase;
@@ -254,6 +343,27 @@ export default function SandboxPage() {
     setProcedureQueryError(null);
   }, [execute]);
 
+  const loadCursors = useCallback(() => {
+    const cursorResult = execute('SHOW CURSORS;');
+    if (cursorResult.error) {
+      setCursorRows([]);
+      setCursorQueryMs(null);
+      setCursorQueryError(cursorResult.error);
+      return;
+    }
+
+    const rows = cursorResult.rows.map((row) => ({
+      Db: String(row.Db ?? ''),
+      Procedure: String(row.Procedure ?? ''),
+      Cursor: String(row.Cursor ?? ''),
+      Query: String(row.Query ?? ''),
+    }));
+
+    setCursorRows(rows);
+    setCursorQueryMs(cursorResult.executionTimeMs);
+    setCursorQueryError(null);
+  }, [execute]);
+
   const loadProcedureDefinition = useCallback(
     (proc: { Db: string; Name: string }) => {
       const qualifiedName = proc.Db ? `${proc.Db}.${proc.Name}` : proc.Name;
@@ -274,6 +384,30 @@ export default function SandboxPage() {
 
       setSelectedProcedureName(qualifiedName);
       setSelectedProcedureSql(String(definition));
+    },
+    [execute],
+  );
+
+  const loadCursorDefinition = useCallback(
+    (cursor: { Procedure: string; Cursor: string }) => {
+      const qualifiedName = `${cursor.Procedure}.${cursor.Cursor}`;
+      const definitionResult = execute(`SHOW CREATE CURSOR ${qualifiedName};`);
+      if (definitionResult.error) {
+        setSelectedCursorName(qualifiedName);
+        setSelectedCursorSql(`Error: ${definitionResult.error}`);
+        return;
+      }
+
+      const row = definitionResult.rows[0] ?? {};
+      const definition =
+        (row['Create Cursor'] as string | undefined) ??
+        (Object.entries(row).find(([key]) => key.toLowerCase().includes('create'))?.[1] as
+          | string
+          | undefined) ??
+        '';
+
+      setSelectedCursorName(qualifiedName);
+      setSelectedCursorSql(String(definition));
     },
     [execute],
   );
@@ -341,6 +475,7 @@ export default function SandboxPage() {
       setShowUsers(false);
       setShowTriggersPanel(false);
       setShowProceduresPanel(false);
+      setShowCursorsPanel(false);
       setShowSecurityPanel(false);
       setTriggerRows([]);
       setTriggerQueryError(null);
@@ -350,6 +485,11 @@ export default function SandboxPage() {
       setProcedureQueryMs(null);
       setSelectedProcedureName(null);
       setSelectedProcedureSql(null);
+      setCursorRows([]);
+      setCursorQueryError(null);
+      setCursorQueryMs(null);
+      setSelectedCursorName(null);
+      setSelectedCursorSql(null);
       setSelectedSecurityUser('');
       setGrantsRows([]);
       setGrantsQueryError(null);
@@ -402,236 +542,168 @@ export default function SandboxPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Databases dropdown */}
-            <div className="relative" ref={dbMenuRef}>
-              <button
-                onClick={() => {
-                  setShowUsers(false);
-                  setShowDatabases((v) => !v);
-                }}
-                disabled={!isReady}
-                className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/60 bg-zinc-900/60 px-3 py-2 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-700 hover:bg-zinc-800/60 disabled:opacity-40"
-              >
-                <Database className="h-3.5 w-3.5 text-sky-300" />
-                Databases
-                <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400">
-                  {activeDatabase}
-                </span>
-                <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
-              </button>
-
-              {showDatabases && (
-                <div className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-zinc-800/70 bg-zinc-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-md">
-                  <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                    Available databases
-                  </div>
-                  <div className="space-y-1">
-                    {databases.map((dbName) => {
-                      const normalizedDbName = dbName.toLowerCase();
-                      const isSystemDb = normalizedDbName === 'main' || seedDatasetNames.has(normalizedDbName);
-                      const isActiveDb = activeDatabase === dbName;
-                      return (
-                        <button
-                          key={dbName}
-                          onClick={() => {
-                            const res = switchDatabase(dbName);
-                            if (!res.error) {
-                              setShowDatabases(false);
-                            }
-                          }}
-                          className={cn(
-                            'flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
-                            isActiveDb
-                              ? isSystemDb
-                                ? 'border-sky-500/35 bg-sky-500/12 text-sky-100'
-                                : 'border-violet-500/35 bg-violet-500/14 text-violet-100'
-                              : isSystemDb
-                                ? 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-sky-500/25 hover:bg-sky-500/8'
-                                : 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-violet-500/25 hover:bg-violet-500/8',
-                          )}
-                        >
-                          <span className="truncate font-medium">{dbName}</span>
-                          <span
-                            className={cn(
-                              'rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                              isSystemDb
-                                ? 'bg-sky-500/15 text-sky-300'
-                                : 'bg-violet-500/15 text-violet-300',
-                            )}
-                          >
-                            {isSystemDb ? 'system' : 'user'}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+          <div className="w-full rounded-2xl border border-zinc-800/60 bg-zinc-950/50 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.18)] sm:w-auto">
+            <div className="overflow-x-auto overflow-y-visible">
+              <div className="flex min-w-max flex-wrap items-center gap-2 xl:min-w-0">
+                {/* Databases dropdown */}
+                <div className="relative" ref={dbMenuRef}>
+                  <button
+                    ref={dbMenuButtonRef}
+                    onClick={() => {
+                      setShowUsers(false);
+                      updateDbMenuPosition();
+                      setShowDatabases((v) => !v);
+                    }}
+                    disabled={!isReady}
+                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/60 bg-zinc-900/60 px-3 py-2 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-700 hover:bg-zinc-800/60 disabled:opacity-40"
+                  >
+                    <Database className="h-3.5 w-3.5 text-sky-300" />
+                    Databases
+                    <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400">
+                      {activeDatabase}
+                    </span>
+                    <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+                  </button>
                 </div>
-              )}
-            </div>
 
-            {/* Users dropdown */}
-            <div className="relative" ref={userMenuRef}>
-              <button
-                onClick={() => {
-                  setShowDatabases(false);
-                  setShowUsers((v) => !v);
-                }}
-                disabled={!isReady}
-                className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/60 bg-zinc-900/60 px-3 py-2 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-700 hover:bg-zinc-800/60 disabled:opacity-40"
-              >
-                <UserRound className="h-3.5 w-3.5 text-amber-300" />
-                Users
-                <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400">
-                  {activeUser}
-                </span>
-                <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
-              </button>
-
-              {showUsers && (
-                <div className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-zinc-800/70 bg-zinc-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-md">
-                  <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                    Available users
-                  </div>
-                  <div className="space-y-1">
-                    {users.map((userName) => {
-                      const normalizedUser = userName.toLowerCase();
-                      const isAdmin = normalizedUser === 'admin' || normalizedUser === 'admin@localhost';
-                      const isActive = activeUser.toLowerCase() === normalizedUser;
-                      return (
-                        <button
-                          key={userName}
-                          onClick={() => {
-                            const res = switchUser(userName);
-                            if (!res.error) {
-                              setShowUsers(false);
-                            }
-                          }}
-                          className={cn(
-                            'flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
-                            isActive
-                              ? isAdmin
-                                ? 'border-amber-500/35 bg-amber-500/12 text-amber-100'
-                                : 'border-teal-500/35 bg-teal-500/14 text-teal-100'
-                              : isAdmin
-                                ? 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-amber-500/25 hover:bg-amber-500/8'
-                                : 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-teal-500/25 hover:bg-teal-500/8',
-                          )}
-                        >
-                          <span className="truncate font-medium">{userName}</span>
-                          <span
-                            className={cn(
-                              'rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                              isAdmin
-                                ? 'bg-amber-500/15 text-amber-300'
-                                : 'bg-teal-500/15 text-teal-300',
-                            )}
-                          >
-                            {isAdmin ? 'admin' : 'user'}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                {/* Users dropdown */}
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    ref={userMenuButtonRef}
+                    onClick={() => {
+                      setShowDatabases(false);
+                      updateUserMenuPosition();
+                      setShowUsers((v) => !v);
+                    }}
+                    disabled={!isReady}
+                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/60 bg-zinc-900/60 px-3 py-2 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-700 hover:bg-zinc-800/60 disabled:opacity-40"
+                  >
+                    <UserRound className="h-3.5 w-3.5 text-amber-300" />
+                    Users
+                    <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400">
+                      {activeUser}
+                    </span>
+                    <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+                  </button>
                 </div>
-              )}
+
+                <div className="mx-0.5 h-5 w-px bg-zinc-700/50" />
+
+                {/* Create Table */}
+                <button
+                  onClick={() => setCreateOpen(true)}
+                  disabled={!isReady}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-300 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20 disabled:opacity-40"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Create Table
+                </button>
+
+                {/* Import SQL */}
+                <button
+                  onClick={() => setShowImport(!showImport)}
+                  disabled={!isReady}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40"
+                >
+                  <ClipboardPaste className="h-3.5 w-3.5" />
+                  Import SQL
+                </button>
+
+                {/* Triggers */}
+                <button
+                  onClick={() => {
+                    if (!showTriggersPanel) {
+                      loadTriggers();
+                    }
+                    setShowTriggersPanel((v) => !v);
+                  }}
+                  disabled={!isReady}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-[11px] font-medium text-cyan-300 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/20 disabled:opacity-40"
+                >
+                  <ListTree className="h-3.5 w-3.5" />
+                  Triggers
+                  {triggerRows.length > 0 && (
+                    <span className="rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-200">
+                      {triggerRows.length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Procedures */}
+                <button
+                  onClick={() => {
+                    if (!showProceduresPanel) {
+                      loadProcedures();
+                    }
+                    setShowProceduresPanel((v) => !v);
+                  }}
+                  disabled={!isReady}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1.5 text-[11px] font-medium text-fuchsia-300 transition-all hover:border-fuchsia-500/50 hover:bg-fuchsia-500/20 disabled:opacity-40"
+                >
+                  <ScrollText className="h-3.5 w-3.5" />
+                  Procedures
+                  {procedureRows.length > 0 && (
+                    <span className="rounded-full bg-fuchsia-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-200">
+                      {procedureRows.length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Cursors */}
+                <button
+                  onClick={() => {
+                    if (!showCursorsPanel) {
+                      loadCursors();
+                    }
+                    setShowCursorsPanel((v) => !v);
+                  }}
+                  disabled={!isReady}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-[11px] font-medium text-sky-300 transition-all hover:border-sky-500/50 hover:bg-sky-500/20 disabled:opacity-40"
+                >
+                  <Terminal className="h-3.5 w-3.5" />
+                  Cursors
+                  {cursorRows.length > 0 && (
+                    <span className="rounded-full bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-sky-200">
+                      {cursorRows.length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Security */}
+                <button
+                  onClick={() => {
+                    if (!showSecurityPanel) {
+                      const seedUser = activeUser || users[0] || 'admin@localhost';
+                      setSelectedSecurityUser(seedUser);
+                      loadGrantsForUser(seedUser);
+                    }
+                    setShowSecurityPanel((v) => !v);
+                  }}
+                  disabled={!isReady}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-medium text-amber-300 transition-all hover:border-amber-500/50 hover:bg-amber-500/20 disabled:opacity-40"
+                >
+                  <Shield className="h-3.5 w-3.5" />
+                  Security
+                </button>
+
+                {/* Clear */}
+                <button
+                  onClick={handleClearInputOutput}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
+                >
+                  Clear
+                </button>
+
+                {/* Reset */}
+                <button
+                  onClick={handleResetWorkspace}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Reset
+                </button>
+              </div>
             </div>
-
-            <div className="mx-0.5 h-5 w-px bg-zinc-700/50" />
-
-            {/* Create Table */}
-            <button
-              onClick={() => setCreateOpen(true)}
-              disabled={!isReady}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-300 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20 disabled:opacity-40"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Create Table
-            </button>
-
-            {/* Import SQL */}
-            <button
-              onClick={() => setShowImport(!showImport)}
-              disabled={!isReady}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40"
-            >
-              <ClipboardPaste className="h-3.5 w-3.5" />
-              Import SQL
-            </button>
-
-            {/* Triggers */}
-            <button
-              onClick={() => {
-                if (!showTriggersPanel) {
-                  loadTriggers();
-                }
-                setShowTriggersPanel((v) => !v);
-              }}
-              disabled={!isReady}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-[11px] font-medium text-cyan-300 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/20 disabled:opacity-40"
-            >
-              <ListTree className="h-3.5 w-3.5" />
-              Triggers
-              {triggerRows.length > 0 && (
-                <span className="rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-200">
-                  {triggerRows.length}
-                </span>
-              )}
-            </button>
-
-            {/* Procedures */}
-            <button
-              onClick={() => {
-                if (!showProceduresPanel) {
-                  loadProcedures();
-                }
-                setShowProceduresPanel((v) => !v);
-              }}
-              disabled={!isReady}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1.5 text-[11px] font-medium text-fuchsia-300 transition-all hover:border-fuchsia-500/50 hover:bg-fuchsia-500/20 disabled:opacity-40"
-            >
-              <ScrollText className="h-3.5 w-3.5" />
-              Procedures
-              {procedureRows.length > 0 && (
-                <span className="rounded-full bg-fuchsia-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-200">
-                  {procedureRows.length}
-                </span>
-              )}
-            </button>
-
-            {/* Security */}
-            <button
-              onClick={() => {
-                if (!showSecurityPanel) {
-                  const seedUser = activeUser || users[0] || 'admin@localhost';
-                  setSelectedSecurityUser(seedUser);
-                  loadGrantsForUser(seedUser);
-                }
-                setShowSecurityPanel((v) => !v);
-              }}
-              disabled={!isReady}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-medium text-amber-300 transition-all hover:border-amber-500/50 hover:bg-amber-500/20 disabled:opacity-40"
-            >
-              <Shield className="h-3.5 w-3.5" />
-              Security
-            </button>
-
-            {/* Clear */}
-            <button
-              onClick={handleClearInputOutput}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
-            >
-              Clear
-            </button>
-
-            {/* Reset */}
-            <button
-              onClick={handleResetWorkspace}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Reset
-            </button>
           </div>
         </div>
 
@@ -892,6 +964,122 @@ export default function SandboxPage() {
         </div>
       )}
 
+      {showDatabases && dbMenuPosition && typeof document !== 'undefined'
+        ? createPortal(
+          <div
+            ref={dbMenuPanelRef}
+            className="fixed z-[120] overflow-hidden rounded-xl border border-zinc-800/70 bg-zinc-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-md"
+            style={{
+              top: dbMenuPosition.top,
+              left: dbMenuPosition.left,
+              width: dbMenuPosition.width,
+              maxHeight: dbMenuPosition.maxHeight,
+            }}
+          >
+            <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+              Available databases
+            </div>
+            <div className="space-y-1 overflow-y-auto" style={{ maxHeight: dbMenuPosition.maxHeight - 34 }}>
+              {databases.map((dbName) => {
+                const normalizedDbName = dbName.toLowerCase();
+                const isSystemDb = normalizedDbName === 'main' || seedDatasetNames.has(normalizedDbName);
+                const isActiveDb = activeDatabase === dbName;
+                return (
+                  <button
+                    key={dbName}
+                    onClick={() => {
+                      const res = switchDatabase(dbName);
+                      if (!res.error) {
+                        setShowDatabases(false);
+                      }
+                    }}
+                    className={cn(
+                      'flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
+                      isActiveDb
+                        ? isSystemDb
+                          ? 'border-sky-500/35 bg-sky-500/12 text-sky-100'
+                          : 'border-violet-500/35 bg-violet-500/14 text-violet-100'
+                        : isSystemDb
+                          ? 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-sky-500/25 hover:bg-sky-500/8'
+                          : 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-violet-500/25 hover:bg-violet-500/8',
+                    )}
+                  >
+                    <span className="truncate font-medium">{dbName}</span>
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                        isSystemDb ? 'bg-sky-500/15 text-sky-300' : 'bg-violet-500/15 text-violet-300',
+                      )}
+                    >
+                      {isSystemDb ? 'system' : 'user'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>,
+          document.body,
+        )
+        : null}
+
+      {showUsers && userMenuPosition && typeof document !== 'undefined'
+        ? createPortal(
+          <div
+            ref={userMenuPanelRef}
+            className="fixed z-[120] overflow-hidden rounded-xl border border-zinc-800/70 bg-zinc-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-md"
+            style={{
+              top: userMenuPosition.top,
+              left: userMenuPosition.left,
+              width: userMenuPosition.width,
+              maxHeight: userMenuPosition.maxHeight,
+            }}
+          >
+            <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+              Available users
+            </div>
+            <div className="space-y-1 overflow-y-auto" style={{ maxHeight: userMenuPosition.maxHeight - 34 }}>
+              {users.map((userName) => {
+                const normalizedUser = userName.toLowerCase();
+                const isAdmin = normalizedUser === 'admin' || normalizedUser === 'admin@localhost';
+                const isActive = activeUser.toLowerCase() === normalizedUser;
+                return (
+                  <button
+                    key={userName}
+                    onClick={() => {
+                      const res = switchUser(userName);
+                      if (!res.error) {
+                        setShowUsers(false);
+                      }
+                    }}
+                    className={cn(
+                      'flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
+                      isActive
+                        ? isAdmin
+                          ? 'border-amber-500/35 bg-amber-500/12 text-amber-100'
+                          : 'border-teal-500/35 bg-teal-500/14 text-teal-100'
+                        : isAdmin
+                          ? 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-amber-500/25 hover:bg-amber-500/8'
+                          : 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-teal-500/25 hover:bg-teal-500/8',
+                    )}
+                  >
+                    <span className="truncate font-medium">{userName}</span>
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                        isAdmin ? 'bg-amber-500/15 text-amber-300' : 'bg-teal-500/15 text-teal-300',
+                      )}
+                    >
+                      {isAdmin ? 'admin' : 'user'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>,
+          document.body,
+        )
+        : null}
+
       {showProceduresPanel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <button
@@ -972,6 +1160,105 @@ export default function SandboxPage() {
                   ) : (
                     <div className="rounded-lg border border-dashed border-zinc-700/70 bg-zinc-900/50 px-4 py-6 text-center text-sm text-zinc-500">
                       Pick a procedure from the left.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showCursorsPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+          <button
+            aria-label="Close cursor inspector"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowCursorsPanel(false)}
+          />
+
+          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-sky-500/25 bg-gradient-to-br from-sky-500/10 via-zinc-900/95 to-zinc-950 p-4 shadow-2xl shadow-black/60 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-sky-100">Cursor Inspector</h3>
+                <p className="text-[11px] text-sky-200/70">
+                  {cursorRows.length} cursor{cursorRows.length === 1 ? '' : 's'}
+                  {cursorQueryMs !== null && ` · ${cursorQueryMs.toFixed(1)}ms`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={loadCursors}
+                  className="rounded-lg border border-sky-400/35 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-100 transition hover:bg-sky-500/20"
+                >
+                  Refresh
+                </button>
+                <button
+                  onClick={() => setShowCursorsPanel(false)}
+                  className="rounded-lg border border-zinc-700/70 bg-zinc-900/60 p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                  aria-label="Close cursor inspector"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {cursorQueryError ? (
+              <SqlErrorAlert error={cursorQueryError} compact />
+            ) : cursorRows.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-sky-500/25 bg-zinc-950/50 px-4 py-6 text-center text-sm text-zinc-400">
+                No cursors found in stored procedures.
+              </div>
+            ) : (
+              <div className="grid max-h-[65vh] grid-cols-1 gap-3 overflow-hidden lg:grid-cols-3">
+                <div className="overflow-y-auto rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-2 lg:col-span-1">
+                  <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Cursors</div>
+                  <div className="space-y-1">
+                    {cursorRows.map((cursor) => {
+                      const qualifiedName = `${cursor.Procedure}.${cursor.Cursor}`;
+                      const isSelected = selectedCursorName === qualifiedName;
+                      return (
+                        <button
+                          key={`${cursor.Db}.${qualifiedName}`}
+                          onClick={() => loadCursorDefinition(cursor)}
+                          className={cn(
+                            'w-full rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
+                            isSelected
+                              ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
+                              : 'border-zinc-800/80 bg-zinc-900/70 text-zinc-300 hover:border-sky-500/25 hover:bg-sky-500/10',
+                          )}
+                        >
+                          <div className="truncate font-medium">{cursor.Cursor}</div>
+                          <div className="mt-0.5 text-[10px] text-zinc-500">{cursor.Procedure}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3 lg:col-span-2">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="text-[11px] text-zinc-400">
+                      {selectedCursorName ? `Definition: ${selectedCursorName}` : 'Select a cursor to view declaration'}
+                    </div>
+                  </div>
+                  {selectedCursorSql ? (
+                    <div className="space-y-3">
+                      <pre className="max-h-[30vh] overflow-auto rounded-lg border border-zinc-800/80 bg-zinc-950/90 p-2 font-mono text-[11px] leading-relaxed text-zinc-300">
+                        {selectedCursorSql}
+                      </pre>
+                      {cursorRows.find((cursor) => `${cursor.Procedure}.${cursor.Cursor}` === selectedCursorName)?.Query && (
+                        <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3">
+                          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-300/80">Resolved query</div>
+                          <pre className="overflow-auto font-mono text-[11px] leading-relaxed text-zinc-300">
+                            {cursorRows.find((cursor) => `${cursor.Procedure}.${cursor.Cursor}` === selectedCursorName)?.Query}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-zinc-700/70 bg-zinc-900/50 px-4 py-6 text-center text-sm text-zinc-500">
+                      Pick a cursor from the left.
                     </div>
                   )}
                 </div>

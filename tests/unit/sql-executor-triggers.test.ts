@@ -78,4 +78,31 @@ describe('SqlExecutor triggers', () => {
     expect(create.rowCount).toBe(1);
     expect(String(create.rows[0]?.['Create Trigger'] ?? '')).toContain('CREATE TRIGGER');
   });
+
+  it('supports MySQL trigger delimiters and FOR EACH ROW syntax', () => {
+    const setup = executor.loadSQL(`
+      CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT);
+      DELIMITER $$
+      CREATE TRIGGER trg_students_bi
+      BEFORE INSERT ON students FOR EACH ROW
+      BEGIN
+        SET NEW.name = UPPER(NEW.name);
+      END$$
+      DELIMITER ;
+    `);
+
+    expect(setup.error).toBeUndefined();
+
+    const insert = executor.execute("INSERT INTO students VALUES (1, 'Alice')");
+    expect(insert.error).toBeUndefined();
+
+    const rows = executor.execute('SELECT name FROM students WHERE id = 1;');
+    expect(rows.error).toBeUndefined();
+    expect(rows.rows[0]?.name).toBe('ALICE');
+
+    const showCreate = executor.execute('SHOW CREATE TRIGGER trg_students_bi;');
+    expect(showCreate.error).toBeUndefined();
+    expect(String(showCreate.rows[0]?.['Create Trigger'] ?? '')).toContain('FOR EACH ROW');
+    expect(String(showCreate.rows[0]?.['Create Trigger'] ?? '')).toContain('BEFORE INSERT');
+  });
 });

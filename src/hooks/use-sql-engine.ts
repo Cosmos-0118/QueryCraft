@@ -6,6 +6,7 @@ import { splitSqlStatements } from '@/lib/engine/sql-executor/statement-splitter
 import { sqlErrorEngine } from '@/lib/engine/sql-error-engine';
 import type { QueryResult, TableSchema } from '@/types/database';
 import { useLoadingStore } from '@/stores/loading-store';
+import { useAuthStore } from '@/stores/auth-store';
 import { getUserKey, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
 import { fetchSeedDatasets, type SeedDataset } from '@/lib/seed-datasets';
 
@@ -254,6 +255,7 @@ function replayPersistedStatements(
 
 export function useSqlEngine(options?: { isolated?: boolean }) {
   const isolated = options?.isolated ?? false;
+  const storageScopeId = useAuthStore((state) => state.user?.id ?? 'guest');
   const executorRef = useRef<SqlExecutor | null>(null);
   const persistedStatementsRef = useRef<PersistedStatementRecord[]>([]);
   const activeDatabaseRef = useRef('main');
@@ -291,9 +293,15 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
   );
 
   useEffect(() => {
-    if (!isolated) {
-      persistedStatementsRef.current = loadPersistedStatements();
-    }
+    setIsReady(false);
+    setTables([]);
+    setDatabases([]);
+    setActiveDatabase('main');
+    setUsers([]);
+    setActiveUser('admin@localhost');
+    activeDatabaseRef.current = 'main';
+    persistedStatementsRef.current = isolated ? [] : loadPersistedStatements();
+
     startLoading('Initializing SQL engine…');
     const executor = new SqlExecutor();
     executorRef.current = executor;
@@ -371,8 +379,7 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
     return () => {
       executor.reset();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [syncEngineState]);
+  }, [isolated, startLoading, stopLoading, storageScopeId, syncEngineState]);
 
   useEffect(() => {
     if (isolated || typeof window === 'undefined') return;
