@@ -1,43 +1,122 @@
 # QueryCraft
 
-An interactive, browser-based platform for learning database concepts — SQL, relational algebra, ER diagrams, and normalization — with step-by-step visual execution. Everything runs client-side; no server or database required.
+QueryCraft is a Next.js learning studio for database practice. It combines SQL execution, relational algebra, tuple calculus, ER modeling, normalization, and synthetic dataset generation in one workspace.
 
-## Features
+The project is mostly client-side, with one API route used to load seed datasets.
 
-- **SQL Sandbox** — Write and execute SQL in-browser using sql.js (WebAssembly SQLite). Schema browser, query history, CSV export.
-- **Relational Algebra** — Parse, visualize, and evaluate expressions (σ, π, ⋈, ∪, −, ×, ρ) with animated step-through and algebra-to-SQL conversion.
-- **ER Diagram Builder** — Drag-and-drop entity-relationship diagrams with React Flow. Auto-convert ER models to relational tables.
-- **Normalization Wizard** — Input functional dependencies, detect normal forms (1NF–5NF), and watch step-by-step decomposition with anomaly demos.
-- **Table Generator** — Define schemas and generate realistic data using 40+ semantic patterns (names, emails, GPAs, salaries, etc.) powered by Faker.js.
-- **SQL Reference** — Searchable command reference covering DDL, DML, constraints, joins, subqueries, set operations, PL/SQL, DCL, relational algebra, and normalization.
+## What Is Implemented
 
-## Tech Stack
+- SQL Sandbox with in-browser SQL execution, schema browser, query history, statement-level results, CSV export, and SQL import.
+- Relational Algebra playground with parser, expression tree, step-by-step evaluation, and SQL translation.
+- Tuple Relational Calculus workspace with TRC-to-SQL conversion and execution.
+- ER Diagram Builder (React Flow) with preset diagrams, PNG export, and ER-to-relational conversion.
+- Normalization wizard for FD input, candidate key detection, normal form detection, and decomposition steps.
+- Table Generator with semantic hinting and SQL generation using Faker-based values.
+- Learn page as a searchable SQL/DBMS reference (DDL, DML, joins, aggregates, set ops, TCL, DCL, routines, and theory sections).
+- Device-local account system (local accounts, password check, account export/import).
+- Per-account state isolation for all persisted workspaces.
 
-| Layer     | Technology                             |
-| --------- | -------------------------------------- |
-| Framework | Next.js (App Router, TypeScript)       |
-| Styling   | Tailwind CSS, shadcn/ui, Framer Motion |
-| SQL       | sql.js (WASM — in-browser SQLite)      |
-| Diagrams  | React Flow (@xyflow/react)             |
-| Editor    | CodeMirror 6                           |
-| State     | Zustand (persisted to localStorage)    |
-| Data Gen  | @faker-js/faker                        |
+## Architecture Summary
+
+- App framework: Next.js App Router + TypeScript.
+- SQL runtime: sql.js (WASM SQLite) in the browser.
+- State: Zustand stores, persisted to user-scoped localStorage keys.
+- Styling: Tailwind CSS v4 + custom CSS variables and motion.
+- Diagrams: @xyflow/react.
+- One server route: `GET /api/datasets` reads JSON files from `seed/datasets`.
+
+## Routes
+
+Public routes:
+
+- `/`
+- `/login`
+- `/register`
+
+Dashboard routes (client-side auth guard in layout):
+
+- `/dashboard`
+- `/learn`
+- `/sandbox`
+- `/sandbox/history`
+- `/algebra`
+- `/algebra/history`
+- `/tuple-calculus`
+- `/tuple-calculus/history`
+- `/er-builder`
+- `/normalizer`
+- `/generator`
+- `/settings`
+
+API route:
+
+- `/api/datasets` (GET)
 
 ## Getting Started
 
+Prerequisites:
+
+- Node.js 20+
+- npm
+
+Install and run:
+
 ```bash
-git clone https://github.com/Cosmos-0118/QueryCraft.git
-cd QueryCraft
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). No environment variables needed.
+Open `http://localhost:3000`.
 
-## Deployment
+No environment variables are required.
 
-Deploy as a static-capable Next.js app on [Vercel](https://vercel.com) (recommended) or any platform that supports Next.js. No server-side resources required.
+## Scripts
 
-## License
+- `npm run dev`: start local development server.
+- `npm run build`: create production build.
+- `npm run start`: run production server.
+- `npm run lint`: run ESLint.
+- `npm run format`: run Prettier over repository.
+- `npm run test`: run Vitest test suite once.
+- `npm run test:watch`: run Vitest in watch mode.
 
-MIT
+## Seed Datasets
+
+Seed files are stored in `seed/datasets` and loaded through `/api/datasets`.
+
+Current bundled datasets:
+
+- `banking.json`
+- `credentia.json`
+- `university.json`
+
+## Data and Auth Model
+
+- Accounts are device-local. Passwords are SHA-256 hashed in-browser.
+- Active session user is stored in sessionStorage.
+- Workspace data is persisted in localStorage with user-scoped keys.
+- Query execution happens in-browser via sql.js, not against an external database.
+
+This design is intended for learning workflows, not production authentication.
+
+## Tests
+
+The unit suite validates:
+
+- SQL executor behavior (DDL/DML, DCL, TCL, procedures, triggers, cursors, MySQL compatibility, and multi-database behavior).
+- Statement splitting and PL/SQL runtime helpers.
+- Data generator hint detection/output.
+- Session persistence utility behavior.
+
+Run all tests:
+
+```bash
+npm run test
+```
+
+## Documentation
+
+- `docs/API.md`
+- `docs/SECURITY.md`
+- `docs/CONTRIBUTING.md`
+- `ROADMAP.md`
