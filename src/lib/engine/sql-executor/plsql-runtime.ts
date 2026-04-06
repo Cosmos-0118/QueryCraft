@@ -10,7 +10,10 @@ interface RuntimeState {
   cursors: Map<string, string>;
   openCursors: Map<string, CursorState>;
   notFoundAssignments: Array<{ name: string; value: unknown }>;
+  exitHandlers: Array<{ body: string }>;
   output: string[];
+  returnValue?: unknown;
+  hasReturned?: boolean;
 }
 
 interface RuntimeContext {
@@ -35,6 +38,23 @@ function mergeCompoundStatements(statements: string[]): string[] {
     const current = statements[i].trim();
     if (!current) {
       i += 1;
+      continue;
+    }
+
+    // DECLARE EXIT HANDLER ... BEGIN ... END
+    if (/^DECLARE\s+EXIT\s+HANDLER\b/i.test(current) && /\bBEGIN\b/i.test(current) && !/\bEND\b/i.test(current)) {
+      let chunk = current;
+      let depth = countMatches(chunk, /\bBEGIN\b/gi) - countMatches(chunk, /\bEND\b/gi);
+      i += 1;
+
+      while (i < statements.length && depth > 0) {
+        const next = statements[i].trim();
+        chunk = `${chunk} ${next}`;
+        depth += countMatches(next, /\bBEGIN\b/gi) - countMatches(next, /\bEND\b/gi);
+        i += 1;
+      }
+
+      merged.push(chunk);
       continue;
     }
 
@@ -238,6 +258,41 @@ function formatValue(value: unknown): string {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
+function evaluateExpr(expr: string, vars: Map<string, unknown>, context?: RuntimeContext): unknown {
+  const trimmed = expr.trim();
+
+  // String literal
+  if (/^'.*'$/.test(trimmed)) return trimmed.slice(1, -1).replace(/''/g, "'");
+  // Number literal
+  if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  // NULL
+  if (/^null$/i.test(trimmed)) return null;
+
+  // Simple variable reference
+  const varVal = vars.get(normalizeVarName(trimmed));
+  if (varVal !== undefined && !/[+\-*/%()]/.test(trimmed)) return varVal;
+
+  // Try evaluating as a SQL expression via the context
+  if (context) {
+    // Substitute variable references in the expression
+    const substitutedStr = trimmed.replace(/\b([a-zA-Z_]\w*)\b/g, (match) => {
+      const v = vars.get(normalizeVarName(match));
+      if (v !== undefined) return formatValue(v);
+      return match;
+    });
+    try {
+      const res = context.executeSql(`SELECT ${substitutedStr}`);
+      if (!res.error && res.rows.length > 0) {
+        return Object.values(res.rows[0])[0] ?? null;
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  return parseLiteral(trimmed, vars);
+}
+
 function substituteBindVars(sql: string, vars: Map<string, unknown>): string {
   let result = sql.replace(/:(\w+)/g, (_m, name: string) => {
     const value = vars.get(key(name));
@@ -286,12 +341,21 @@ function runStatement(
       return { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
     }
 
+    // DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ... END
+    const exitHandler = stmt.match(
+      /^DECLARE\s+EXIT\s+HANDLER\s+FOR\s+SQLEXCEPTION\s+BEGIN\s+([\s\S]*?)\s*END$/i,
+    );
+    if (exitHandler) {
+      state.exitHandlers.push({ body: exitHandler[1].trim() });
+      return { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
+    }
+
     const varDecl =
       stmt.match(/^(?:DECLARE\s+)?(\w+)\s+[^:;]+(?::=|DEFAULT)\s+([\s\S]+)$/i) ??
       stmt.match(/^(?:DECLARE\s+)?(\w+)\s+[^:;]+$/i);
     if (
       varDecl &&
-      !/^(SELECT|OPEN|FETCH|CLOSE|IF|FOR|WHILE|SET|UPDATE|INSERT|DELETE|CALL|DBMS_OUTPUT|RAISE_APPLICATION_ERROR)\b/i.test(
+      !/^(SELECT|OPEN|FETCH|CLOSE|IF|FOR|WHILE|SET|UPDATE|INSERT|DELETE|CALL|DBMS_OUTPUT|RAISE_APPLICATION_ERROR|RETURN)\b/i.test(
         stmt,
       )
     ) {
@@ -431,6 +495,17 @@ function runStatement(
       executionTimeMs: 0,
       error: `ORA-${Math.abs(Number(appErrorStmt[1]))}: ${appErrorStmt[2].replace(/''/g, "'")}`,
     };
+  }
+
+  // RETURN expr — for stored functions
+  const returnStmt = stmt.match(/^RETURN\s+([\s\S]+)$/i);
+  if (returnStmt) {
+    const expr = returnStmt[1].trim();
+    // Try to evaluate as a math expression with variables
+    const resolved = evaluateExpr(expr, state.vars, context);
+    state.returnValue = resolved;
+    state.hasReturned = true;
+    return { columns: [], rows: [], rowCount: 0, executionTimeMs: 0, returnValue: resolved };
   }
 
   const selectInto = stmt.match(/^SELECT\s+([\s\S]+?)\s+INTO\s+([@\w\s,]+)\s+FROM\s+([\s\S]+)$/i);
@@ -584,6 +659,7 @@ export function runPlSqlBlock(sql: string, context: RuntimeContext): QueryResult
       cursors: new Map<string, string>(),
       openCursors: new Map<string, CursorState>(),
       notFoundAssignments: [],
+      exitHandlers: [],
       output: [],
     };
 
@@ -591,6 +667,9 @@ export function runPlSqlBlock(sql: string, context: RuntimeContext): QueryResult
     const statements = mergeCompoundStatements(splitRuntimeStatements(trimmed));
     for (const statement of statements) {
       last = runStatement(statement, state, context, { allowDeclarations: true });
+      if (state.hasReturned) {
+        return { ...last, returnValue: state.returnValue };
+      }
       if (last.error) return last;
     }
 
@@ -615,6 +694,7 @@ export function runPlSqlBlock(sql: string, context: RuntimeContext): QueryResult
     cursors: new Map<string, string>(),
     openCursors: new Map<string, CursorState>(),
     notFoundAssignments: [],
+    exitHandlers: [],
     output: [],
   };
 
@@ -628,7 +708,24 @@ export function runPlSqlBlock(sql: string, context: RuntimeContext): QueryResult
   const bodyStatements = mergeCompoundStatements(splitRuntimeStatements(beginSection));
   for (const statement of bodyStatements) {
     last = runStatement(statement, state, context, { allowDeclarations: true });
+    if (state.hasReturned) {
+      return { ...last, returnValue: state.returnValue };
+    }
     if (last.error) {
+      // Try EXIT HANDLER first, then EXCEPTION block
+      if (state.exitHandlers.length > 0) {
+        const handler = state.exitHandlers[0];
+        const handlerStatements = mergeCompoundStatements(splitRuntimeStatements(handler.body));
+        let handlerLast: QueryResult = { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
+        for (const hs of handlerStatements) {
+          handlerLast = runStatement(hs, state, context, { allowDeclarations: true });
+          if (state.hasReturned) {
+            return { ...handlerLast, returnValue: state.returnValue };
+          }
+          if (handlerLast.error) return handlerLast;
+        }
+        return handlerLast;
+      }
       if (!exceptionSection.trim()) return last;
       last = handleException(last.error, exceptionSection, state, context);
       if (last.error) return last;
@@ -642,8 +739,9 @@ export function runPlSqlBlock(sql: string, context: RuntimeContext): QueryResult
       rows: state.output.map((line) => ({ output: line })),
       rowCount: state.output.length,
       executionTimeMs: last.executionTimeMs,
+      returnValue: state.returnValue,
     };
   }
 
-  return last;
+  return { ...last, returnValue: state.returnValue };
 }

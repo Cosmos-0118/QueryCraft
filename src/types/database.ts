@@ -34,4 +34,6 @@ export interface QueryResult {
   error?: string;
   errorDetails?: SqlErrorDetails;
   statementResults?: StatementQueryResult[];
+  /** Used internally for RETURN values from stored functions */
+  returnValue?: unknown;
 }
