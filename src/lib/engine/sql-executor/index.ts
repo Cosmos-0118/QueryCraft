@@ -2325,6 +2325,77 @@ export class SqlExecutor {
       }
     }
 
+    // CREATE FUNCTION
+    {
+      const createFunc = rawSql
+        .trim()
+        .match(
+          /^CREATE\s+FUNCTION(?:\s+IF\s+NOT\s+EXISTS)?\s+([^\s(]+)\s*\(([\s\S]*?)\)\s*RETURNS\s+[\s\S]+?\s+(?:DETERMINISTIC\s+)?BEGIN\s+([\s\S]*?)\s*END\s*;?$/i,
+        );
+      if (createFunc) {
+        const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
+        const name = this.parseQualifiedName(createFunc[1]);
+        if (!name) {
+          return sqlErrorEngine.fromMessage('Invalid function name in CREATE FUNCTION', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const dbName = name.database
+          ? (this.resolveDatabaseName(name.database) ?? name.database)
+          : this.activeDatabase;
+        if (!this.databases.has(dbName)) {
+          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        if (!this.hasPrivilege('CREATE', dbName)) {
+          return sqlErrorEngine.fromMessage(
+            `Access denied for user '${this.getCurrentUserDisplay()}' to CREATE function in database '${dbName}'`,
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+
+        const funcName = name.name;
+        const funcKey = this.functionKey(dbName, funcName);
+        if (this.functions.has(funcKey)) {
+          if (hasIfNotExists) {
+            return {
+              columns: [],
+              rows: [],
+              rowCount: 0,
+              executionTimeMs: performance.now() - startTime,
+            };
+          }
+          return sqlErrorEngine.fromMessage(`Function '${funcName}' already exists`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        this.functions.set(funcKey, {
+          database: dbName,
+          name: funcName,
+          params: this.parseProcedureParams(createFunc[2] ?? ''),
+          body: createFunc[3].trim(),
+          definition: rawSql.trim().replace(/;$/, ''),
+        });
+
+        return {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          executionTimeMs: performance.now() - startTime,
+        };
+      }
+    }
+
     {
       const m = norm.match(/^DROP\s+TRIGGER(?:\s+IF\s+EXISTS)?\s+(.+)\s*;?$/i);
       if (m) {
