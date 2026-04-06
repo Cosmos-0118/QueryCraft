@@ -30,7 +30,7 @@ function parseLeadingIdentifier(raw: string): string | null {
   return match?.[1] ?? null;
 }
 
-function rewriteTriggerBodyStatement(statement: string, table: string): string {
+function rewriteTriggerBodyStatement(statement: string, table: string, extraCondition?: string): string {
   const trimmed = statement.trim().replace(/;$/, '').trim();
   if (!trimmed) return '';
 
@@ -39,7 +39,26 @@ function rewriteTriggerBodyStatement(statement: string, table: string): string {
     return trimmed;
   }
 
-  return `UPDATE ${quoteIdentifier(table)} SET ${quoteIdentifier(setNewMatch[1])} = ${setNewMatch[2].trim()} WHERE rowid = NEW.rowid`;
+  const where = extraCondition
+    ? `WHERE rowid = NEW.rowid AND (${extraCondition})`
+    : 'WHERE rowid = NEW.rowid';
+  return `UPDATE ${quoteIdentifier(table)} SET ${quoteIdentifier(setNewMatch[1])} = ${setNewMatch[2].trim()} ${where}`;
+}
+
+function flattenTriggerIfBlocks(bodySource: string): string {
+  // Replaces IF cond THEN stmts END IF with the inner stmts annotated with the condition.
+  // Uses a marker so the caller can attach the condition to WHERE clauses.
+  return bodySource.replace(
+    /IF\s+([\s\S]+?)\s+THEN\s+([\s\S]+?)\s+END\s+IF/gi,
+    (_m, cond: string, body: string) => {
+      // Tag each inner statement with a condition marker
+      const stmts = body
+        .split(';')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return stmts.map((s) => `/*IF:${cond.trim()}*/ ${s}`).join(';\n');
+    },
+  );
 }
 
 export function normalizeMySqlTriggerDefinition(rawSql: string): NormalizedTriggerDefinition | null {
@@ -57,10 +76,17 @@ export function normalizeMySqlTriggerDefinition(rawSql: string): NormalizedTrigg
   const table = parseLeadingIdentifier(match[4]) ?? match[4].trim();
   const tail = match[5].trim();
 
-  const blockMatch = tail.match(/^BEGIN\s+([\s\S]*?)\s+END$/i);
+  const blockMatch = tail.match(/^BEGIN\s+([\s\S]*)\s+END$/i);
   const bodySource = blockMatch ? blockMatch[1] : tail;
-  const bodyStatements = splitSqlStatements(bodySource)
-    .map((statement) => rewriteTriggerBodyStatement(statement, table))
+  const flattened = flattenTriggerIfBlocks(bodySource);
+  const bodyStatements = splitSqlStatements(flattened)
+    .map((statement) => {
+      const condMatch = statement.match(/^\/\*IF:([\s\S]+?)\*\/\s*([\s\S]+)$/);
+      if (condMatch) {
+        return rewriteTriggerBodyStatement(condMatch[2], table, condMatch[1].trim());
+      }
+      return rewriteTriggerBodyStatement(statement, table);
+    })
     .filter(Boolean);
 
   let timing = originalTiming;

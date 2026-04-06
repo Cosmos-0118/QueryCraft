@@ -215,34 +215,44 @@ function evalConcatExpr(expr: string, vars: Map<string, unknown>): unknown {
     .join('');
 }
 
-function evalCondition(cond: string, vars: Map<string, unknown>): boolean {
+function evalCondition(cond: string, vars: Map<string, unknown>, context?: RuntimeContext): boolean {
   const text = cond.trim();
 
-  const isNull = text.match(/^(\w+)\s+IS\s+(NOT\s+)?NULL$/i);
+  const isNull = text.match(/^(.+?)\s+IS\s+(NOT\s+)?NULL$/i);
   if (isNull) {
-    const value = vars.get(normalizeVarName(isNull[1]));
+    const value = context
+      ? evaluateExpr(isNull[1].trim(), vars, context)
+      : vars.get(normalizeVarName(isNull[1]));
     const wantNot = Boolean(isNull[2]);
     return wantNot ? value !== null && value !== undefined : value === null || value === undefined;
   }
 
-  const cmp = text.match(/^([@]?\w+)\s*(=|<>|!=|>=|<=|>|<)\s*(.+)$/i);
+  const cmp = text.match(/^(.+?)\s*(=|<>|!=|>=|<=|>|<)\s*(.+)$/i);
   if (cmp) {
-    const left = vars.get(normalizeVarName(cmp[1]));
-    const right = parseLiteral(cmp[3], vars);
+    const left = context
+      ? evaluateExpr(cmp[1].trim(), vars, context)
+      : vars.get(normalizeVarName(cmp[1]));
+    const right = context
+      ? evaluateExpr(cmp[3].trim(), vars, context)
+      : parseLiteral(cmp[3], vars);
+    const numLeft = Number(left);
+    const numRight = Number(right);
     switch (cmp[2]) {
       case '=':
-        return left === right;
+        // eslint-disable-next-line eqeqeq
+        return left == right || (!isNaN(numLeft) && !isNaN(numRight) && numLeft === numRight);
       case '<>':
       case '!=':
-        return left !== right;
+        // eslint-disable-next-line eqeqeq
+        return left != right && (isNaN(numLeft) || isNaN(numRight) || numLeft !== numRight);
       case '>':
-        return Number(left) > Number(right);
+        return numLeft > numRight;
       case '<':
-        return Number(left) < Number(right);
+        return numLeft < numRight;
       case '>=':
-        return Number(left) >= Number(right);
+        return numLeft >= numRight;
       case '<=':
-        return Number(left) <= Number(right);
+        return numLeft <= numRight;
       default:
         return false;
     }
@@ -433,12 +443,12 @@ function runStatement(
     /^IF\s+([\s\S]+?)\s+THEN\s+([\s\S]+?)(?:\s+ELSE\s+([\s\S]+?))?\s*END\s+IF$/i,
   );
   if (ifStmt) {
-    const branch = evalCondition(ifStmt[1], state.vars) ? ifStmt[2] : (ifStmt[3] ?? 'NULL');
+    const branch = evalCondition(ifStmt[1], state.vars, context) ? ifStmt[2] : (ifStmt[3] ?? 'NULL');
     const branchStatements = splitRuntimeStatements(branch);
     let last: QueryResult = { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
     for (const inner of branchStatements) {
       last = runStatement(inner, state, context);
-      if (last.error) return last;
+      if (state.hasReturned || last.error) return last;
     }
     return last;
   }

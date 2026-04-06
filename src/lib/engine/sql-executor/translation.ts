@@ -433,9 +433,9 @@ export function translateMySQL(
   translated = translated.replace(/\s+AUTO_INCREMENT\s*=\s*\d+/gi, '');
   translated = translated.replace(/\s+COMMENT\s*=\s*'[^']*'/gi, '');
 
-  // INT AUTO_INCREMENT → INTEGER PRIMARY KEY (SQLite autoincrement)
+  // INT AUTO_INCREMENT [PRIMARY KEY] → INTEGER PRIMARY KEY AUTOINCREMENT (SQLite)
   translated = translated.replace(
-    /\bINT(?:EGER)?\s+AUTO_INCREMENT/gi,
+    /\bINT(?:EGER)?\s+AUTO_INCREMENT(?:\s+PRIMARY\s+KEY)?/gi,
     'INTEGER PRIMARY KEY AUTOINCREMENT',
   );
   // standalone AUTO_INCREMENT
