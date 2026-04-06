@@ -258,73 +258,6 @@ export default function SandboxPage() {
 
   // Removed all DB restore logic. Always rely on SQL engine's activeDatabase.
 
-
-
-  const handleExecute = useCallback(() => {
-    const q = store.query.trim();
-    if (!q) return;
-    const res = loadSQL(q);
-    setResult(res);
-    store.setResults(res);
-
-    // For large scripts (>4 statements), create separate history entries per statement
-    const stmts = res.statementResults;
-    if (stmts && stmts.length > 4) {
-      for (const entry of stmts) {
-        store.addToHistory(
-          entry.statement,
-          !entry.error,
-          {
-            columns: entry.columns,
-            rows: entry.rows,
-            rowCount: entry.rowCount,
-            executionTimeMs: entry.executionTimeMs,
-            error: entry.error,
-            errorDetails: entry.errorDetails,
-          },
-          activeDatabase,
-        );
-      }
-    } else {
-      store.addToHistory(q, !res.error, res, activeDatabase);
-    }
-
-    triggerEditorFeedback(res.error ? 'error' : 'success');
-    if (!res.error) {
-      store.setQuery('');
-    }
-  }, [activeDatabase, loadSQL, store, triggerEditorFeedback]);
-
-  const handleImportSQL = useCallback(() => {
-    setImportErrorResult(null);
-    const sql = importSql.trim();
-    if (!sql) return;
-    const res = loadSQL(sql);
-    setResult(res);
-    if (res.error) {
-      setImportErrorResult(res);
-      return;
-    }
-    setShowImport(false);
-    setImportSql('');
-    const tableMatch = sql.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/i);
-    if (tableMatch) {
-      store.setQuery(`SELECT * FROM "${tableMatch[1]}" LIMIT 20;`);
-    }
-  }, [importSql, loadSQL, store]);
-
-  const handleExportCSV = useCallback(() => {
-    if (!result || result.columns.length === 0) return;
-    const csv = exportCSV(result);
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'query-results.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [result, exportCSV]);
-
   const loadTriggers = useCallback(() => {
     const triggerResult = execute('SHOW TRIGGERS;');
     if (triggerResult.error) {
@@ -385,6 +318,79 @@ export default function SandboxPage() {
     setCursorQueryMs(cursorResult.executionTimeMs);
     setCursorQueryError(null);
   }, [execute]);
+
+  const handleExecute = useCallback(() => {
+    const q = store.query.trim();
+    if (!q) return;
+    const res = loadSQL(q);
+    setResult(res);
+    store.setResults(res);
+
+    // For large scripts (>4 statements), create separate history entries per statement
+    const stmts = res.statementResults;
+    if (stmts && stmts.length > 4) {
+      for (const entry of stmts) {
+        store.addToHistory(
+          entry.statement,
+          !entry.error,
+          {
+            columns: entry.columns,
+            rows: entry.rows,
+            rowCount: entry.rowCount,
+            executionTimeMs: entry.executionTimeMs,
+            error: entry.error,
+            errorDetails: entry.errorDetails,
+          },
+          activeDatabase,
+        );
+      }
+    } else {
+      store.addToHistory(q, !res.error, res, activeDatabase);
+    }
+
+    triggerEditorFeedback(res.error ? 'error' : 'success');
+    if (!res.error) {
+      store.setQuery('');
+    }
+
+    // Auto-refresh side panels so newly created objects appear immediately
+    loadTriggers();
+    loadProcedures();
+    loadCursors();
+  }, [activeDatabase, loadSQL, store, triggerEditorFeedback, loadTriggers, loadProcedures, loadCursors]);
+
+  const handleImportSQL = useCallback(() => {
+    setImportErrorResult(null);
+    const sql = importSql.trim();
+    if (!sql) return;
+    const res = loadSQL(sql);
+    setResult(res);
+    if (res.error) {
+      setImportErrorResult(res);
+      return;
+    }
+    setShowImport(false);
+    setImportSql('');
+    const tableMatch = sql.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/i);
+    if (tableMatch) {
+      store.setQuery(`SELECT * FROM "${tableMatch[1]}" LIMIT 20;`);
+    }
+    loadTriggers();
+    loadProcedures();
+    loadCursors();
+  }, [importSql, loadSQL, store, loadTriggers, loadProcedures, loadCursors]);
+
+  const handleExportCSV = useCallback(() => {
+    if (!result || result.columns.length === 0) return;
+    const csv = exportCSV(result);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'query-results.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [result, exportCSV]);
 
   const loadProcedureDefinition = useCallback(
     (proc: { Db: string; Name: string }) => {

@@ -154,6 +154,83 @@ export class SqlExecutor {
     }
   }
 
+  /**
+   * Extract the body of a routine between the outermost BEGIN and END,
+   * properly handling nested BEGIN/END, END IF, END LOOP etc.
+   * Returns { preamble, body } where preamble is everything before BEGIN
+   * and body is the content between the first top-level BEGIN and the matching END.
+   */
+  private extractRoutineBody(sql: string): { preamble: string; body: string } | null {
+    const upper = sql.toUpperCase();
+    // Find the first top-level BEGIN
+    const beginRegex = /\bBEGIN\b/gi;
+    let beginMatch: RegExpExecArray | null;
+    let beginIdx = -1;
+
+    while ((beginMatch = beginRegex.exec(sql)) !== null) {
+      // Check it's not inside a string
+      const before = sql.slice(0, beginMatch.index);
+      const singleQuotes = (before.match(/'/g) || []).length;
+      if (singleQuotes % 2 === 0) {
+        beginIdx = beginMatch.index;
+        break;
+      }
+    }
+
+    if (beginIdx === -1) return null;
+
+    const preamble = sql.slice(0, beginIdx).trim();
+    const afterBegin = beginIdx + 5; // length of "BEGIN"
+    let depth = 1;
+    let i = afterBegin;
+    let inSingle = false;
+    let inDouble = false;
+
+    while (i < sql.length && depth > 0) {
+      const ch = sql[i];
+
+      if (ch === "'" && !inDouble) { inSingle = !inSingle; i += 1; continue; }
+      if (ch === '"' && !inSingle) { inDouble = !inDouble; i += 1; continue; }
+      if (inSingle || inDouble) { i += 1; continue; }
+
+      // Check for word boundaries for BEGIN/END
+      if (/[A-Za-z_]/.test(ch)) {
+        let wordEnd = i;
+        while (wordEnd < sql.length && /[A-Za-z0-9_]/.test(sql[wordEnd])) wordEnd += 1;
+        const word = sql.slice(i, wordEnd).toUpperCase();
+
+        if (word === 'BEGIN') {
+          depth += 1;
+        } else if (word === 'END') {
+          // Peek at next word to check for END IF / END LOOP / END CASE
+          let peek = wordEnd;
+          while (peek < sql.length && /\s/.test(sql[peek])) peek += 1;
+          let nextWordEnd = peek;
+          while (nextWordEnd < sql.length && /[A-Za-z0-9_]/.test(sql[nextWordEnd])) nextWordEnd += 1;
+          const nextWord = sql.slice(peek, nextWordEnd).toUpperCase();
+
+          if (nextWord === 'IF' || nextWord === 'LOOP' || nextWord === 'CASE' || nextWord === 'WHILE') {
+            // END IF / END LOOP etc. — don't change depth
+            i = nextWordEnd;
+            continue;
+          }
+
+          depth -= 1;
+          if (depth === 0) {
+            const body = sql.slice(afterBegin, i).trim();
+            return { preamble, body };
+          }
+        }
+        i = wordEnd;
+        continue;
+      }
+
+      i += 1;
+    }
+
+    return null;
+  }
+
   private splitCommaSafe(raw: string): string[] {
     const out: string[] = [];
     let current = '';
@@ -2092,14 +2169,16 @@ export class SqlExecutor {
     }
 
     {
-      const createRoutine = rawSql
+      const procHeader = rawSql
         .trim()
         .match(
-          /^CREATE\s+PROCEDURE(?:\s+IF\s+NOT\s+EXISTS)?\s+([^\s(]+)\s*\(([\s\S]*)\)\s*BEGIN\s+([\s\S]*?)\s*END\s*;?$/i,
+          /^CREATE\s+PROCEDURE(?:\s+IF\s+NOT\s+EXISTS)?\s+([^\s(]+)\s*\(([\s\S]*)\)\s*BEGIN\b/i,
         );
-      if (createRoutine) {
+      if (procHeader) {
+        const extracted = this.extractRoutineBody(rawSql.trim());
+        if (extracted) {
         const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
-        const name = this.parseQualifiedName(createRoutine[1]);
+        const name = this.parseQualifiedName(procHeader[1]);
         if (!name) {
           return sqlErrorEngine.fromMessage('Invalid procedure name in CREATE PROCEDURE', {
             sql: rawSql,
@@ -2147,12 +2226,12 @@ export class SqlExecutor {
         this.procedures.set(procKey, {
           database: dbName,
           name: procName,
-          params: this.parseProcedureParams(createRoutine[2] ?? ''),
-          body: createRoutine[3].trim(),
+          params: this.parseProcedureParams(procHeader[2] ?? ''),
+          body: extracted.body,
           definition: rawSql.trim().replace(/;$/, ''),
         });
 
-        for (const cursor of extractCursorDefinitions(createRoutine[3] ?? '')) {
+        for (const cursor of extractCursorDefinitions(extracted.body)) {
           this.cursors.set(this.cursorKey(dbName, procName, cursor.name), {
             database: dbName,
             procedureName: procName,
@@ -2168,19 +2247,22 @@ export class SqlExecutor {
           rowCount: 0,
           executionTimeMs: performance.now() - startTime,
         };
+        }
       }
     }
 
     // CREATE FUNCTION
     {
-      const createFunc = rawSql
+      const funcHeader = rawSql
         .trim()
         .match(
-          /^CREATE\s+FUNCTION(?:\s+IF\s+NOT\s+EXISTS)?\s+([^\s(]+)\s*\(([\s\S]*?)\)\s*RETURNS\s+[\s\S]+?\s+(?:DETERMINISTIC\s+)?BEGIN\s+([\s\S]*?)\s*END\s*;?$/i,
+          /^CREATE\s+FUNCTION(?:\s+IF\s+NOT\s+EXISTS)?\s+([^\s(]+)\s*\(([\s\S]*?)\)\s*RETURNS\s+[\s\S]+?\s+(?:DETERMINISTIC\s+)?BEGIN\b/i,
         );
-      if (createFunc) {
+      if (funcHeader) {
+        const extracted = this.extractRoutineBody(rawSql.trim());
+        if (extracted) {
         const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
-        const name = this.parseQualifiedName(createFunc[1]);
+        const name = this.parseQualifiedName(funcHeader[1]);
         if (!name) {
           return sqlErrorEngine.fromMessage('Invalid function name in CREATE FUNCTION', {
             sql: rawSql,
@@ -2228,8 +2310,8 @@ export class SqlExecutor {
         this.functions.set(funcKey, {
           database: dbName,
           name: funcName,
-          params: this.parseProcedureParams(createFunc[2] ?? ''),
-          body: createFunc[3].trim(),
+          params: this.parseProcedureParams(funcHeader[2] ?? ''),
+          body: extracted.body,
           definition: rawSql.trim().replace(/;$/, ''),
         });
 
@@ -2239,6 +2321,7 @@ export class SqlExecutor {
           rowCount: 0,
           executionTimeMs: performance.now() - startTime,
         };
+        }
       }
     }
 
