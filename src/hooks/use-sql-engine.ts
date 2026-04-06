@@ -253,6 +253,94 @@ function replayPersistedStatements(
   executor.useDatabase('main');
 }
 
+// ---------------------------------------------------------------------------
+// Module-level engine cache
+//
+// Keeps the SqlExecutor alive across component mounts/unmounts so that
+// navigating to a history page and back does NOT destroy & re-create the
+// engine. The engine is only torn down on explicit reset() or user change.
+// ---------------------------------------------------------------------------
+interface CachedEngine {
+  executor: SqlExecutor;
+  statements: PersistedStatementRecord[];
+  userId: string;
+  seedDatasets: SeedDataset[];
+}
+
+let engineCache: CachedEngine | null = null;
+let engineInitPromise: Promise<CachedEngine | null> | null = null;
+let engineInitUserId: string | null = null;
+
+function destroyCachedEngine(): void {
+  if (engineCache) {
+    engineCache.executor.reset();
+    engineCache = null;
+  }
+  engineInitPromise = null;
+  engineInitUserId = null;
+}
+
+function initSharedEngine(userId: string): Promise<CachedEngine | null> {
+  // Prevent duplicate init for the same user
+  if (engineInitPromise && engineInitUserId === userId) {
+    return engineInitPromise;
+  }
+
+  engineInitUserId = userId;
+
+  engineInitPromise = (async () => {
+    const executor = new SqlExecutor();
+    await executor.init();
+
+    let loadedDatasets: SeedDataset[] = [];
+    try {
+      loadedDatasets = await fetchSeedDatasets();
+      for (const ds of loadedDatasets) {
+        executor.execute(`CREATE DATABASE IF NOT EXISTS "${ds.name}"`);
+        executor.useDatabase(ds.name);
+        const sql = jsonToSQL(ds.data as Record<string, Record<string, unknown>[]>);
+        executor.loadSQL(sql);
+      }
+    } catch (e) {
+      console.error('Failed to load seed datasets:', e);
+    }
+
+    executor.useDatabase('main');
+
+    const statements = loadPersistedStatements();
+    if (statements.length > 0) {
+      replayPersistedStatements(executor, statements);
+    }
+
+    let preferredDb = 'main';
+    if (loadedDatasets.length > 0) {
+      preferredDb = loadedDatasets[0].name;
+    }
+    const persistedActiveDb = loadPersistedActiveDatabase();
+    if (persistedActiveDb) {
+      preferredDb = persistedActiveDb;
+    }
+    executor.useDatabase(preferredDb);
+
+    const persistedActiveUser = loadPersistedActiveUser();
+    if (persistedActiveUser) {
+      executor.useUser(persistedActiveUser);
+    }
+
+    const cached: CachedEngine = { executor, statements, userId, seedDatasets: loadedDatasets };
+    engineCache = cached;
+    return cached;
+  })();
+
+  // If init fails, clear the promise so a retry can happen
+  engineInitPromise.catch(() => {
+    engineInitPromise = null;
+    engineInitUserId = null;
+  });
+
+  return engineInitPromise;
+}
+
 export function useSqlEngine(options?: { isolated?: boolean }) {
   const isolated = options?.isolated ?? false;
   const storageScopeId = useAuthStore((state) => state.user?.id ?? 'guest');
@@ -292,7 +380,70 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
     [isolated],
   );
 
+  // -----------------------------------------------------------------------
+  // Main initialization effect
+  // -----------------------------------------------------------------------
   useEffect(() => {
+    // --- Isolated engines: ephemeral, no caching ---
+    if (isolated) {
+      setIsReady(false);
+      setTables([]);
+      setDatabases([]);
+      setActiveDatabase('main');
+      setUsers([]);
+      setActiveUser('admin@localhost');
+      activeDatabaseRef.current = 'main';
+      persistedStatementsRef.current = [];
+
+      startLoading('Initializing SQL engine…');
+      const executor = new SqlExecutor();
+      executorRef.current = executor;
+
+      executor
+        .init()
+        .then(() => {
+          if (executorRef.current !== executor) return;
+          setEngineUnavailable(false);
+          setIsReady(true);
+          syncEngineState();
+        })
+        .catch(() => {
+          setEngineUnavailable(true);
+        })
+        .finally(() => {
+          stopLoading();
+        });
+
+      return () => {
+        executor.reset();
+      };
+    }
+
+    // --- Non-isolated: use the module-level cached engine ---
+
+    // If the user changed, tear down the old engine
+    if (engineCache && engineCache.userId !== storageScopeId) {
+      destroyCachedEngine();
+    }
+
+    // If the engine is already cached and ready, reuse immediately
+    if (engineCache && engineCache.userId === storageScopeId) {
+      executorRef.current = engineCache.executor;
+      persistedStatementsRef.current = engineCache.statements;
+      setSeedDatasets(engineCache.seedDatasets);
+      activeDatabaseRef.current = engineCache.executor.getActiveDatabase();
+      setEngineUnavailable(false);
+      setIsReady(true);
+      syncEngineState();
+      return () => {
+        // Save active database on unmount (SPA navigation)
+        savePersistedActiveDatabase(activeDatabaseRef.current);
+      };
+    }
+
+    // Engine needs to be created — start async init
+    let cancelled = false;
+
     setIsReady(false);
     setTables([]);
     setDatabases([]);
@@ -300,84 +451,34 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
     setUsers([]);
     setActiveUser('admin@localhost');
     activeDatabaseRef.current = 'main';
-    persistedStatementsRef.current = isolated ? [] : loadPersistedStatements();
 
     startLoading('Initializing SQL engine…');
-    const executor = new SqlExecutor();
-    executorRef.current = executor;
 
-    executor
-      .init()
-      .then(async () => {
-        let loadedDatasets: SeedDataset[] = [];
-        if (!isolated) {
-          try {
-            loadedDatasets = await fetchSeedDatasets();
-            // Abort if the component unmounted or a new executor was created (Strict Mode)
-            if (executorRef.current !== executor) return;
-            
-            setSeedDatasets(loadedDatasets);
-            for (const ds of loadedDatasets) {
-              executor.execute(`CREATE DATABASE IF NOT EXISTS "${ds.name}"`);
-              executor.useDatabase(ds.name);
-              const sql = jsonToSQL(ds.data as Record<string, Record<string, unknown>[]>);
-              executor.loadSQL(sql);
-            }
-          } catch (e) {
-            console.error('Failed to load seed datasets:', e);
-          }
-        }
-
-        // Check again after potential await
-        if (executorRef.current !== executor) return;
-
-        executor.useDatabase('main');
-
-        if (!isolated && persistedStatementsRef.current.length > 0) {
-          replayPersistedStatements(executor, persistedStatementsRef.current);
-        }
-
-        if (!isolated) {
-          // Default to the first seed dataset if 'main' isn't preferred
-          let preferredDb = 'main';
-          
-          if (loadedDatasets.length > 0) {
-            preferredDb = loadedDatasets[0].name;
-          }
-
-          const persistedActiveDb = loadPersistedActiveDatabase();
-          if (persistedActiveDb) {
-            preferredDb = persistedActiveDb;
-          }
-
-          executor.useDatabase(preferredDb);
-
-          const persistedActiveUser = loadPersistedActiveUser();
-          if (persistedActiveUser) {
-            executor.useUser(persistedActiveUser);
-          }
-        }
-
+    initSharedEngine(storageScopeId)
+      .then((cached) => {
+        if (cancelled || !cached) return;
+        executorRef.current = cached.executor;
+        persistedStatementsRef.current = cached.statements;
+        setSeedDatasets(cached.seedDatasets);
+        activeDatabaseRef.current = cached.executor.getActiveDatabase();
         setEngineUnavailable(false);
         setIsReady(true);
         syncEngineState();
       })
       .catch(() => {
+        if (cancelled) return;
         setEngineUnavailable(true);
         setIsReady(false);
-        setTables([]);
-        setDatabases([]);
-        setActiveDatabase('main');
-        setUsers([]);
-        setActiveUser('admin@localhost');
-        activeDatabaseRef.current = 'main';
       })
       .finally(() => {
         stopLoading();
       });
 
     return () => {
-      executor.reset();
+      cancelled = true;
+      // Save active database on unmount — critical for SPA navigation
+      savePersistedActiveDatabase(activeDatabaseRef.current);
+      // Do NOT call executor.reset() — the engine stays alive in the cache
     };
   }, [isolated, startLoading, stopLoading, storageScopeId, syncEngineState]);
 
@@ -435,6 +536,7 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
             database: activeDatabaseRef.current,
           },
         ];
+        if (engineCache) engineCache.statements = persistedStatementsRef.current;
         savePersistedStatements(persistedStatementsRef.current);
       }
       syncEngineState({ persistSelection: options?.persistSelection });
@@ -465,16 +567,30 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
 
       const result = executorRef.current.loadSQL(sql);
       const shouldPersist = !isolated && (options?.persist ?? true);
-      if (!result.error && shouldPersist && shouldPersistSql(sql)) {
-        persistedStatementsRef.current = [
-          ...persistedStatementsRef.current,
-          {
-            sql,
-            database: activeDatabaseRef.current,
-          },
-        ];
-        savePersistedStatements(persistedStatementsRef.current);
+
+      // Persist each individual successful mutating statement rather than the
+      // whole batch. This ensures that if statement N fails, the preceding
+      // N-1 successful statements are still saved for replay.
+      if (shouldPersist && result.statementResults) {
+        const newEntries: PersistedStatementRecord[] = [];
+        for (const stmtResult of result.statementResults) {
+          if (!stmtResult.error && shouldPersistSql(stmtResult.statement)) {
+            newEntries.push({
+              sql: stmtResult.statement,
+              database: activeDatabaseRef.current,
+            });
+          }
+        }
+        if (newEntries.length > 0) {
+          persistedStatementsRef.current = [
+            ...persistedStatementsRef.current,
+            ...newEntries,
+          ];
+          if (engineCache) engineCache.statements = persistedStatementsRef.current;
+          savePersistedStatements(persistedStatementsRef.current);
+        }
       }
+
       syncEngineState({ persistSelection: options?.persistSelection });
       return result;
     },
@@ -544,58 +660,74 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
   );
 
   const reset = useCallback(() => {
-    if (executorRef.current) {
-      executorRef.current.reset();
-      setIsReady(false);
-      setTables([]);
-      setDatabases([]);
-      setActiveDatabase('main');
-      setUsers([]);
-      setActiveUser('admin@localhost');
-      activeDatabaseRef.current = 'main';
-      persistedStatementsRef.current = [];
-      if (!isolated) {
-        clearPersistedStatements();
-        clearPersistedActiveDatabase();
-        clearPersistedActiveUser();
-      }
-      const executor = new SqlExecutor();
-      executorRef.current = executor;
-      executor
-        .init()
-        .then(() => {
-          if (!isolated && seedDatasets.length > 0) {
-            for (const ds of seedDatasets) {
-              executor.execute(`CREATE DATABASE IF NOT EXISTS "${ds.name}"`);
-              executor.useDatabase(ds.name);
-              const sql = jsonToSQL(ds.data as Record<string, Record<string, unknown>[]>);
-              executor.loadSQL(sql);
-            }
-            
-            // Default to the first seed dataset if available
-            const preferredDb = seedDatasets[0].name;
-            executor.useDatabase(preferredDb);
-            activeDatabaseRef.current = preferredDb;
-          } else {
-            executor.useDatabase('main');
-          }
-          
-          setEngineUnavailable(false);
-          setIsReady(true);
-          syncEngineState();
-        })
-        .catch(() => {
-          setEngineUnavailable(true);
-          setIsReady(false);
-          setTables([]);
-          setDatabases([]);
-          setActiveDatabase('main');
-          setUsers([]);
-          setActiveUser('admin@localhost');
-          activeDatabaseRef.current = 'main';
-        });
+    // Tear down the cached engine completely
+    destroyCachedEngine();
+
+    setIsReady(false);
+    setTables([]);
+    setDatabases([]);
+    setActiveDatabase('main');
+    setUsers([]);
+    setActiveUser('admin@localhost');
+    activeDatabaseRef.current = 'main';
+    persistedStatementsRef.current = [];
+
+    if (!isolated) {
+      clearPersistedStatements();
+      clearPersistedActiveDatabase();
+      clearPersistedActiveUser();
     }
-  }, [isolated, syncEngineState, seedDatasets]);
+
+    const executor = new SqlExecutor();
+    executorRef.current = executor;
+
+    executor
+      .init()
+      .then(() => {
+        const currentSeeds = seedDatasets.length > 0 ? seedDatasets : (engineCache?.seedDatasets ?? []);
+
+        if (!isolated && currentSeeds.length > 0) {
+          for (const ds of currentSeeds) {
+            executor.execute(`CREATE DATABASE IF NOT EXISTS "${ds.name}"`);
+            executor.useDatabase(ds.name);
+            const sql = jsonToSQL(ds.data as Record<string, Record<string, unknown>[]>);
+            executor.loadSQL(sql);
+          }
+
+          const preferredDb = currentSeeds[0].name;
+          executor.useDatabase(preferredDb);
+          activeDatabaseRef.current = preferredDb;
+        } else {
+          executor.useDatabase('main');
+        }
+
+        // Re-cache the fresh engine
+        if (!isolated) {
+          engineCache = {
+            executor,
+            statements: [],
+            userId: storageScopeId,
+            seedDatasets: seedDatasets.length > 0 ? seedDatasets : [],
+          };
+          engineInitPromise = null;
+          engineInitUserId = null;
+        }
+
+        setEngineUnavailable(false);
+        setIsReady(true);
+        syncEngineState();
+      })
+      .catch(() => {
+        setEngineUnavailable(true);
+        setIsReady(false);
+        setTables([]);
+        setDatabases([]);
+        setActiveDatabase('main');
+        setUsers([]);
+        setActiveUser('admin@localhost');
+        activeDatabaseRef.current = 'main';
+      });
+  }, [isolated, syncEngineState, seedDatasets, storageScopeId]);
 
   const exportCSV = useCallback((result: QueryResult): string => {
     return executorRef.current?.exportCSV(result) ?? '';

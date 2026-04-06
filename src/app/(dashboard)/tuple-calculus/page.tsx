@@ -128,10 +128,25 @@ export default function TupleCalculusPage() {
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
+  // Restore the TRC's preferred database when the engine becomes ready.
+  useEffect(() => {
+    if (!isReady) return;
+    const preferred = store.selectedDatabase;
+    if (preferred && preferred !== activeDatabase) {
+      const result = switchDatabase(preferred);
+      if (result.error) {
+        store.setSelectedDatabase(activeDatabase);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady]);
 
-  // Removed all DB restore logic. Always rely on SQL engine's activeDatabase.
-
-
+  // Keep the store's selectedDatabase in sync whenever the engine's active database changes
+  useEffect(() => {
+    if (isReady && activeDatabase) {
+      store.setSelectedDatabase(activeDatabase);
+    }
+  }, [isReady, activeDatabase, store]);
 
   const handleEvaluate = useCallback(() => {
     const expr = store.expression.trim();
