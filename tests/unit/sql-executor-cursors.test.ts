@@ -40,4 +40,47 @@ describe('SqlExecutor cursors', () => {
     const call = executor.execute('CALL scan_students();');
     expect(call.error).toBeUndefined();
   });
+
+  it('returns output from cursor-based procedure using DBMS_OUTPUT', () => {
+    const create = executor.execute(`
+      CREATE PROCEDURE list_students()
+      BEGIN
+        DECLARE c_students CURSOR FOR SELECT id, name FROM students ORDER BY id;
+        DECLARE v_id INT DEFAULT 0;
+        DECLARE v_name VARCHAR(100) DEFAULT '';
+        OPEN c_students;
+        FETCH c_students INTO v_id, v_name;
+        DBMS_OUTPUT.PUT_LINE(v_name);
+        CLOSE c_students;
+      END;
+    `);
+    expect(create.error).toBeUndefined();
+
+    const call = executor.execute('CALL list_students();');
+    expect(call.error).toBeUndefined();
+    expect(call.columns).toEqual(['output']);
+    expect(call.rows[0]?.output).toBe('Alice');
+  });
+
+  it('returns fetched variable values via SELECT in cursor procedure', () => {
+    const create = executor.execute(`
+      CREATE PROCEDURE fetch_first_student()
+      BEGIN
+        DECLARE c CURSOR FOR SELECT id, name FROM students ORDER BY id;
+        DECLARE v_id INT DEFAULT 0;
+        DECLARE v_name VARCHAR(100) DEFAULT '';
+        OPEN c;
+        FETCH c INTO v_id, v_name;
+        CLOSE c;
+        SELECT v_id, v_name;
+      END;
+    `);
+    expect(create.error).toBeUndefined();
+
+    const call = executor.execute('CALL fetch_first_student();');
+    expect(call.error).toBeUndefined();
+    expect(call.rowCount).toBe(1);
+    expect(call.rows[0]?.v_id).toBe(1);
+    expect(call.rows[0]?.v_name).toBe('Alice');
+  });
 });

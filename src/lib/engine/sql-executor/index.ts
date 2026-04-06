@@ -837,11 +837,8 @@ export class SqlExecutor {
 
     try {
       const result = this.execute(`BEGIN ${substituted.sql.trim()} END;`);
-      if (result.error) return result;
       return {
-        columns: [],
-        rows: [],
-        rowCount: 0,
+        ...result,
         executionTimeMs: performance.now() - startTime,
       };
     } finally {

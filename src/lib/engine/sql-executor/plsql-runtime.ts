@@ -1,5 +1,4 @@
 import type { QueryResult, Row } from '@/types/database';
-import { splitSqlStatements } from './statement-splitter';
 
 interface CursorState {
   rows: Row[];
@@ -233,13 +232,27 @@ function evalCondition(cond: string, vars: Map<string, unknown>): boolean {
   return Boolean(direct);
 }
 
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number') return String(value);
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
 function substituteBindVars(sql: string, vars: Map<string, unknown>): string {
-  return sql.replace(/:(\w+)/g, (_m, name: string) => {
+  let result = sql.replace(/:(\w+)/g, (_m, name: string) => {
     const value = vars.get(key(name));
-    if (value === null || value === undefined) return 'NULL';
-    if (typeof value === 'number') return String(value);
-    return `'${String(value).replace(/'/g, "''")}'`;
+    return formatValue(value);
   });
+
+  result = result.replace(/@(\w+)/g, (_m, name: string) => {
+    const normalized = key(name);
+    if (vars.has(normalized)) {
+      return formatValue(vars.get(normalized));
+    }
+    return _m;
+  });
+
+  return result;
 }
 
 function runStatement(
@@ -357,7 +370,7 @@ function runStatement(
   );
   if (ifStmt) {
     const branch = evalCondition(ifStmt[1], state.vars) ? ifStmt[2] : (ifStmt[3] ?? 'NULL');
-    const branchStatements = splitSqlStatements(branch);
+    const branchStatements = splitRuntimeStatements(branch);
     let last: QueryResult = { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
     for (const inner of branchStatements) {
       last = runStatement(inner, state, context);
@@ -375,7 +388,7 @@ function runStatement(
     if (selectRes.error) return selectRes;
 
     let last: QueryResult = { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
-    const bodyStatements = splitSqlStatements(body);
+    const bodyStatements = splitRuntimeStatements(body);
     for (const row of selectRes.rows) {
       Object.entries(row).forEach(([col, value]) => {
         state.vars.set(`${iterator}.${key(col)}`, value);
@@ -445,6 +458,41 @@ function runStatement(
     return { columns: [], rows: [], rowCount: 1, executionTimeMs: res.executionTimeMs };
   }
 
+  // For SELECT without FROM, resolve bare variable names from procedure scope
+  const selectNoFrom = stmt.match(/^SELECT\s+([\s\S]+)$/i);
+  if (selectNoFrom && !/\bFROM\b/i.test(selectNoFrom[1])) {
+    const exprs = selectNoFrom[1].split(',').map((e) => e.trim());
+    const hasVarRef = exprs.some((expr) => {
+      const raw = expr.replace(/\s+AS\s+\w+$/i, '').trim();
+      return state.vars.has(normalizeVarName(raw));
+    });
+    if (hasVarRef) {
+      const columns: string[] = [];
+      const values: unknown[] = [];
+      for (const expr of exprs) {
+        const aliasMatch = expr.match(/^([\s\S]+?)\s+AS\s+(\w+)$/i);
+        const raw = aliasMatch ? aliasMatch[1].trim() : expr;
+        const alias = aliasMatch ? aliasMatch[2] : raw;
+        const varName = normalizeVarName(raw);
+        if (state.vars.has(varName)) {
+          columns.push(alias);
+          values.push(state.vars.get(varName));
+        } else {
+          columns.push(alias);
+          values.push(evalConcatExpr(raw, state.vars));
+        }
+      }
+      const row: Record<string, unknown> = {};
+      columns.forEach((col, idx) => { row[col] = values[idx]; });
+      return {
+        columns,
+        rows: [row],
+        rowCount: 1,
+        executionTimeMs: 0,
+      };
+    }
+  }
+
   return context.executeSql(substituteBindVars(stmt, state.vars));
 }
 
@@ -507,7 +555,7 @@ function handleException(
   }
 
   let last: QueryResult = { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
-  const handlerStatements = mergeCompoundStatements(splitSqlStatements(match.body));
+  const handlerStatements = mergeCompoundStatements(splitRuntimeStatements(match.body));
   for (const statement of handlerStatements) {
     last = runStatement(statement, state, context);
     if (last.error) return last;
@@ -571,13 +619,13 @@ export function runPlSqlBlock(sql: string, context: RuntimeContext): QueryResult
   };
 
   let last: QueryResult = { columns: [], rows: [], rowCount: 0, executionTimeMs: 0 };
-  const declareStatements = splitSqlStatements(declareSection);
+  const declareStatements = splitRuntimeStatements(declareSection);
   for (const statement of declareStatements) {
     last = runStatement(statement, state, context, { allowDeclarations: true });
     if (last.error) return last;
   }
 
-  const bodyStatements = mergeCompoundStatements(splitSqlStatements(beginSection));
+  const bodyStatements = mergeCompoundStatements(splitRuntimeStatements(beginSection));
   for (const statement of bodyStatements) {
     last = runStatement(statement, state, context, { allowDeclarations: true });
     if (last.error) {

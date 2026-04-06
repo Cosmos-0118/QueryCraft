@@ -64,4 +64,77 @@ describe('SqlExecutor procedures', () => {
     const call = executor.execute('CALL temp_proc();');
     expect(call.error).toBeTruthy();
   });
+
+  it('returns SELECT output from CALL', () => {
+    executor.execute(`
+      CREATE PROCEDURE greet()
+      BEGIN
+        SELECT 'Hello World';
+      END;
+    `);
+
+    const result = executor.execute('CALL greet();');
+    expect(result.error).toBeUndefined();
+    expect(result.columns.length).toBeGreaterThan(0);
+    expect(result.rowCount).toBe(1);
+    expect(Object.values(result.rows[0] ?? {})).toContain('Hello World');
+  });
+
+  it('returns SELECT from table in CALL', () => {
+    executor.execute(`
+      CREATE PROCEDURE get_salary(IN emp_id INT)
+      BEGIN
+        SELECT salary FROM employees WHERE id = emp_id;
+      END;
+    `);
+
+    const result = executor.execute('CALL get_salary(1);');
+    expect(result.error).toBeUndefined();
+    expect(result.rowCount).toBe(1);
+    expect(result.rows[0]?.salary).toBe(1000);
+  });
+
+  it('returns DBMS_OUTPUT from CALL', () => {
+    executor.execute(`
+      CREATE PROCEDURE say_hi()
+      BEGIN
+        DBMS_OUTPUT.PUT_LINE('Hi there');
+      END;
+    `);
+
+    const result = executor.execute('CALL say_hi();');
+    expect(result.error).toBeUndefined();
+    expect(result.columns).toEqual(['output']);
+    expect(result.rows[0]?.output).toBe('Hi there');
+  });
+
+  it('returns procedure errors through CALL', () => {
+    executor.execute(`
+      CREATE PROCEDURE bad_proc()
+      BEGIN
+        SELECT * FROM nonexistent_table;
+      END;
+    `);
+
+    const result = executor.execute('CALL bad_proc();');
+    expect(result.error).toBeTruthy();
+  });
+
+  it('supports DELIMITER syntax for CREATE PROCEDURE via loadSQL', () => {
+    const result = executor.loadSQL(`
+      DELIMITER $$
+      CREATE PROCEDURE greet_delim()
+      BEGIN
+        SELECT 'Hello Delim';
+      END$$
+      DELIMITER ;
+    `);
+
+    expect(result.error).toBeUndefined();
+
+    const call = executor.execute('CALL greet_delim();');
+    expect(call.error).toBeUndefined();
+    expect(call.rowCount).toBe(1);
+    expect(Object.values(call.rows[0] ?? {})).toContain('Hello Delim');
+  });
 });
