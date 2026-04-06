@@ -51,8 +51,10 @@ export const useSandboxStore = create<SandboxStore>()(
       activeTab: 'results',
       setQuery: (query) => set({ query }),
       setResults: (results) => set({ results }),
-      setLastDatabase: (lastDatabase) => set({ lastDatabase }),
-      setPendingDatabase: (pendingDatabase) => set({ pendingDatabase }),
+      setLastDatabase: (lastDatabase) =>
+        set((state) => (state.lastDatabase === lastDatabase ? state : { lastDatabase })),
+      setPendingDatabase: (pendingDatabase) =>
+        set((state) => (state.pendingDatabase === pendingDatabase ? state : { pendingDatabase })),
       addToHistory: (query, success, result, database) =>
         set((state) => ({
           queryHistory: [

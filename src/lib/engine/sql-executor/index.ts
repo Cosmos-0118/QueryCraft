@@ -6,6 +6,7 @@ import { translateMySQL } from './translation';
 import { splitSqlStatements } from './statement-splitter';
 import { isPlSqlBlock, runPlSqlBlock } from './plsql-runtime';
 import { extractCursorDefinitions, normalizeMySqlTriggerDefinition } from './mysql-compat';
+import { rewriteViewUpdate, rewriteViewDelete, rewriteViewInsert } from './view-manager';
 import type { SqlJs, SqlJsDatabase, SupportedPrivilege, DbUser, GrantEntry } from './types';
 import { SUPPORTED_PRIVILEGES } from './types';
 
@@ -2919,6 +2920,21 @@ export class SqlExecutor {
 
     const alterCompatibility = this.handleAlterTableCompatibility(normalizedSql, start);
     if (alterCompatibility) return alterCompatibility;
+
+    // Rewrite DML targeting views (UPDATE/DELETE/INSERT on simple single-table views)
+    {
+      const upperTrimmed = normalizedSql.replace(/\s+/g, ' ').trim().toUpperCase();
+      if (/^UPDATE\b/.test(upperTrimmed)) {
+        const rewritten = rewriteViewUpdate(activeDb, normalizedSql);
+        if (rewritten) return this.execute(rewritten);
+      } else if (/^DELETE\b/.test(upperTrimmed)) {
+        const rewritten = rewriteViewDelete(activeDb, normalizedSql);
+        if (rewritten) return this.execute(rewritten);
+      } else if (/^INSERT\b/.test(upperTrimmed)) {
+        const rewritten = rewriteViewInsert(activeDb, normalizedSql);
+        if (rewritten) return this.execute(rewritten);
+      }
+    }
 
     // Run MySQL translation
     const translated = translateMySQL(

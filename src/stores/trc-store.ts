@@ -40,7 +40,8 @@ export const useTrcStore = create<TrcStore>()(
       error: null,
       history: [],
       setExpression: (expression) => set({ expression }),
-      setSelectedDatabase: (selectedDatabase) => set({ selectedDatabase }),
+      setSelectedDatabase: (selectedDatabase) =>
+        set((state) => (state.selectedDatabase === selectedDatabase ? state : { selectedDatabase })),
       setSqlEquivalent: (sqlEquivalent) => set({ sqlEquivalent }),
       setError: (error) => set({ error }),
       addToHistory: (entry) =>
