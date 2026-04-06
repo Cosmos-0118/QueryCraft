@@ -1,6 +1,7 @@
 import type { SqlJsDatabase, TranslatedQuery } from './types';
 import type { Row } from '@/types/database';
 import { emptyOkResult, statusResult, stripComments } from './utils';
+import { rewriteSubqueryOperators } from './subquery-rewriter';
 
 function rewriteFunctionCalls(
   sql: string,
@@ -527,6 +528,9 @@ export function translateMySQL(
   translated = translated.replace(/\b(?:CURRENT_USER|USER)\s*\(\s*\)/gi, `'${activeUser}'`);
   // VERSION() → sqlite_version()
   translated = translated.replace(/\bVERSION\s*\(\s*\)/gi, 'sqlite_version()');
+
+  // Rewrite MySQL ANY / SOME / ALL subquery operators → SQLite-compatible
+  translated = rewriteSubqueryOperators(translated);
 
   // MySQL statistical aggregates not available in SQLite by default.
   const aggregateResult = applyAggregateCompatibilityRewrites(translated);

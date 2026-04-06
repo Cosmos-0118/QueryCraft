@@ -51,7 +51,8 @@ export const useAlgebraStore = create<AlgebraStore>()(
       sqlEquivalent: '',
       history: [],
       setExpression: (expression) => set({ expression }),
-      setSelectedDatabase: (selectedDatabase) => set({ selectedDatabase }),
+      setSelectedDatabase: (selectedDatabase) =>
+        set((state) => (state.selectedDatabase === selectedDatabase ? state : { selectedDatabase })),
       setParsedTree: (parsedTree) => set({ parsedTree }),
       setSteps: (steps) => set({ steps }),
       setActiveStepIndex: (activeStepIndex) => set({ activeStepIndex }),
