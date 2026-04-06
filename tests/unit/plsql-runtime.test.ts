@@ -50,4 +50,49 @@ describe('PL/SQL runtime', () => {
     expect(result.columns).toEqual(['output']);
     expect(result.rows[0]).toEqual({ output: 'Alice' });
   });
+
+  it('substitutes @session variables in SQL statements', () => {
+    const executeSql = (sql: string): QueryResult => {
+      if (/SELECT\s+'Hello'/i.test(sql)) {
+        return {
+          columns: ["'Hello'"],
+          rows: [{ "'Hello'": 'Hello' }],
+          rowCount: 1,
+          executionTimeMs: 1,
+        };
+      }
+      return { columns: [], rows: [], rowCount: 0, executionTimeMs: 1 };
+    };
+
+    const block = `
+      BEGIN
+        SET @greeting = 'Hello';
+        DBMS_OUTPUT.PUT_LINE(@greeting);
+      END;
+    `;
+
+    const result = runPlSqlBlock(block, { executeSql });
+    expect(result.error).toBeUndefined();
+    expect(result.columns).toEqual(['output']);
+    expect(result.rows[0]).toEqual({ output: 'Hello' });
+  });
+
+  it('resolves bare variable names in SELECT without FROM', () => {
+    const executeSql = (): QueryResult => {
+      return { columns: [], rows: [], rowCount: 0, executionTimeMs: 1 };
+    };
+
+    const block = `
+      DECLARE
+        v_x NUMBER := 42;
+      BEGIN
+        SELECT v_x;
+      END;
+    `;
+
+    const result = runPlSqlBlock(block, { executeSql });
+    expect(result.error).toBeUndefined();
+    expect(result.rowCount).toBe(1);
+    expect(result.rows[0]?.v_x).toBe(42);
+  });
 });
