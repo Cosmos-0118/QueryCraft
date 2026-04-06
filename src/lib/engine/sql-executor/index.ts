@@ -38,6 +38,14 @@ interface StoredCursor {
   definition: string;
 }
 
+interface StoredFunction {
+  database: string;
+  name: string;
+  params: ProcedureParam[];
+  body: string;
+  definition: string;
+}
+
 interface TableColumnMeta {
   name: string;
   definition: string;
@@ -53,6 +61,7 @@ export class SqlExecutor {
   private sqlModule: SqlJs | null = null;
   private databases = new Map<string, SqlJsDatabase>();
   private procedures = new Map<string, StoredProcedure>();
+  private functions = new Map<string, StoredFunction>();
   private triggers = new Map<string, StoredTrigger>();
   private cursors = new Map<string, StoredCursor>();
   private activeDatabase = 'main';
@@ -60,8 +69,13 @@ export class SqlExecutor {
   private grants = new Map<string, GrantEntry[]>();
   private currentUserKey = 'admin@localhost';
   private readonly runtimeCursorScope = 'session';
+  private lastRowCount = 0;
 
   private procedureKey(database: string, name: string): string {
+    return `${database.toLowerCase()}.${name.toLowerCase()}`;
+  }
+
+  private functionKey(database: string, name: string): string {
     return `${database.toLowerCase()}.${name.toLowerCase()}`;
   }
 
@@ -844,6 +858,103 @@ export class SqlExecutor {
     } finally {
       this.useDatabase(previousDb);
     }
+  }
+
+  private evaluateStoredFunction(fn: StoredFunction, args: string[]): { value: unknown; error?: string } {
+    if (args.length !== fn.params.length) {
+      return { value: null, error: `Function '${fn.name}' expects ${fn.params.length} argument(s) but received ${args.length}` };
+    }
+
+    const substituted = this.substituteProcedureParams(fn.body, fn.params, args);
+    if (substituted.error) {
+      return { value: null, error: substituted.error };
+    }
+
+    const previousDb = this.activeDatabase;
+    const switched = this.useDatabase(fn.database);
+    if (switched.error) {
+      return { value: null, error: switched.error };
+    }
+
+    try {
+      const blockSql = `BEGIN ${substituted.sql.trim()} END;`;
+      const result = runPlSqlBlock(blockSql, {
+        executeSql: (sql) => this.execute(sql),
+      });
+      if (result.error) {
+        return { value: null, error: result.error };
+      }
+      if (result.returnValue !== undefined) {
+        return { value: result.returnValue };
+      }
+      // If no RETURN was executed, look for a result row
+      if (result.rows.length > 0) {
+        const firstVal = Object.values(result.rows[0])[0];
+        return { value: firstVal ?? null };
+      }
+      return { value: null };
+    } finally {
+      this.useDatabase(previousDb);
+    }
+  }
+
+  private substituteUserFunctionCalls(sql: string): string {
+    if (this.functions.size === 0) return sql;
+
+    const fnNames = Array.from(this.functions.values())
+      .filter((fn) => fn.database === this.activeDatabase)
+      .map((fn) => fn.name);
+    if (fnNames.length === 0) return sql;
+
+    const pattern = new RegExp(`\\b(${fnNames.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\s*\\(`, 'gi');
+
+    let output = '';
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(sql)) !== null) {
+      const fnName = match[1];
+      const fnStart = match.index;
+      const openParen = pattern.lastIndex - 1;
+      let depth = 1;
+      let i = openParen + 1;
+      let inSingle = false;
+      let inDouble = false;
+
+      for (; i < sql.length; i += 1) {
+        const ch = sql[i];
+        if (ch === "'" && !inDouble) { inSingle = !inSingle; continue; }
+        if (ch === '"' && !inSingle) { inDouble = !inDouble; continue; }
+        if (inSingle || inDouble) continue;
+        if (ch === '(') depth += 1;
+        if (ch === ')') { depth -= 1; if (depth === 0) break; }
+      }
+
+      if (depth !== 0) break;
+
+      const argsStr = sql.slice(openParen + 1, i).trim();
+      const args = argsStr ? this.splitCommaSafe(argsStr) : [];
+      const fn = this.functions.get(this.functionKey(this.activeDatabase, fnName));
+      if (!fn) {
+        output += sql.slice(cursor, i + 1);
+        cursor = i + 1;
+        pattern.lastIndex = cursor;
+        continue;
+      }
+
+      const evaluated = this.evaluateStoredFunction(fn, args);
+      if (evaluated.error) {
+        // Can't inline — leave call as-is (it will error at SQLite level)
+        output += sql.slice(cursor, i + 1);
+      } else {
+        output += sql.slice(cursor, fnStart);
+        output += this.toSqlLiteral(evaluated.value === null || evaluated.value === undefined ? 'NULL' : String(evaluated.value));
+      }
+      cursor = i + 1;
+      pattern.lastIndex = cursor;
+    }
+
+    return output + sql.slice(cursor);
   }
 
   private userKey(username: string, host = 'localhost'): string {
@@ -2060,6 +2171,77 @@ export class SqlExecutor {
       }
     }
 
+    // CREATE FUNCTION
+    {
+      const createFunc = rawSql
+        .trim()
+        .match(
+          /^CREATE\s+FUNCTION(?:\s+IF\s+NOT\s+EXISTS)?\s+([^\s(]+)\s*\(([\s\S]*?)\)\s*RETURNS\s+[\s\S]+?\s+(?:DETERMINISTIC\s+)?BEGIN\s+([\s\S]*?)\s*END\s*;?$/i,
+        );
+      if (createFunc) {
+        const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
+        const name = this.parseQualifiedName(createFunc[1]);
+        if (!name) {
+          return sqlErrorEngine.fromMessage('Invalid function name in CREATE FUNCTION', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const dbName = name.database
+          ? (this.resolveDatabaseName(name.database) ?? name.database)
+          : this.activeDatabase;
+        if (!this.databases.has(dbName)) {
+          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        if (!this.hasPrivilege('CREATE', dbName)) {
+          return sqlErrorEngine.fromMessage(
+            `Access denied for user '${this.getCurrentUserDisplay()}' to CREATE function in database '${dbName}'`,
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+
+        const funcName = name.name;
+        const funcKey = this.functionKey(dbName, funcName);
+        if (this.functions.has(funcKey)) {
+          if (hasIfNotExists) {
+            return {
+              columns: [],
+              rows: [],
+              rowCount: 0,
+              executionTimeMs: performance.now() - startTime,
+            };
+          }
+          return sqlErrorEngine.fromMessage(`Function '${funcName}' already exists`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        this.functions.set(funcKey, {
+          database: dbName,
+          name: funcName,
+          params: this.parseProcedureParams(createFunc[2] ?? ''),
+          body: createFunc[3].trim(),
+          definition: rawSql.trim().replace(/;$/, ''),
+        });
+
+        return {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          executionTimeMs: performance.now() - startTime,
+        };
+      }
+    }
+
     {
       const m = norm.match(/^DROP\s+TRIGGER(?:\s+IF\s+EXISTS)?\s+(.+)\s*;?$/i);
       if (m) {
@@ -2310,6 +2492,116 @@ export class SqlExecutor {
     }
 
     {
+      const m = norm.match(/^DROP\s+FUNCTION(?:\s+IF\s+EXISTS)?\s+(.+)\s*;?$/i);
+      if (m) {
+        const hasIfExists = /\bIF\s+EXISTS\b/i.test(norm);
+        const parsed = this.parseQualifiedName(m[1]);
+        if (!parsed) {
+          return sqlErrorEngine.fromMessage('Invalid function name in DROP FUNCTION', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const dbName = parsed.database
+          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
+          : this.activeDatabase;
+        if (!this.hasPrivilege('DROP', dbName)) {
+          return sqlErrorEngine.fromMessage(
+            `Access denied for user '${this.getCurrentUserDisplay()}' to DROP function in database '${dbName}'`,
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+
+        const fnKey = this.functionKey(dbName, parsed.name);
+        if (!this.functions.has(fnKey)) {
+          if (hasIfExists) {
+            return {
+              columns: [],
+              rows: [],
+              rowCount: 0,
+              executionTimeMs: performance.now() - startTime,
+            };
+          }
+          return sqlErrorEngine.fromMessage(`Unknown function '${parsed.name}'`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        this.functions.delete(fnKey);
+        return {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          executionTimeMs: performance.now() - startTime,
+        };
+      }
+    }
+
+    {
+      const m = norm.match(/^SHOW\s+FUNCTION\s+STATUS(?:\s+LIKE\s+'([^']+)')?\s*;?$/i);
+      if (m) {
+        const likePattern = m[1]?.toLowerCase();
+        const rows = Array.from(this.functions.values())
+          .filter((fn) => this.hasPrivilege('SELECT', fn.database))
+          .filter((fn) => !likePattern || fn.name.toLowerCase().includes(likePattern))
+          .sort((a, b) => `${a.database}.${a.name}`.localeCompare(`${b.database}.${b.name}`))
+          .map((fn) => ({
+            Db: fn.database,
+            Name: fn.name,
+            Type: 'FUNCTION',
+          }));
+
+        return {
+          columns: ['Db', 'Name', 'Type'],
+          rows,
+          rowCount: rows.length,
+          executionTimeMs: performance.now() - startTime,
+        };
+      }
+    }
+
+    {
+      const m = norm.match(/^SHOW\s+CREATE\s+FUNCTION\s+(.+)\s*;?$/i);
+      if (m) {
+        const parsed = this.parseQualifiedName(m[1]);
+        if (!parsed) {
+          return sqlErrorEngine.fromMessage('Invalid function name in SHOW CREATE FUNCTION', {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        const dbName = parsed.database
+          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
+          : this.activeDatabase;
+        const fn = this.functions.get(this.functionKey(dbName, parsed.name));
+        if (!fn) {
+          return sqlErrorEngine.fromMessage(`Unknown function '${parsed.name}'`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+
+        return {
+          columns: ['Function', 'Create Function'],
+          rows: [
+            {
+              Function: `${fn.database}.${fn.name}`,
+              'Create Function': fn.definition,
+            },
+          ],
+          rowCount: 1,
+          executionTimeMs: performance.now() - startTime,
+        };
+      }
+    }
+
+    {
       const callMatch = rawSql.trim().match(/^CALL\s+([^\s(]+)\s*\((.*)\)\s*;?$/i);
       if (callMatch) {
         const parsed = this.parseQualifiedName(callMatch[1]);
@@ -2374,8 +2666,10 @@ export class SqlExecutor {
     this.sqlModule = SQL;
     this.databases.clear();
     this.procedures.clear();
+    this.functions.clear();
     this.triggers.clear();
     this.cursors.clear();
+    this.lastRowCount = 0;
     const mainDb = new SQL.Database();
     mainDb.run('PRAGMA foreign_keys = ON;');
     this.databases.set('main', mainDb);
@@ -2491,7 +2785,13 @@ export class SqlExecutor {
       });
     }
 
-    const finalSql = translated.sql ?? normalizedSql;
+    let finalSql = translated.sql ?? normalizedSql;
+
+    // Substitute ROW_COUNT() with the last tracked row count
+    finalSql = finalSql.replace(/\bROW_COUNT\s*\(\s*\)/gi, String(this.lastRowCount));
+
+    // Substitute user-defined function calls in the SQL
+    finalSql = this.substituteUserFunctionCalls(finalSql);
 
     try {
       const results = activeDb.exec(finalSql);
@@ -2510,6 +2810,7 @@ export class SqlExecutor {
         }
 
         const rowsModified = activeDb.getRowsModified();
+        this.lastRowCount = rowsModified;
         return {
           columns: [],
           rows: [],
@@ -2639,8 +2940,10 @@ export class SqlExecutor {
     }
     this.databases.clear();
     this.procedures.clear();
+    this.functions.clear();
     this.triggers.clear();
     this.cursors.clear();
+    this.lastRowCount = 0;
     this.sqlModule = null;
     this.activeDatabase = 'main';
     this.users.clear();

@@ -266,7 +266,29 @@ export default function SandboxPage() {
     const res = loadSQL(q);
     setResult(res);
     store.setResults(res);
-    store.addToHistory(q, !res.error, res, activeDatabase);
+
+    // For large scripts (>4 statements), create separate history entries per statement
+    const stmts = res.statementResults;
+    if (stmts && stmts.length > 4) {
+      for (const entry of stmts) {
+        store.addToHistory(
+          entry.statement,
+          !entry.error,
+          {
+            columns: entry.columns,
+            rows: entry.rows,
+            rowCount: entry.rowCount,
+            executionTimeMs: entry.executionTimeMs,
+            error: entry.error,
+            errorDetails: entry.errorDetails,
+          },
+          activeDatabase,
+        );
+      }
+    } else {
+      store.addToHistory(q, !res.error, res, activeDatabase);
+    }
+
     triggerEditorFeedback(res.error ? 'error' : 'success');
     if (!res.error) {
       store.setQuery('');
