@@ -61,6 +61,21 @@ function flattenTriggerIfBlocks(bodySource: string): string {
   );
 }
 
+/**
+ * Translate MySQL-specific function calls in trigger body statements
+ * to their SQLite equivalents so the trigger can execute at the SQLite level.
+ */
+function translateTriggerBodyFunctions(sql: string): string {
+  let result = sql;
+  result = result.replace(/\bNOW\s*\(\s*\)/gi, "datetime('now')");
+  result = result.replace(/\bCURDATE\s*\(\s*\)/gi, "date('now')");
+  result = result.replace(/\bCURTIME\s*\(\s*\)/gi, "time('now')");
+  result = result.replace(/\bCURRENT_TIMESTAMP\s*\(\s*\)/gi, "datetime('now')");
+  result = result.replace(/\bSYSDATE\s*\(\s*\)/gi, "datetime('now')");
+  result = result.replace(/\bUNIX_TIMESTAMP\s*\(\s*\)/gi, "strftime('%s','now')");
+  return result;
+}
+
 export function normalizeMySqlTriggerDefinition(rawSql: string): NormalizedTriggerDefinition | null {
   const trimmed = rawSql.trim().replace(/;$/, '').trim();
   const match = trimmed.match(
@@ -87,7 +102,8 @@ export function normalizeMySqlTriggerDefinition(rawSql: string): NormalizedTrigg
       }
       return rewriteTriggerBodyStatement(statement, table);
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(translateTriggerBodyFunctions);
 
   let timing = originalTiming;
   if (bodyStatements.some((statement) => /^UPDATE\s+/i.test(statement)) && originalTiming === 'BEFORE') {
