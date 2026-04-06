@@ -1,16 +1,29 @@
-we do have quite a few issues:
+QueryCraft engineering notes (updated 2026-04-05)
 
-1) we have our own databases right. things like alter and update commands to things like column names doesnt seem to work
-reliably.
+Current high-priority follow-ups:
 
-2) so in a browser if a create a two accounts. their history all all the data is leaking into
-one another. they are not seperate accounts.
+1) SQL compatibility hardening
+- Status: in progress
+- Focus: edge cases for ALTER TABLE variants, multi-statement scripts, and mixed procedural syntax.
+- Action: expand regression tests around mysql-compat translation and sql-executor behavior.
 
-also we have a major issues in our engines - check and fix it for all engines(alzebra, tuple and mainly mysql).
+2) Account isolation and persistence integrity
+- Status: core fix implemented
+- Current model: user-scoped storage keys + store rehydrate on auth scope change.
+- Action: add more tests around account switching/import/export to prevent regressions.
 
-1) they should absolutely all the my sql commands user throw at them.
-2) currently trigger -> only sqllite syntax work not the actual mysql syntax.
-3) cursor and all doesnt even work - add a button to see cursor like procedure and trigger too.
-4)all the popups like triggers do look good. but their alignmant and clarity could be better.
-5) the way all the setting arranged at the top. on smaller screen it feels suffocating and un professonal. use the 
-best beautiful layout possible.
+3) Trigger/cursor/procedure UX polish
+- Status: functional support implemented
+- Action: improve overlay alignment, readability, and small-screen behavior for sandbox metadata panels.
+
+4) Top-bar density on smaller screens
+- Status: needs UI pass
+- Action: continue reducing control crowding and improve responsive grouping in workspace headers.
+
+5) Coverage gaps in tests
+- Status: partial
+- Action: replace placeholder validator test and add more integration-like tests for session persistence and state replay.
+
+Notes:
+- MySQL-style triggers, procedures, cursors, DCL, and TCL are covered by existing unit tests.
+- Continue documenting engine behavior changes in README/docs whenever runtime semantics change.
