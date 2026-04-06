@@ -255,8 +255,30 @@ export default function SandboxPage() {
     }
   }, [isReady, store, switchDatabase]);
 
+  // Restore the sandbox's preferred database when the engine becomes ready.
+  // The engine is now cached (shared singleton) so it may currently be set to
+  // whatever database another feature last used.
+  useEffect(() => {
+    if (!isReady) return;
+    // pendingDatabase takes priority (set by history "Load in Editor")
+    if (store.pendingDatabase) return;
+    const preferred = store.lastDatabase;
+    if (preferred && preferred !== activeDatabase) {
+      const result = switchDatabase(preferred);
+      if (result.error) {
+        // Fall back silently — the database may have been dropped
+        store.setLastDatabase(activeDatabase);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady]);
 
-  // Removed all DB restore logic. Always rely on SQL engine's activeDatabase.
+  // Keep the store's lastDatabase in sync whenever the engine's active database changes
+  useEffect(() => {
+    if (isReady && activeDatabase) {
+      store.setLastDatabase(activeDatabase);
+    }
+  }, [isReady, activeDatabase, store]);
 
   const loadTriggers = useCallback(() => {
     const triggerResult = execute('SHOW TRIGGERS;');
