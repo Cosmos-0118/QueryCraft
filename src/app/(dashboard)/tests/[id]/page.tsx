@@ -38,8 +38,11 @@ interface Test {
   status: string;
   created_by: string;
   updated_at: string;
+  question_mode: 'mcq_only' | 'sql_only' | 'mixed';
   test_code?: string | null;
 }
+
+type RandomQuestionType = 'mcq' | 'sql_fill' | 'mixed';
 
 function formatStatus(status: string) {
   return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
@@ -111,6 +114,7 @@ export default function TestDetailPage() {
   const [newMcqOptions, setNewMcqOptions] = useState(DEFAULT_MCQ_OPTIONS);
   const [newMcqCorrectKey, setNewMcqCorrectKey] = useState('A');
   const [randomCount, setRandomCount] = useState('5');
+  const [randomQuestionType, setRandomQuestionType] = useState<RandomQuestionType>('mixed');
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
 
   const [addingQuestion, setAddingQuestion] = useState(false);
@@ -269,6 +273,11 @@ export default function TestDetailPage() {
       return;
     }
 
+    if (randomQuestionType === 'mixed' && parsedCount < 2) {
+      setActionError('Mixed questions require at least 2 questions to include both types.');
+      return;
+    }
+
     setRandomizingQuestions(true);
     setActionError(null);
 
@@ -276,7 +285,10 @@ export default function TestDetailPage() {
       const res = await fetch(`/api/tests/${testId}/questions/randomize${teacherAccessQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: parsedCount }),
+        body: JSON.stringify({
+          count: parsedCount,
+          question_type: randomQuestionType,
+        }),
       });
       const data = await res.json();
 
@@ -597,7 +609,7 @@ export default function TestDetailPage() {
                   Add Random Questions From Database
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Pull approved sample questions from the question bank based on the selected test mode.
+                  Pull approved sample questions from the question bank and choose which type to add.
                 </p>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                   <input
@@ -608,6 +620,21 @@ export default function TestDetailPage() {
                     value={randomCount}
                     onChange={(e) => setRandomCount(e.target.value)}
                   />
+                  <select
+                    value={randomQuestionType}
+                    onChange={(e) => setRandomQuestionType(e.target.value as RandomQuestionType)}
+                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="mixed">
+                      Mixed Questions (3:2 MCQ/TEXT)
+                    </option>
+                    <option value="mcq">
+                      MCQ only
+                    </option>
+                    <option value="sql_fill">
+                      Test-based (SQL/TEXT) only
+                    </option>
+                  </select>
                   <button
                     type="button"
                     onClick={handleAddRandomQuestions}
@@ -618,6 +645,9 @@ export default function TestDetailPage() {
                     {randomizingQuestions ? 'Randomizing...' : 'Add Random'}
                   </button>
                 </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Mixed Questions uses a 3:2 MCQ-to-TEXT split.
+                </p>
               </div>
             </form>
           ) : (

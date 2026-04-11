@@ -5,6 +5,7 @@ type AttemptStatus = 'in_progress' | 'submitted';
 
 type QuestionMode = 'mcq_only' | 'sql_only' | 'mixed';
 type StoredQuestionType = 'mcq' | 'sql_fill';
+type RandomQuestionTypeFilter = StoredQuestionType | 'mixed';
 
 export type TestRole = 'student' | 'teacher';
 
@@ -1185,6 +1186,7 @@ export async function listQuestionsForTest(testId: string) {
 export async function addRandomQuestionsFromBankToTest(options: {
   testId: string;
   count: number;
+  questionType?: RandomQuestionTypeFilter;
 }) {
   const normalizedCount = Math.max(1, Math.min(50, Math.floor(options.count)));
 
@@ -1201,46 +1203,85 @@ export async function addRandomQuestionsFromBankToTest(options: {
   const testRow = testRes.rows[0] as { id: string; question_mode: QuestionMode } | undefined;
   if (!testRow) return null;
 
-  let questionTypeFilter = '';
-  if (testRow.question_mode === 'mcq_only') {
-    questionTypeFilter = "AND qb.question_type = 'mcq'";
-  } else if (testRow.question_mode === 'sql_only') {
-    questionTypeFilter = "AND qb.question_type = 'sql_fill'";
+  const requestedQuestionType: RandomQuestionTypeFilter = options.questionType ?? 'mixed';
+
+  if (
+    requestedQuestionType !== 'mcq'
+    && requestedQuestionType !== 'sql_fill'
+    && requestedQuestionType !== 'mixed'
+  ) {
+    throw new Error('questionType must be one of mcq, sql_fill, or mixed.');
   }
 
-  const randomRowsRes = await sql.raw(
-    `
-    SELECT
-      qb.id AS question_bank_id,
-      qb.prompt,
-      qb.question_type,
-      qb.answer_key,
-      opt.options_json,
-      qb.marks
-    FROM question_bank qb
-    LEFT JOIN LATERAL (
-      SELECT jsonb_agg(
-        jsonb_build_object('key', qo.option_key, 'text', qo.option_text)
-        ORDER BY qo.display_order ASC
-      ) AS options_json
-      FROM question_options qo
-      WHERE qo.question_id = qb.id
-    ) opt ON true
-    WHERE qb.status = 'approved'
-      ${questionTypeFilter}
-      AND NOT EXISTS (
-        SELECT 1
-        FROM test_questions tq
-        WHERE tq.test_id = $1
-          AND tq.question_bank_id = qb.id
-      )
-    ORDER BY random()
-    LIMIT $2;
-    `,
-    [options.testId, normalizedCount],
-  );
+  const loadRandomRows = async (questionType: StoredQuestionType, limit: number) => {
+    if (limit <= 0) return [];
 
-  const randomRows = randomRowsRes.rows as RandomQuestionBankRow[];
+    const randomRowsRes = await sql.raw(
+      `
+      SELECT
+        qb.id AS question_bank_id,
+        qb.prompt,
+        qb.question_type,
+        qb.answer_key,
+        opt.options_json,
+        qb.marks
+      FROM question_bank qb
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+          jsonb_build_object('key', qo.option_key, 'text', qo.option_text)
+          ORDER BY qo.display_order ASC
+        ) AS options_json
+        FROM question_options qo
+        WHERE qo.question_id = qb.id
+      ) opt ON true
+      WHERE qb.status = 'approved'
+        AND qb.question_type = $3
+        AND NOT EXISTS (
+          SELECT 1
+          FROM test_questions tq
+          WHERE tq.test_id = $1
+            AND tq.question_bank_id = qb.id
+        )
+      ORDER BY random()
+      LIMIT $2;
+      `,
+      [options.testId, limit, questionType],
+    );
+
+    return randomRowsRes.rows as RandomQuestionBankRow[];
+  };
+
+  let randomRows: RandomQuestionBankRow[] = [];
+
+  if (requestedQuestionType === 'mixed') {
+    if (normalizedCount < 2) {
+      throw new Error('Mixed questions require at least 2 questions to include both types.');
+    }
+
+    let mcqCount = Math.round((normalizedCount * 3) / 5);
+    mcqCount = Math.max(1, Math.min(normalizedCount - 1, mcqCount));
+    const sqlCount = normalizedCount - mcqCount;
+
+    const [mcqRows, sqlRows] = await Promise.all([
+      loadRandomRows('mcq', mcqCount),
+      loadRandomRows('sql_fill', sqlCount),
+    ]);
+
+    if (mcqRows.length < mcqCount || sqlRows.length < sqlCount) {
+      throw new Error(
+        `Not enough approved questions for a 3:2 mixed split. Need ${mcqCount} MCQ and ${sqlCount} SQL/TEXT questions.`,
+      );
+    }
+
+    randomRows = [...mcqRows, ...sqlRows];
+    for (let i = randomRows.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [randomRows[i], randomRows[j]] = [randomRows[j], randomRows[i]];
+    }
+  } else {
+    randomRows = await loadRandomRows(requestedQuestionType, normalizedCount);
+  }
+
   if (randomRows.length === 0) {
     return [];
   }
