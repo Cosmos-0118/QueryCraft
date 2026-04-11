@@ -424,6 +424,9 @@ function buildAttemptAnswersInsertSql(
     answeredAt: string;
     updatedAt: string;
   }>,
+  options?: {
+    upsert?: boolean;
+  },
 ): { text: string; values: unknown[] } {
   if (answers.length === 0) {
     return { text: '', values: [] };
@@ -446,6 +449,19 @@ function buildAttemptAnswersInsertSql(
     return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
   });
 
+  const upsertClause = options?.upsert
+    ? `
+    ON CONFLICT (attempt_id, test_question_id)
+    DO UPDATE
+      SET question_type = EXCLUDED.question_type,
+          selected_option_key = EXCLUDED.selected_option_key,
+          sql_text = EXCLUDED.sql_text,
+          is_final = EXCLUDED.is_final,
+          answered_at = EXCLUDED.answered_at,
+          updated_at = now()
+  `
+    : '';
+
   const text = `
     INSERT INTO attempt_answers (
       attempt_id,
@@ -458,6 +474,7 @@ function buildAttemptAnswersInsertSql(
       updated_at
     )
     VALUES ${tuples.join(', ')}
+    ${upsertClause}
     RETURNING id, test_question_id, COALESCE(sql_text, selected_option_key, '') AS answer;
   `;
 
@@ -1948,41 +1965,24 @@ export async function startOrResumeAttempt(input: StartAttemptInput) {
     throw new Error('Enter a valid test code first to access this test.');
   }
 
-  const existingInProgressRes = await sql.raw(
+  const existingAttemptRes = await sql.raw(
     `
     SELECT id
     FROM attempts
     WHERE test_id = $1
       AND student_profile_id = $2
-      AND status = 'in_progress'
-    ORDER BY updated_at DESC
+      AND status IN ('in_progress', 'submitted')
+    ORDER BY
+      CASE WHEN status = 'in_progress' THEN 0 ELSE 1 END,
+      updated_at DESC
     LIMIT 1;
     `,
     [input.testId, studentProfile.id],
   );
 
-  const existingInProgressId = (existingInProgressRes.rows[0] as { id: string } | undefined)?.id;
-  if (existingInProgressId) {
-    const existing = await hydrateAttemptById(input.testId, existingInProgressId);
-    if (existing) return existing;
-  }
-
-  const existingSubmittedRes = await sql.raw(
-    `
-    SELECT id
-    FROM attempts
-    WHERE test_id = $1
-      AND student_profile_id = $2
-      AND status = 'submitted'
-    ORDER BY updated_at DESC
-    LIMIT 1;
-    `,
-    [input.testId, studentProfile.id],
-  );
-
-  const existingSubmittedId = (existingSubmittedRes.rows[0] as { id: string } | undefined)?.id;
-  if (existingSubmittedId) {
-    const existing = await hydrateAttemptById(input.testId, existingSubmittedId);
+  const existingAttemptId = (existingAttemptRes.rows[0] as { id: string } | undefined)?.id;
+  if (existingAttemptId) {
+    const existing = await hydrateAttemptById(input.testId, existingAttemptId);
     if (existing) return existing;
   }
 
@@ -2065,23 +2065,74 @@ export async function saveAttemptAnswers(options: {
   attemptId: string;
   answers: Record<string, string>;
 }) {
-  const attempt = await getAttemptById(options.testId, options.attemptId);
-  if (!attempt) throw new Error('Attempt not found.');
+  const attemptRes = await sql.raw(
+    `
+    SELECT id, status, updated_at
+    FROM attempts
+    WHERE test_id = $1
+      AND id = $2
+    LIMIT 1;
+    `,
+    [options.testId, options.attemptId],
+  );
+
+  const attempt = attemptRes.rows[0] as {
+    id: string;
+    status: AttemptStatus;
+    updated_at: string;
+  } | undefined;
+
+  if (!attempt) {
+    throw new Error('Attempt not found.');
+  }
 
   if (attempt.status !== 'in_progress') {
-    return attempt;
+    return {
+      id: attempt.id,
+      status: attempt.status,
+      updated_at: attempt.updated_at,
+    };
+  }
+
+  const incomingEntries = Object.entries(options.answers);
+  if (incomingEntries.length === 0) {
+    const touchedRes = await sql.raw(
+      `
+      UPDATE attempts
+      SET updated_at = now()
+      WHERE id = $1
+      RETURNING id, status, updated_at;
+      `,
+      [options.attemptId],
+    );
+
+    const touched = touchedRes.rows[0] as {
+      id: string;
+      status: AttemptStatus;
+      updated_at: string;
+    } | undefined;
+
+    return touched ?? {
+      id: attempt.id,
+      status: attempt.status,
+      updated_at: attempt.updated_at,
+    };
   }
 
   const questionTypeRes = await sql.raw(
     `
     SELECT
-      tq.id,
+      tq.id::text AS id,
       qb.question_type
     FROM test_questions tq
     JOIN question_bank qb ON qb.id = tq.question_bank_id
-    WHERE tq.test_id = $1;
+    WHERE tq.test_id = $1
+      AND tq.id::text = ANY($2::text[]);
     `,
-    [options.testId],
+    [
+      options.testId,
+      incomingEntries.map(([questionId]) => questionId),
+    ],
   );
 
   const questionTypeMap = new Map(
@@ -2091,41 +2142,84 @@ export async function saveAttemptAnswers(options: {
     ]),
   );
 
-  await sql.raw(
-    `
-    DELETE FROM attempt_answers
-    WHERE attempt_id = $1;
-    `,
-    [options.attemptId],
-  );
+  const answeredRows: Array<{
+    attemptId: string;
+    questionId: string;
+    questionType: StoredQuestionType;
+    answer: string;
+    isFinal: boolean;
+    answeredAt: string;
+    updatedAt: string;
+  }> = [];
+  const clearedQuestionIds: string[] = [];
 
-  const answeredRows = Object.entries(options.answers)
-    .filter(([questionId]) => questionTypeMap.has(questionId))
-    .map(([questionId, answer]) => ({
+  for (const [questionId, answer] of incomingEntries) {
+    const questionType = questionTypeMap.get(questionId);
+    if (!questionType) continue;
+
+    const trimmed = answer.trim();
+    if (!trimmed) {
+      clearedQuestionIds.push(questionId);
+      continue;
+    }
+
+    const normalizedAnswer = questionType === 'mcq'
+      ? normalizeOptionKey(answer)
+      : answer;
+
+    if (!normalizedAnswer) {
+      clearedQuestionIds.push(questionId);
+      continue;
+    }
+
+    answeredRows.push({
       attemptId: options.attemptId,
       questionId,
-      questionType: questionTypeMap.get(questionId) as StoredQuestionType,
-      answer,
+      questionType,
+      answer: normalizedAnswer,
       isFinal: false,
       answeredAt: nowIso(),
       updatedAt: nowIso(),
-    }));
+    });
+  }
 
   if (answeredRows.length > 0) {
-    const insert = buildAttemptAnswersInsertSql(answeredRows);
+    const insert = buildAttemptAnswersInsertSql(answeredRows, { upsert: true });
     await sql.raw(insert.text, insert.values);
   }
 
-  await sql.raw(
+  if (clearedQuestionIds.length > 0) {
+    await sql.raw(
+      `
+      DELETE FROM attempt_answers
+      WHERE attempt_id = $1
+        AND test_question_id::text = ANY($2::text[]);
+      `,
+      [options.attemptId, clearedQuestionIds],
+    );
+  }
+
+  const touchedRes = await sql.raw(
     `
     UPDATE attempts
     SET updated_at = now()
-    WHERE id = $1;
+    WHERE id = $1
+    RETURNING id, status, updated_at;
     `,
     [options.attemptId],
   );
 
-  return getAttemptById(options.testId, options.attemptId);
+  const touched = touchedRes.rows[0] as {
+    id: string;
+    status: AttemptStatus;
+    updated_at: string;
+  } | undefined;
+
+  return touched ?? {
+    id: attempt.id,
+    status: attempt.status,
+    updated_at: attempt.updated_at,
+  };
 }
 
 export async function submitAttempt(options: {
@@ -2133,11 +2227,28 @@ export async function submitAttempt(options: {
   attemptId: string;
   answers?: Record<string, string>;
 }) {
-  const attempt = await getAttemptById(options.testId, options.attemptId);
-  if (!attempt) throw new Error('Attempt not found.');
+  const statusRes = await sql.raw(
+    `
+    SELECT status
+    FROM attempts
+    WHERE test_id = $1
+      AND id = $2
+    LIMIT 1;
+    `,
+    [options.testId, options.attemptId],
+  );
 
-  if (attempt.status === 'submitted') {
-    return attempt;
+  const statusRow = statusRes.rows[0] as { status: AttemptStatus } | undefined;
+  if (!statusRow) {
+    throw new Error('Attempt not found.');
+  }
+
+  if (statusRow.status === 'submitted') {
+    const existing = await getAttemptById(options.testId, options.attemptId);
+    if (!existing) {
+      throw new Error('Attempt not found.');
+    }
+    return existing;
   }
 
   if (options.answers) {
@@ -2178,16 +2289,18 @@ export async function submitAttempt(options: {
     updatedAt: nowIso(),
   }));
 
+  const insertAnswers = buildAttemptAnswersInsertSql(finalizedRows, { upsert: true });
+  const insertedAnswersRes = await sql.raw(insertAnswers.text, insertAnswers.values);
+
   await sql.raw(
     `
-    DELETE FROM attempt_answers
-    WHERE attempt_id = $1;
+    DELETE FROM answer_evaluations ae
+    USING attempt_answers aa
+    WHERE ae.attempt_answer_id = aa.id
+      AND aa.attempt_id = $1;
     `,
     [options.attemptId],
   );
-
-  const insertAnswers = buildAttemptAnswersInsertSql(finalizedRows);
-  const insertedAnswersRes = await sql.raw(insertAnswers.text, insertAnswers.values);
 
   const answerByQuestionId = new Map(
     finalizedRows.map((row) => [row.questionId, row.answer]),
@@ -2205,8 +2318,10 @@ export async function submitAttempt(options: {
     insertedAnswerRows.map((row) => [row.test_question_id, row.id]),
   );
 
+  const questionById = new Map(questions.map((question) => [question.id, question]));
+
   const evaluations = evaluated.results.map((result) => {
-    const question = questions.find((row) => row.id === result.question_id);
+    const question = questionById.get(result.question_id);
     return {
       attemptAnswerId: answerIdByQuestionId.get(result.question_id) ?? '',
       evaluationType: question?.question_type === 'mcq' ? 'mcq_auto' : 'sql_syntax',

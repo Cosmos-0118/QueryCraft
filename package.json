@@ -10,6 +10,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:load": "node scripts/test-db/load-tests.mjs",
     "test-db:migrate": "node scripts/test-db/migrate.mjs up",
     "test-db:migrate:status": "node scripts/test-db/migrate.mjs status",
     "test-db:migrate:down": "node scripts/test-db/migrate.mjs down",
