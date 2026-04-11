@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { publishTest } from '@/lib/test/test-module-db';
+import { getTestById, publishTest } from '@/lib/test/test-module-db';
 
 // POST /api/tests/:id/publish
 export async function POST(
@@ -13,6 +13,22 @@ export async function POST(
     if (!id) {
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
     }
+
+    const viewerRole = req.nextUrl.searchParams.get('role');
+    const viewerId = req.nextUrl.searchParams.get('userId')?.trim();
+    if (viewerRole !== 'teacher' || !viewerId) {
+      return NextResponse.json({ error: 'Teacher userId is required.' }, { status: 400 });
+    }
+
+    const test = await getTestById(id);
+    if (!test) {
+      return NextResponse.json({ error: 'Test not found.' }, { status: 404 });
+    }
+
+    if (test.created_by !== viewerId) {
+      return NextResponse.json({ error: 'You do not have permission to publish this test.' }, { status: 403 });
+    }
+
     const published = await publishTest(id);
     if (!published) {
       return NextResponse.json({ error: 'Test not found or not publishable.' }, { status: 404 });

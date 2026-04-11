@@ -10,6 +10,10 @@ export async function GET(req: NextRequest) {
       : undefined;
     const userId = req.nextUrl.searchParams.get('userId') ?? undefined;
 
+    if (role === 'teacher' && (!userId || !userId.trim())) {
+      return NextResponse.json({ error: 'userId is required for teacher test listing.' }, { status: 400 });
+    }
+
     const tests = await listTests({ role: role as TestRole | undefined, userId });
     return NextResponse.json({ tests });
   } catch (error) {

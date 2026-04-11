@@ -116,6 +116,9 @@ export default function TestReviewPage() {
   const isTeacher = user?.role === 'teacher';
 
   const testId = Array.isArray(params?.id) ? params.id[0] : params?.id;
+  const teacherAccessQuery = isTeacher && user?.id
+    ? `?role=teacher&userId=${encodeURIComponent(user.id)}`
+    : '';
 
   const [test, setTest] = useState<Test | null>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -138,10 +141,24 @@ export default function TestReviewPage() {
       setError(null);
 
       try {
+        if (!isTeacher || !user?.id) {
+          const testRes = await fetch(`/api/tests/${testId}`, { signal: controller.signal });
+          const testData = await testRes.json();
+
+          if (!testRes.ok || !testData?.test) {
+            setError(testData.error || 'Unable to load review board context.');
+            return;
+          }
+
+          setTest(testData.test || null);
+          setSubmissions([]);
+          return;
+        }
+
         const [testRes, assignmentsRes, reviewRes] = await Promise.all([
-          fetch(`/api/tests/${testId}`, { signal: controller.signal }),
-          fetch(`/api/tests/${testId}/assignments`, { signal: controller.signal }),
-          fetch(`/api/tests/${testId}/review`, { signal: controller.signal }),
+          fetch(`/api/tests/${testId}${teacherAccessQuery}`, { signal: controller.signal }),
+          fetch(`/api/tests/${testId}/assignments${teacherAccessQuery}`, { signal: controller.signal }),
+          fetch(`/api/tests/${testId}/review${teacherAccessQuery}`, { signal: controller.signal }),
         ]);
 
         const [testData, assignmentsData, reviewData] = await Promise.all([
@@ -225,7 +242,7 @@ export default function TestReviewPage() {
     loadReviewContext();
 
     return () => controller.abort();
-  }, [testId]);
+  }, [isTeacher, teacherAccessQuery, testId, user?.id]);
 
   const filteredSubmissions = useMemo(() => {
     if (filter === 'all') return submissions;
@@ -255,6 +272,10 @@ export default function TestReviewPage() {
 
   const handlePublishAllVisible = async () => {
     if (!testId) return;
+    if (!teacherAccessQuery) {
+      setActionError('Teacher session is required to publish results.');
+      return;
+    }
 
     const attemptIds = filteredSubmissions
       .filter((row) => row.status === 'submitted' && !row.published && row.attemptId)
@@ -267,7 +288,7 @@ export default function TestReviewPage() {
     setActionError(null);
 
     try {
-      const res = await fetch(`/api/tests/${testId}/review`, {
+      const res = await fetch(`/api/tests/${testId}/review${teacherAccessQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ publishAll: true, attemptIds }),
@@ -299,13 +320,17 @@ export default function TestReviewPage() {
 
   const handleTogglePublish = async (submission: Submission) => {
     if (!testId || !submission.attemptId || submission.status !== 'submitted') return;
+    if (!teacherAccessQuery) {
+      setActionError('Teacher session is required to publish results.');
+      return;
+    }
 
     const nextPublished = !submission.published;
     setActionMsg(null);
     setActionError(null);
 
     try {
-      const res = await fetch(`/api/tests/${testId}/review`, {
+      const res = await fetch(`/api/tests/${testId}/review${teacherAccessQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

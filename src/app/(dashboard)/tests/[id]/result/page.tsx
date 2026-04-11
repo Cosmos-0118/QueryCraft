@@ -81,6 +81,10 @@ export default function TestResultPage() {
   const testId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const attemptIdQuery = searchParams.get('attemptId');
   const studentIdQuery = searchParams.get('studentId');
+  const isTeacher = user?.role === 'teacher';
+  const teacherAccessQuery = isTeacher && user?.id
+    ? `?role=teacher&userId=${encodeURIComponent(user.id)}`
+    : '';
 
   const [test, setTest] = useState<Test | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -100,8 +104,8 @@ export default function TestResultPage() {
 
       try {
         const [testRes, questionsRes] = await Promise.all([
-          fetch(`/api/tests/${testId}`, { signal: controller.signal }),
-          fetch(`/api/tests/${testId}/questions`, { signal: controller.signal }),
+          fetch(`/api/tests/${testId}${teacherAccessQuery}`, { signal: controller.signal }),
+          fetch(`/api/tests/${testId}/questions${teacherAccessQuery}`, { signal: controller.signal }),
         ]);
 
         const [testData, questionsData] = await Promise.all([testRes.json(), questionsRes.json()]);
@@ -146,7 +150,7 @@ export default function TestResultPage() {
     loadResultContext();
 
     return () => controller.abort();
-  }, [testId, attemptIdQuery, studentIdQuery, user?.id]);
+  }, [attemptIdQuery, studentIdQuery, teacherAccessQuery, testId, user?.id]);
 
   const reviewItems = useMemo(() => {
     if (attempt?.results && attempt.results.length > 0) {
