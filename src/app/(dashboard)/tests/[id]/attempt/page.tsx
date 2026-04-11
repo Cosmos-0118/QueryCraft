@@ -83,6 +83,7 @@ export default function TestAttemptPage() {
   const saveInFlightRef = useRef(false);
   const savePromiseRef = useRef<Promise<boolean> | null>(null);
   const lastSavedSnapshotRef = useRef('{}');
+  const lastSavedAnswersRef = useRef<Record<string, string>>({});
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -143,6 +144,7 @@ export default function TestAttemptPage() {
         setAnswers(mappedAnswers);
         answersRef.current = mappedAnswers;
         lastSavedSnapshotRef.current = JSON.stringify(mappedAnswers);
+        lastSavedAnswersRef.current = { ...mappedAnswers };
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           setError('Unable to load attempt page');
@@ -255,16 +257,45 @@ export default function TestAttemptPage() {
         setError(null);
       }
 
+      const previousAnswers = lastSavedAnswersRef.current;
+      const currentAnswers = answersRef.current;
+      const candidateKeys = new Set([
+        ...Object.keys(previousAnswers),
+        ...Object.keys(currentAnswers),
+      ]);
+
+      const changedAnswers: Record<string, string> = {};
+      for (const key of candidateKeys) {
+        const previousValue = previousAnswers[key] ?? '';
+        const currentValue = currentAnswers[key] ?? '';
+
+        if (currentValue !== previousValue) {
+          changedAnswers[key] = currentValue;
+        }
+      }
+
+      if (Object.keys(changedAnswers).length === 0) {
+        lastSavedSnapshotRef.current = snapshot;
+        lastSavedAnswersRef.current = { ...currentAnswers };
+        saveInFlightRef.current = false;
+        savePromiseRef.current = null;
+        if (mode === 'manual') {
+          setSavingDraft(false);
+          setSaveMessage('Answers are already up to date.');
+        }
+        return true;
+      }
+
       const savePromise = (async () => {
         try {
           const res = await fetch(`/api/tests/${testId}/attempts/${attemptId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ answers: answersRef.current }),
+            body: JSON.stringify({ answers: changedAnswers }),
           });
           const data = await res.json();
 
-          if (!res.ok || !data?.attempt) {
+          if (!res.ok || (!data?.attempt && !data?.ok)) {
             if (mode === 'manual') {
               setError(data.error || 'Unable to save answers.');
             }
@@ -272,6 +303,7 @@ export default function TestAttemptPage() {
           }
 
           lastSavedSnapshotRef.current = snapshot;
+          lastSavedAnswersRef.current = { ...currentAnswers };
 
           if (mode === 'manual') {
             setSaveMessage('Answers saved successfully.');

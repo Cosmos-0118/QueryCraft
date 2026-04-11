@@ -1,7 +1,19 @@
-import { Pool } from 'pg';
+import { Pool, type PoolClient, type QueryResult } from 'pg';
 import { resolveTestDbConfig } from '@/lib/test-db/config';
 
 let pool: Pool | null = null;
+
+function resolvePoolMax() {
+  const raw = process.env.TEST_DB_POOL_MAX?.trim();
+  if (!raw) return 20;
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return 20;
+  }
+
+  return Math.min(parsed, 40);
+}
 
 function getPool() {
   if (pool) return pool;
@@ -11,7 +23,7 @@ function getPool() {
 
   pool = new Pool({
     connectionString: config.connectionString,
-    max: 8,
+    max: resolvePoolMax(),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
   });
@@ -38,3 +50,34 @@ sql.raw = async function (text: string, values: unknown[]) {
   const res = await dbPool.query(text, values);
   return res;
 };
+
+export interface DbExecutor {
+  raw: (text: string, values?: unknown[]) => Promise<QueryResult>;
+}
+
+export async function withTransaction<T>(
+  run: (tx: DbExecutor) => Promise<T>,
+): Promise<T> {
+  const dbPool = getPool();
+  const client: PoolClient = await dbPool.connect();
+
+  const tx: DbExecutor = {
+    raw: (text: string, values: unknown[] = []) => client.query(text, values),
+  };
+
+  try {
+    await client.query('BEGIN');
+    const result = await run(tx);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // Ignore rollback failures to preserve the original error.
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
