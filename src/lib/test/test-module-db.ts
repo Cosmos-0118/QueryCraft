@@ -25,8 +25,15 @@ export interface QuestionRecord {
   id: string;
   test_id: string;
   text: string;
+  question_type: StoredQuestionType;
+  options: QuestionOption[];
   correct_answer: string | null;
   expected_keywords: string[];
+}
+
+export interface QuestionOption {
+  key: string;
+  text: string;
 }
 
 export interface AssignmentRecord {
@@ -75,6 +82,16 @@ interface CreateDraftTestInput {
   duration_minutes?: number;
 }
 
+interface CreateQuestionInput {
+  text: string;
+  question_type?: StoredQuestionType;
+  correct_answer?: string;
+  options?: Array<{
+    key?: string;
+    text: string;
+  }>;
+}
+
 interface UpdateDraftTestInput {
   title?: string;
   description?: string;
@@ -118,14 +135,18 @@ interface RawQuestionRow {
   id: string;
   test_id: string;
   prompt: string;
+  question_type: StoredQuestionType;
   answer_key: unknown;
+  options_json: unknown;
   question_snapshot: unknown;
 }
 
 interface RandomQuestionBankRow {
   question_bank_id: string;
   prompt: string;
+  question_type: StoredQuestionType;
   answer_key: unknown;
+  options_json: unknown;
   marks: number | string;
 }
 
@@ -194,6 +215,51 @@ function asStringArray(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
   const strings = value.filter((item): item is string => typeof item === 'string');
   return strings.length === value.length ? strings : null;
+}
+
+function normalizeOptionKey(value: string): string {
+  const compact = value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return compact.slice(0, 1);
+}
+
+function buildOptionKey(index: number): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  if (index >= 0 && index < alphabet.length) {
+    return alphabet[index];
+  }
+  return String(index + 1);
+}
+
+function sanitizeQuestionOptions(
+  value: unknown,
+): QuestionOption[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const normalized: QuestionOption[] = [];
+  const used = new Set<string>();
+
+  for (let index = 0; index < value.length; index += 1) {
+    const row = asObject(value[index]);
+    if (!row) {
+      return null;
+    }
+
+    const rowKey = asString(row.key) ?? asString(row.option_key) ?? buildOptionKey(index);
+    const rowText = asString(row.text) ?? asString(row.option_text);
+    const key = normalizeOptionKey(rowKey);
+    const text = rowText?.trim() ?? '';
+
+    if (!key || !text || used.has(key)) {
+      continue;
+    }
+
+    used.add(key);
+    normalized.push({ key, text });
+  }
+
+  return normalized;
 }
 
 function nowIso() {
@@ -270,9 +336,20 @@ function mapQuestionRecord(row: RawQuestionRow): QuestionRecord {
   const answerKey = asObject(row.answer_key) ?? {};
 
   const text = asString(snapshot.text) ?? row.prompt;
+  const snapshotType = asString(snapshot.question_type);
+  const questionType: StoredQuestionType = snapshotType === 'mcq' || snapshotType === 'sql_fill'
+    ? snapshotType
+    : row.question_type;
+
+  const snapshotOptions = sanitizeQuestionOptions(snapshot.options);
+  const rowOptions = sanitizeQuestionOptions(row.options_json);
+  const options = snapshotOptions ?? rowOptions ?? [];
+
   const snapshotCorrect = asString(snapshot.correct_answer);
   const answerKeyCorrect = asString(answerKey.correctAnswer) ?? asString(answerKey.correctOptionKey);
-  const correctAnswer = snapshotCorrect ?? answerKeyCorrect ?? null;
+  const correctAnswer = questionType === 'mcq'
+    ? normalizeOptionKey(snapshotCorrect ?? answerKeyCorrect ?? '') || null
+    : snapshotCorrect ?? answerKeyCorrect ?? null;
 
   const snapshotKeywords = asStringArray(snapshot.expected_keywords);
   const answerKeyKeywords = asStringArray(answerKey.expectedKeywords);
@@ -282,6 +359,8 @@ function mapQuestionRecord(row: RawQuestionRow): QuestionRecord {
     id: row.id,
     test_id: row.test_id,
     text,
+    question_type: questionType,
+    options,
     correct_answer: correctAnswer,
     expected_keywords: expectedKeywords,
   };
@@ -400,7 +479,7 @@ function buildEvaluationsInsertSql(
 
   const values: unknown[] = [];
   const tuples = evaluations.map((entry, index) => {
-    const base = index * 7;
+    const base = index * 6;
     values.push(
       entry.attemptAnswerId,
       entry.evaluationType,
@@ -411,10 +490,9 @@ function buildEvaluationsInsertSql(
         feedback: entry.feedback,
       }),
       nowIso(),
-      nowIso(),
     );
 
-    return `($${base + 1}, $${base + 2}, 'syntax_only', $${base + 3}, 1, $${base + 4}, $${base + 5}::jsonb, $${base + 6}, $${base + 7})`;
+    return `($${base + 1}, $${base + 2}, 'syntax_only', $${base + 3}, 1, $${base + 4}, $${base + 5}::jsonb, $${base + 6})`;
   });
 
   const text = `
@@ -426,8 +504,7 @@ function buildEvaluationsInsertSql(
       max_score,
       is_valid,
       diagnostics,
-      evaluated_at,
-      created_at
+      evaluated_at
     )
     VALUES ${tuples.join(', ')};
   `;
@@ -1029,9 +1106,19 @@ export async function listQuestionsForTest(testId: string) {
       tq.test_id,
       tq.question_snapshot,
       qb.prompt,
-      qb.answer_key
+      qb.answer_key,
+      qb.question_type,
+      opt.options_json
     FROM test_questions tq
     JOIN question_bank qb ON qb.id = tq.question_bank_id
+    LEFT JOIN LATERAL (
+      SELECT jsonb_agg(
+        jsonb_build_object('key', qo.option_key, 'text', qo.option_text)
+        ORDER BY qo.display_order ASC
+      ) AS options_json
+      FROM question_options qo
+      WHERE qo.question_id = qb.id
+    ) opt ON true
     WHERE tq.test_id = $1
     ORDER BY tq.display_order ASC, tq.created_at ASC;
     `,
@@ -1072,9 +1159,19 @@ export async function addRandomQuestionsFromBankToTest(options: {
     SELECT
       qb.id AS question_bank_id,
       qb.prompt,
+      qb.question_type,
       qb.answer_key,
+      opt.options_json,
       qb.marks
     FROM question_bank qb
+    LEFT JOIN LATERAL (
+      SELECT jsonb_agg(
+        jsonb_build_object('key', qo.option_key, 'text', qo.option_text)
+        ORDER BY qo.display_order ASC
+      ) AS options_json
+      FROM question_options qo
+      WHERE qo.question_id = qb.id
+    ) opt ON true
     WHERE qb.status = 'approved'
       ${questionTypeFilter}
       AND NOT EXISTS (
@@ -1109,14 +1206,20 @@ export async function addRandomQuestionsFromBankToTest(options: {
   const values: unknown[] = [];
   const tuples = randomRows.map((row, index) => {
     const answerKey = asObject(row.answer_key) ?? {};
-    const correctAnswer = asString(answerKey.correctAnswer)
+    const rawCorrectAnswer = asString(answerKey.correctAnswer)
       ?? asString(answerKey.correctOptionKey)
       ?? null;
+    const correctAnswer = row.question_type === 'mcq'
+      ? normalizeOptionKey(rawCorrectAnswer ?? '') || null
+      : rawCorrectAnswer;
+    const mcqOptions = sanitizeQuestionOptions(row.options_json) ?? [];
     const expectedKeywords = asStringArray(answerKey.expectedKeywords)
       ?? deriveKeywords(correctAnswer || row.prompt);
 
     const snapshot = JSON.stringify({
       text: row.prompt,
+      question_type: row.question_type,
+      options: mcqOptions,
       correct_answer: correctAnswer,
       expected_keywords: expectedKeywords,
     });
@@ -1154,6 +1257,11 @@ export async function addRandomQuestionsFromBankToTest(options: {
   return (insertRes.rows as Array<{ id: string; test_id: string; question_snapshot: unknown }>).map((row) => {
     const snapshot = asObject(row.question_snapshot) ?? {};
     const text = asString(snapshot.text) ?? '';
+    const snapshotType = asString(snapshot.question_type);
+    const questionType: StoredQuestionType = snapshotType === 'mcq' || snapshotType === 'sql_fill'
+      ? snapshotType
+      : 'sql_fill';
+    const optionsList = sanitizeQuestionOptions(snapshot.options) ?? [];
     const correctAnswer = asString(snapshot.correct_answer);
     const expectedKeywords = asStringArray(snapshot.expected_keywords)
       ?? deriveKeywords(correctAnswer || text);
@@ -1162,15 +1270,76 @@ export async function addRandomQuestionsFromBankToTest(options: {
       id: row.id,
       test_id: row.test_id,
       text,
+      question_type: questionType,
+      options: optionsList,
       correct_answer: correctAnswer,
       expected_keywords: expectedKeywords,
     } satisfies QuestionRecord;
   });
 }
 
-export async function addQuestionToTest(testId: string, text: string, correctAnswer?: string) {
-  const normalizedText = text.trim();
-  const normalizedAnswer = (correctAnswer ?? '').trim();
+export async function addQuestionToTest(testId: string, input: CreateQuestionInput) {
+  const normalizedText = input.text.trim();
+  const normalizedAnswer = (input.correct_answer ?? '').trim();
+  const providedOptions = (input.options ?? [])
+    .map((option, index) => {
+      const text = option.text.trim();
+      const key = normalizeOptionKey(option.key ?? buildOptionKey(index));
+      return { key, text };
+    })
+    .filter((option) => option.key && option.text);
+
+  const uniqueOptions: QuestionOption[] = [];
+  const optionKeys = new Set<string>();
+  for (const option of providedOptions) {
+    if (optionKeys.has(option.key)) {
+      continue;
+    }
+    optionKeys.add(option.key);
+    uniqueOptions.push(option);
+  }
+
+  const inferredQuestionType: StoredQuestionType = input.question_type
+    ?? (uniqueOptions.length > 0 || /^[a-z0-9]$/i.test(normalizedAnswer) ? 'mcq' : 'sql_fill');
+
+  if (!normalizedText) {
+    throw new Error('Question text is required.');
+  }
+
+  let expectedKeywords: string[] = [];
+  let answerKeyPayload: Record<string, unknown> = {};
+  let snapshotCorrectAnswer: string | null = null;
+
+  if (inferredQuestionType === 'mcq') {
+    if (uniqueOptions.length < 2) {
+      throw new Error('MCQ questions require at least 2 options.');
+    }
+
+    const normalizedCorrectKey = normalizeOptionKey(normalizedAnswer);
+    if (!normalizedCorrectKey) {
+      throw new Error('MCQ answer key is required (for example: A, B, C, or D).');
+    }
+
+    const matchingOption = uniqueOptions.find((option) => option.key === normalizedCorrectKey);
+    if (!matchingOption) {
+      throw new Error('MCQ answer key must match one of the provided option keys.');
+    }
+
+    expectedKeywords = deriveKeywords(matchingOption.text || normalizedText);
+    answerKeyPayload = {
+      correctOptionKey: normalizedCorrectKey,
+      expectedKeywords,
+    };
+    snapshotCorrectAnswer = normalizedCorrectKey;
+  } else {
+    expectedKeywords = deriveKeywords(normalizedAnswer || normalizedText);
+    answerKeyPayload = {
+      correctAnswer: normalizedAnswer || null,
+      expectedKeywords,
+    };
+    snapshotCorrectAnswer = normalizedAnswer || null;
+  }
+
   const testResult = await sql.raw(
     `
     SELECT id, created_by
@@ -1185,20 +1354,6 @@ export async function addQuestionToTest(testId: string, text: string, correctAns
   if (!testRow) return null;
 
   const topicId = await getAnyActiveTopicId();
-  const keywordSource = normalizedAnswer || normalizedText;
-  const expectedKeywords = deriveKeywords(keywordSource);
-  const inferredQuestionType: StoredQuestionType = /^[a-d]$/i.test(normalizedAnswer)
-    ? 'mcq'
-    : 'sql_fill';
-  const answerKeyPayload = inferredQuestionType === 'mcq'
-    ? {
-      correctOptionKey: normalizedAnswer.toUpperCase() || null,
-      expectedKeywords,
-    }
-    : {
-      correctAnswer: normalizedAnswer || null,
-      expectedKeywords,
-    };
   const tagsPayload = {
     origin: 'teacher_custom',
     created_for_test_id: testId,
@@ -1254,6 +1409,36 @@ export async function addQuestionToTest(testId: string, text: string, correctAns
 
   const questionBankId = (questionBankInsert.rows[0] as { id: string }).id;
 
+  if (inferredQuestionType === 'mcq' && uniqueOptions.length > 0) {
+    const optionValues: unknown[] = [];
+    const optionTuples = uniqueOptions.map((option, index) => {
+      const base = index * 5;
+      optionValues.push(
+        questionBankId,
+        option.key,
+        option.text,
+        option.key === snapshotCorrectAnswer,
+        index + 1,
+      );
+
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`;
+    });
+
+    await sql.raw(
+      `
+      INSERT INTO question_options (
+        question_id,
+        option_key,
+        option_text,
+        is_correct,
+        display_order
+      )
+      VALUES ${optionTuples.join(', ')};
+      `,
+      optionValues,
+    );
+  }
+
   const insertedQuestion = await sql.raw(
     `
     WITH next_order AS (
@@ -1284,7 +1469,9 @@ export async function addQuestionToTest(testId: string, text: string, correctAns
       questionBankId,
       JSON.stringify({
         text: normalizedText,
-        correct_answer: normalizedAnswer || null,
+        question_type: inferredQuestionType,
+        options: inferredQuestionType === 'mcq' ? uniqueOptions : [],
+        correct_answer: snapshotCorrectAnswer,
         expected_keywords: expectedKeywords,
       }),
     ],
@@ -1299,6 +1486,8 @@ export async function addQuestionToTest(testId: string, text: string, correctAns
     id: row.id,
     test_id: row.test_id,
     text: asString(snapshot.text) ?? normalizedText,
+    question_type: inferredQuestionType,
+    options: sanitizeQuestionOptions(snapshot.options) ?? (inferredQuestionType === 'mcq' ? uniqueOptions : []),
     correct_answer: asString(snapshot.correct_answer),
     expected_keywords: asStringArray(snapshot.expected_keywords) ?? expectedKeywords,
   } satisfies QuestionRecord;
@@ -1313,7 +1502,8 @@ export async function updateQuestionAnswer(testId: string, questionId: string, c
       tq.question_snapshot,
       tq.question_bank_id,
       qb.prompt,
-      qb.answer_key
+      qb.answer_key,
+      qb.question_type
     FROM test_questions tq
     JOIN question_bank qb ON qb.id = tq.question_bank_id
     WHERE tq.test_id = $1 AND tq.id = $2
@@ -1329,14 +1519,50 @@ export async function updateQuestionAnswer(testId: string, questionId: string, c
     question_bank_id: string;
     prompt: string;
     answer_key: unknown;
+    question_type: StoredQuestionType;
   } | undefined;
 
   if (!row) return null;
 
-  const normalizedAnswer = correctAnswer.trim();
+  const normalizedAnswer = row.question_type === 'mcq'
+    ? normalizeOptionKey(correctAnswer)
+    : correctAnswer.trim();
+
+  if (row.question_type === 'mcq' && !normalizedAnswer) {
+    throw new Error('MCQ answer key is required (for example: A, B, C, or D).');
+  }
+
+  if (row.question_type === 'mcq') {
+    const optionRes = await sql.raw(
+      `
+      SELECT 1
+      FROM question_options
+      WHERE question_id = $1
+        AND option_key = $2
+      LIMIT 1;
+      `,
+      [row.question_bank_id, normalizedAnswer],
+    );
+
+    if ((optionRes.rowCount ?? 0) === 0) {
+      throw new Error('MCQ answer key must match one of the existing options.');
+    }
+  }
+
   const snapshot = asObject(row.question_snapshot) ?? {};
   const text = asString(snapshot.text) ?? row.prompt;
   const expectedKeywords = deriveKeywords(normalizedAnswer || text);
+
+  if (row.question_type === 'mcq') {
+    await sql.raw(
+      `
+      UPDATE question_options
+      SET is_correct = (option_key = $1)
+      WHERE question_id = $2;
+      `,
+      [normalizedAnswer, row.question_bank_id],
+    );
+  }
 
   await sql.raw(
     `
@@ -1349,12 +1575,30 @@ export async function updateQuestionAnswer(testId: string, questionId: string, c
     [
       JSON.stringify({
         ...(asObject(row.answer_key) ?? {}),
-        correctAnswer: normalizedAnswer || null,
+        correctAnswer: row.question_type === 'sql_fill' ? normalizedAnswer || null : undefined,
+        correctOptionKey: row.question_type === 'mcq' ? normalizedAnswer || null : undefined,
         expectedKeywords,
       }),
       row.question_bank_id,
     ],
   );
+
+  const optionRowsRes = await sql.raw(
+    `
+    SELECT option_key, option_text
+    FROM question_options
+    WHERE question_id = $1
+    ORDER BY display_order ASC;
+    `,
+    [row.question_bank_id],
+  );
+
+  const resolvedOptions = sanitizeQuestionOptions(
+    (optionRowsRes.rows as Array<{ option_key: string; option_text: string }>).map((entry) => ({
+      option_key: entry.option_key,
+      option_text: entry.option_text,
+    })),
+  ) ?? [];
 
   const updateSnapshotRes = await sql.raw(
     `
@@ -1367,6 +1611,8 @@ export async function updateQuestionAnswer(testId: string, questionId: string, c
       JSON.stringify({
         ...snapshot,
         text,
+        question_type: row.question_type,
+        options: row.question_type === 'mcq' ? resolvedOptions : [],
         correct_answer: normalizedAnswer || null,
         expected_keywords: expectedKeywords,
       }),
@@ -1389,6 +1635,10 @@ export async function updateQuestionAnswer(testId: string, questionId: string, c
     id: updated.id,
     test_id: updated.test_id,
     text: asString(updatedSnapshot.text) ?? text,
+    question_type: row.question_type,
+    options: row.question_type === 'mcq'
+      ? sanitizeQuestionOptions(updatedSnapshot.options) ?? resolvedOptions
+      : [],
     correct_answer: asString(updatedSnapshot.correct_answer),
     expected_keywords: asStringArray(updatedSnapshot.expected_keywords) ?? expectedKeywords,
   } satisfies QuestionRecord;

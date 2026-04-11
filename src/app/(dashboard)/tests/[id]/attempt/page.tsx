@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import {
   AlertTriangle,
@@ -31,6 +31,11 @@ interface Test {
 interface Question {
   id: string;
   text: string;
+  question_type: 'mcq' | 'sql_fill';
+  options: Array<{
+    key: string;
+    text: string;
+  }>;
 }
 
 interface AttemptAnswer {
@@ -72,6 +77,12 @@ export default function TestAttemptPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+
+  const answersRef = useRef<Record<string, string>>({});
+  const saveInFlightRef = useRef(false);
+  const savePromiseRef = useRef<Promise<boolean> | null>(null);
+  const lastSavedSnapshotRef = useRef('{}');
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -130,6 +141,8 @@ export default function TestAttemptPage() {
           mappedAnswers[answer.question_id] = answer.answer;
         }
         setAnswers(mappedAnswers);
+        answersRef.current = mappedAnswers;
+        lastSavedSnapshotRef.current = JSON.stringify(mappedAnswers);
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           setError('Unable to load attempt page');
@@ -220,8 +233,103 @@ export default function TestAttemptPage() {
 
   const progressPercent = questions.length > 0 ? Math.round((answeredCount / questions.length) * 100) : 0;
 
-  const handleSaveCurrent = () => {
-    setSaveMessage('Answer saved locally. Final submission sends all answers.');
+  const persistAnswers = useCallback(
+    async (mode: 'manual' | 'auto') => {
+      if (!attemptId || !testId || submitted) return false;
+
+      const snapshot = JSON.stringify(answersRef.current);
+
+      if (mode === 'auto' && snapshot === lastSavedSnapshotRef.current) {
+        return true;
+      }
+
+      if (saveInFlightRef.current) {
+        return savePromiseRef.current ?? false;
+      }
+
+      saveInFlightRef.current = true;
+
+      if (mode === 'manual') {
+        setSavingDraft(true);
+        setSaveMessage(null);
+        setError(null);
+      }
+
+      const savePromise = (async () => {
+        try {
+          const res = await fetch(`/api/tests/${testId}/attempts/${attemptId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers: answersRef.current }),
+          });
+          const data = await res.json();
+
+          if (!res.ok || !data?.attempt) {
+            if (mode === 'manual') {
+              setError(data.error || 'Unable to save answers.');
+            }
+            return false;
+          }
+
+          lastSavedSnapshotRef.current = snapshot;
+
+          if (mode === 'manual') {
+            setSaveMessage('Answers saved successfully.');
+          }
+
+          return true;
+        } catch {
+          if (mode === 'manual') {
+            setError('Unable to save answers.');
+          }
+          return false;
+        } finally {
+          if (mode === 'manual') {
+            setSavingDraft(false);
+          }
+          saveInFlightRef.current = false;
+          savePromiseRef.current = null;
+        }
+      })();
+
+      savePromiseRef.current = savePromise;
+      return savePromise;
+    },
+    [attemptId, submitted, testId],
+  );
+
+  const navigateToQuestion = useCallback(
+    (targetIndex: number) => {
+      if (questions.length === 0) return;
+
+      const clampedTarget = Math.max(0, Math.min(targetIndex, questions.length - 1));
+      if (clampedTarget === currentIndex) return;
+
+      void (async () => {
+        const saved = await persistAnswers('auto');
+        if (!saved) {
+          setError('Unable to auto-save current answer before navigation. Please try again.');
+          return;
+        }
+
+        setCurrentIndex(clampedTarget);
+      })();
+    },
+    [currentIndex, persistAnswers, questions.length],
+  );
+
+  useEffect(() => {
+    if (!attemptId || !testId || submitted || loading) return;
+
+    const intervalId = setInterval(() => {
+      void persistAnswers('auto');
+    }, 7000);
+
+    return () => clearInterval(intervalId);
+  }, [attemptId, loading, persistAnswers, submitted, testId]);
+
+  const handleSaveCurrent = async () => {
+    void persistAnswers('manual');
   };
 
   const handleSubmit = async () => {
@@ -429,7 +537,7 @@ export default function TestAttemptPage() {
             return (
               <button
                 key={question.id}
-                onClick={() => setCurrentIndex(index)}
+                onClick={() => navigateToQuestion(index)}
                 className={`h-8 w-8 rounded-full border text-xs font-semibold transition ${
                   isActive
                     ? 'border-teal-400/50 bg-teal-400/15 text-teal-200'
@@ -449,26 +557,66 @@ export default function TestAttemptPage() {
             <h2 className="text-lg font-semibold tracking-tight">Question {currentIndex + 1}</h2>
             <p className="mt-2 text-sm leading-relaxed text-foreground">{currentQuestion.text}</p>
 
+            <div className="mt-3">
+              <span className="inline-flex rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                {currentQuestion.question_type === 'mcq' ? 'MCQ' : 'SQL/TEXT'}
+              </span>
+            </div>
+
             <div className="mt-4 space-y-2">
               <label className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 Your Answer
               </label>
-              <textarea
-                value={answers[currentQuestion.id] ?? ''}
-                onChange={(e) => {
-                  setAnswers((prev) => ({ ...prev, [currentQuestion.id]: e.target.value }));
-                  if (saveMessage) setSaveMessage(null);
-                }}
-                rows={8}
-                className="w-full resize-y rounded-xl border border-border bg-background/90 px-3.5 py-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                placeholder="Write your answer here..."
-              />
+              {currentQuestion.question_type === 'mcq' && currentQuestion.options.length > 0 ? (
+                <div className="space-y-2">
+                  {currentQuestion.options.map((option) => {
+                    const isSelected = (answers[currentQuestion.id] ?? '') === option.key;
+                    return (
+                      <button
+                        key={`${currentQuestion.id}_option_${option.key}`}
+                        type="button"
+                        onClick={() => {
+                          setAnswers((prev) => {
+                            const next = { ...prev, [currentQuestion.id]: option.key };
+                            answersRef.current = next;
+                            return next;
+                          });
+                          if (saveMessage) setSaveMessage(null);
+                        }}
+                        className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                          isSelected
+                            ? 'border-teal-400/50 bg-teal-400/15 text-teal-100'
+                            : 'border-border/70 bg-background/70 text-foreground hover:border-border'
+                        }`}
+                      >
+                        <span className="font-semibold">{option.key}.</span> {option.text}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <textarea
+                  value={answers[currentQuestion.id] ?? ''}
+                  onChange={(e) => {
+                    const nextValue = e.target.value;
+                    setAnswers((prev) => {
+                      const next = { ...prev, [currentQuestion.id]: nextValue };
+                      answersRef.current = next;
+                      return next;
+                    });
+                    if (saveMessage) setSaveMessage(null);
+                  }}
+                  rows={8}
+                  className="w-full resize-y rounded-xl border border-border bg-background/90 px-3.5 py-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                  placeholder="Write your answer here..."
+                />
+              )}
             </div>
 
             <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setCurrentIndex((prev) => Math.max(prev - 1, 0))}
+                  onClick={() => navigateToQuestion(currentIndex - 1)}
                   disabled={currentIndex === 0}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -476,7 +624,7 @@ export default function TestAttemptPage() {
                   Previous
                 </button>
                 <button
-                  onClick={() => setCurrentIndex((prev) => Math.min(prev + 1, Math.max(questions.length - 1, 0)))}
+                  onClick={() => navigateToQuestion(currentIndex + 1)}
                   disabled={currentIndex >= questions.length - 1}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -486,12 +634,16 @@ export default function TestAttemptPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                <span className="hidden text-xs text-muted-foreground sm:inline">
+                  Auto-save every 7s
+                </span>
                 <button
                   onClick={handleSaveCurrent}
+                  disabled={savingDraft || !attemptId}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
                 >
-                  <Save size={14} />
-                  Save Answer
+                  {savingDraft ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  {savingDraft ? 'Saving...' : 'Save Answer'}
                 </button>
                 <button
                   onClick={handleSubmit}
