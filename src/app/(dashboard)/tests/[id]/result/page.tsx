@@ -39,6 +39,13 @@ interface AttemptResult {
   feedback: string;
 }
 
+interface ViolationEvent {
+  id: string;
+  event_type: 'tab_switch' | 'blur' | 'copy' | 'paste' | 'cut' | 'context_menu';
+  action_taken: 'logged' | 'warned' | 'blocked' | 'force_submitted';
+  occurred_at: string;
+}
+
 interface AttemptRecord {
   id: string;
   student_id: string;
@@ -47,7 +54,28 @@ interface AttemptRecord {
   submitted_at: string | null;
   score: number | null;
   max_score: number;
+  violation_count?: number;
+  violation_events?: ViolationEvent[];
   results: AttemptResult[];
+}
+
+function formatViolationEventLabel(eventType: ViolationEvent['event_type']) {
+  switch (eventType) {
+    case 'tab_switch':
+      return 'Tab switch';
+    case 'blur':
+      return 'Window blur';
+    case 'copy':
+      return 'Copy blocked';
+    case 'paste':
+      return 'Paste blocked';
+    case 'cut':
+      return 'Cut blocked';
+    case 'context_menu':
+      return 'Right-click blocked';
+    default:
+      return 'Violation';
+  }
 }
 
 function StatCard({
@@ -169,6 +197,16 @@ export default function TestResultPage() {
   const totalQuestions = reviewItems.length;
   const correctCount = reviewItems.filter((item) => item.is_correct).length;
   const scorePercent = attempt?.score ?? (totalQuestions === 0 ? 0 : Math.round((correctCount / totalQuestions) * 100));
+  const violationCount = typeof attempt?.violation_count === 'number'
+    ? attempt.violation_count
+    : Array.isArray(attempt?.violation_events)
+      ? attempt.violation_events.length
+      : 0;
+  const violationTimeline = Array.isArray(attempt?.violation_events)
+    ? [...attempt.violation_events].sort(
+      (a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime(),
+    )
+    : [];
   const statusLabel = scorePercent >= 60 ? 'Passed' : 'Needs Review';
   const statusTone =
     scorePercent >= 60
@@ -327,6 +365,10 @@ export default function TestResultPage() {
               <span className="text-muted-foreground">Attempt ID</span>
               <span className="font-semibold">{attempt.id.slice(0, 10)}</span>
             </div>
+            <div className="flex items-center justify-between rounded-lg border border-border/70 bg-background/50 px-3 py-2">
+              <span className="text-muted-foreground">Violations</span>
+              <span className="font-semibold">{violationCount}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -357,6 +399,40 @@ export default function TestResultPage() {
           icon={<TrendingUp size={16} />}
         />
       </div>
+
+      <section className="mb-6 rounded-2xl border border-border/70 bg-card/85 p-5 shadow-xl shadow-black/10">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold tracking-tight">Integrity Timeline</h2>
+          <span className="rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+            {violationCount} events
+          </span>
+        </div>
+
+        {violationTimeline.length === 0 ? (
+          <div className="rounded-xl border border-border/60 bg-background/40 px-3 py-4 text-sm text-muted-foreground">
+            No integrity violations were logged for this attempt.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {violationTimeline.map((event, index) => (
+              <div
+                key={event.id}
+                className="rounded-xl border border-border/70 bg-background/50 px-3 py-2"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                  Event {index + 1}
+                </p>
+                <p className="mt-1 text-sm text-foreground">
+                  {formatViolationEventLabel(event.event_type)} ({event.action_taken})
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {new Date(event.occurred_at).toLocaleString()}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="rounded-2xl border border-border/70 bg-card/85 p-5 shadow-xl shadow-black/10">
         <div className="mb-4 flex items-center justify-between gap-3">
