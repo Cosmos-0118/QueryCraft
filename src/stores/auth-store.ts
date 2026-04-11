@@ -67,6 +67,8 @@ interface AuthStore extends AuthState {
   logout: () => void;
   /** Update the display name of the current user */
   updateName: (newName: string) => void;
+  /** Update role for current account */
+  setRole: (role: 'student' | 'teacher') => void;
   /** Change password for the current user */
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   /** Remove an account from the device */
@@ -123,6 +125,14 @@ export const useAuthStore = create<AuthStore>()(
           user: updatedUser,
           accounts: accounts.map((a) => (a.id === user.id ? { ...a, displayName: trimmed } : a)),
         });
+        saveSessionUser(updatedUser);
+      },
+
+      setRole: (role) => {
+        const { user } = get();
+        if (!user) return;
+        const updatedUser: User = { ...user, role };
+        set({ user: updatedUser });
         saveSessionUser(updatedUser);
       },
 

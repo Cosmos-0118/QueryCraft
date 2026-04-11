@@ -162,7 +162,6 @@ export class SqlExecutor {
    * and body is the content between the first top-level BEGIN and the matching END.
    */
   private extractRoutineBody(sql: string): { preamble: string; body: string } | null {
-    const upper = sql.toUpperCase();
     // Find the first top-level BEGIN
     const beginRegex = /\bBEGIN\b/gi;
     let beginMatch: RegExpExecArray | null;

@@ -1,0 +1,27 @@
+Test module requirements:
+
+1. Add a new feature called Test.
+2. Teacher can create a test, publish it, and share a test code.
+3. Teacher can set the question types to include in a test (MCQ, SQL fill-in, or mixed).
+4. Student logs in, enters test code, sees questions, answers, and submits.
+5. Teacher can review student answers and assign marks.
+
+Question format requirements:
+1. Tests should be mostly MCQs by default, but the teacher can configure the question type mix per test.
+2. Some questions should be SQL query fill-in type, where students type the answer in a text box.
+3. SQL fill-in answers should be evaluated for syntax accuracy (parser-based syntax check and syntax score).
+4. Optional semantic/expected-result matching can be added after syntax scoring.
+
+Anti-cheating requirements:
+1. If student switches tab once, show warning.
+2. If student switches tab second time, close/force-submit the test immediately.
+3. Disable copy, paste, and cut during active test.
+
+Data requirements:
+1. Use a separate database for this Test module.
+2. Question bank should contain 50 to 100 questions per DBMS topic (normalization, algebra, SQL, etc.).
+3. Keep UI style consistent with existing feature pages.
+
+Roadmap requirement:
+1. Maintain a complete implementation roadmap in docs/Roadmap.md.
+2. Roadmap must include teacher flow, student flow, anti-cheat, question mix, DB design, and testing strategy.

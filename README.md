@@ -2,7 +2,7 @@
 
 QueryCraft is a Next.js learning studio for database practice. It combines SQL execution, relational algebra, tuple calculus, ER modeling, normalization, and synthetic dataset generation in one workspace.
 
-The project is mostly client-side, with one API route used to load seed datasets.
+The project is mostly client-side, with lightweight API routes for seed datasets and Test DB health/probe checks.
 
 ## What Is Implemented
 
@@ -23,7 +23,10 @@ The project is mostly client-side, with one API route used to load seed datasets
 - State: Zustand stores, persisted to user-scoped localStorage keys.
 - Styling: Tailwind CSS v4 + custom CSS variables and motion.
 - Diagrams: @xyflow/react.
-- One server route: `GET /api/datasets` reads JSON files from `seed/datasets`.
+- Server routes:
+	- `GET /api/datasets` reads JSON files from `seed/datasets`.
+	- `GET /api/tests/health` reports Test DB bootstrap/config status.
+	- `GET /api/tests/health/probe` runs a live `SELECT 1` connectivity check against Test DB.
 
 ## Routes
 
@@ -48,9 +51,11 @@ Dashboard routes (client-side auth guard in layout):
 - `/generator`
 - `/settings`
 
-API route:
+API routes:
 
 - `/api/datasets` (GET)
+- `/api/tests/health` (GET)
+- `/api/tests/health/probe` (GET)
 
 ## Getting Started
 
@@ -68,7 +73,34 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-No environment variables are required.
+Environment variables:
+
+- None are required for currently shipped browser-first features.
+- `TEST_DB_URL` is optional and used for the upcoming Test module backend foundation.
+
+### Use a Free Online Postgres (Recommended: Neon)
+
+You can move Test DB from local Postgres to a free hosted Postgres in a few minutes.
+
+1. Create a free Neon project and database (for example `querycraft_test`).
+2. Copy the connection string from Neon dashboard.
+3. Set `TEST_DB_URL` in `.env.local`:
+
+```env
+TEST_DB_URL=postgresql://<user>:<password>@<host>/<database>?sslmode=require
+```
+
+4. Apply migrations to the online DB:
+
+```bash
+npm run test-db:migrate:status
+npm run test-db:migrate
+```
+
+5. Verify connectivity:
+
+- `GET /api/tests/health` should report `status: "ready"`
+- `GET /api/tests/health/probe` should report `status: "ok"`
 
 ## Scripts
 
@@ -79,6 +111,10 @@ No environment variables are required.
 - `npm run format`: run Prettier over repository.
 - `npm run test`: run Vitest test suite once.
 - `npm run test:watch`: run Vitest in watch mode.
+- `npm run test-db:migrate:status`: show Test DB migration status.
+- `npm run test-db:migrate`: apply pending Test DB migrations.
+- `npm run test-db:migrate:down`: roll back the latest Test DB migration.
+- `npm run test-db:migrate:down:all`: roll back all applied Test DB migrations.
 
 ## Seed Datasets
 

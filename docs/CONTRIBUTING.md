@@ -1,6 +1,6 @@
 # Contributing to QueryCraft
 
-Last updated: 2026-04-05
+Last updated: 2026-04-11
 
 Thanks for contributing.
 
@@ -22,7 +22,8 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-No environment variables are required for local development.
+No environment variables are required for current shipped features.
+For Test module backend development, `TEST_DB_URL` is optional and can be set in `.env.local`.
 
 ## Common Commands
 
@@ -32,7 +33,12 @@ npm run test
 npm run test:watch
 npm run build
 npm run format
+npm run test-db:migrate:status
+npm run test-db:migrate
+npm run test-db:migrate:down
 ```
+
+For Test module schema work, ensure `TEST_DB_URL` is configured before running migration commands.
 
 ## Project Conventions
 
