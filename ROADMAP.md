@@ -1,6 +1,6 @@
 # QueryCraft Roadmap
 
-Last updated: 2026-04-05
+Last updated: 2026-04-11
 
 This roadmap reflects what is actually implemented in the current codebase and what is planned next.
 
@@ -50,6 +50,15 @@ Platform:
 
 - Replace placeholder validator test with meaningful validation tests.
 - Add integration-oriented tests around persisted state replay and account switching behavior.
+
+5. Test Module (Teacher and Student Assessment)
+
+- Add a dedicated Test feature where teachers create and publish tests with shareable codes.
+- Support teacher-selected question type mode per test: MCQ-only, SQL fill-in-only, or mixed.
+- Keep mixed mode mostly MCQ by default while allowing bounded SQL fill-in composition.
+- Include anti-cheat enforcement (first tab switch warning, second switch force-submit, clipboard restrictions).
+- Implement student join-by-code, timed attempts, teacher review, and result publishing flow.
+- Maintain detailed execution plan in docs/Roadmap.md.
 
 ## Mid-Term Milestones
 

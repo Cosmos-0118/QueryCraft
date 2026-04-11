@@ -239,11 +239,9 @@ function evalCondition(cond: string, vars: Map<string, unknown>, context?: Runti
     const numRight = Number(right);
     switch (cmp[2]) {
       case '=':
-        // eslint-disable-next-line eqeqeq
         return left == right || (!isNaN(numLeft) && !isNaN(numRight) && numLeft === numRight);
       case '<>':
       case '!=':
-        // eslint-disable-next-line eqeqeq
         return left != right && (isNaN(numLeft) || isNaN(numRight) || numLeft !== numRight);
       case '>':
         return numLeft > numRight;

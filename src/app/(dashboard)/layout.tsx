@@ -26,6 +26,7 @@ const NAV_ITEMS: { label: string; href: string; icon: ReactNode; group?: string 
   { label: 'Learn', href: '/learn', icon: <BookOpen size={16} />, group: 'Main' },
   { label: 'SQL Sandbox', href: '/sandbox', icon: <Terminal size={16} />, group: 'Labs' },
   { label: 'Table Generator', href: '/generator', icon: <Sparkles size={16} />, group: 'Labs' },
+  { label: 'Test Module', href: '/tests', icon: <BookOpen size={16} />, group: 'Labs' },
   { label: 'Algebra', href: '/algebra', icon: <Sigma size={16} />, group: 'Theory' },
   { label: 'Tuple Calculus', href: '/tuple-calculus', icon: <FunctionSquare size={16} />, group: 'Theory' },
   { label: 'ER Builder', href: '/er-builder', icon: <PenTool size={16} />, group: 'Theory' },
@@ -34,18 +35,6 @@ const NAV_ITEMS: { label: string; href: string; icon: ReactNode; group?: string 
 ];
 
 const NAV_GROUPS = ['Main', 'Labs', 'Theory', 'Account'];
-
-const NAV_ACCENT: Record<string, string> = {
-  '/dashboard': 'from-violet-500 to-purple-500',
-  '/learn': 'from-teal-500 to-cyan-500',
-  '/sandbox': 'from-emerald-500 to-green-500',
-  '/generator': 'from-amber-500 to-orange-500',
-  '/algebra': 'from-indigo-500 to-violet-500',
-  '/tuple-calculus': 'from-sky-500 to-blue-500',
-  '/er-builder': 'from-rose-500 to-pink-500',
-  '/normalizer': 'from-lime-500 to-emerald-500',
-  '/settings': 'from-slate-400 to-slate-500',
-};
 
 const COLOR_THEME_OPTIONS: { value: ColorTheme; label: string; swatch: string; description: string }[] = [
   { value: 'purple', label: 'Purple', swatch: '#7c3aed', description: 'Default' },

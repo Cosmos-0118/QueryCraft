@@ -1,0 +1,14 @@
+-- Development rollback for Phase 2, Step 2 core table migration.
+DROP TABLE IF EXISTS audit_logs CASCADE;
+DROP TABLE IF EXISTS grades CASCADE;
+DROP TABLE IF EXISTS violation_events CASCADE;
+DROP TABLE IF EXISTS answer_evaluations CASCADE;
+DROP TABLE IF EXISTS attempt_answers CASCADE;
+DROP TABLE IF EXISTS attempts CASCADE;
+DROP TABLE IF EXISTS test_invites CASCADE;
+DROP TABLE IF EXISTS test_questions CASCADE;
+DROP TABLE IF EXISTS tests CASCADE;
+DROP TABLE IF EXISTS question_options CASCADE;
+DROP TABLE IF EXISTS question_bank CASCADE;
+DROP TABLE IF EXISTS topics CASCADE;
+DROP TABLE IF EXISTS users_test_profile CASCADE;

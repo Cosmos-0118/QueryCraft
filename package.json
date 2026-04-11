@@ -9,7 +9,11 @@
     "lint": "eslint",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test-db:migrate": "node scripts/test-db/migrate.mjs up",
+    "test-db:migrate:status": "node scripts/test-db/migrate.mjs status",
+    "test-db:migrate:down": "node scripts/test-db/migrate.mjs down",
+    "test-db:migrate:down:all": "node scripts/test-db/migrate.mjs down --all"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
@@ -27,6 +31,7 @@
     "html-to-image": "^1.11.13",
     "lucide-react": "^0.475.0",
     "next": "16.1.7",
+    "pg": "^8.20.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sql.js": "^1.14.1",
@@ -37,6 +42,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4.3.0",

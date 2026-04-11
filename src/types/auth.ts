@@ -1,10 +1,13 @@
+
 export interface User {
   id: string;
   displayName: string;
   createdAt: string;
+  role?: 'student' | 'teacher'; // Only used in test module
 }
 
 /** Stored locally — password is a simple hash, not meant for high-security. */
+
 export interface LocalAccount {
   id: string;
   displayName: string;

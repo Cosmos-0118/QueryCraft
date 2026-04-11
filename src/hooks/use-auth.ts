@@ -19,6 +19,7 @@ export function useAuth() {
     login: store.login,
     addAccount: store.addAccount,
     updateName: store.updateName,
+    setRole: store.setRole,
     changePassword: store.changePassword,
     removeAccount: store.removeAccount,
     logout,
