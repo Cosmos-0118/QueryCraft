@@ -25,6 +25,11 @@ import {
 interface Question {
   id: string;
   text: string;
+  question_type: 'mcq' | 'sql_fill';
+  options: Array<{
+    key: string;
+    text: string;
+  }>;
   correct_answer?: string | null;
 }
 
@@ -57,6 +62,13 @@ function getStatusClasses(status: string) {
       return 'border-border/70 bg-muted/40 text-muted-foreground';
   }
 }
+
+const DEFAULT_MCQ_OPTIONS = [
+  { key: 'A', text: '' },
+  { key: 'B', text: '' },
+  { key: 'C', text: '' },
+  { key: 'D', text: '' },
+];
 
 function StatCard({
   title,
@@ -96,7 +108,10 @@ export default function TestDetailPage() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
 
   const [newQuestion, setNewQuestion] = useState('');
+  const [newQuestionType, setNewQuestionType] = useState<'mcq' | 'sql_fill'>('mcq');
   const [newQuestionAnswer, setNewQuestionAnswer] = useState('');
+  const [newMcqOptions, setNewMcqOptions] = useState(DEFAULT_MCQ_OPTIONS);
+  const [newMcqCorrectKey, setNewMcqCorrectKey] = useState('A');
   const [randomCount, setRandomCount] = useState('5');
   const [newAssignment, setNewAssignment] = useState('');
   const [newRole, setNewRole] = useState<'student' | 'teacher'>('student');
@@ -133,7 +148,8 @@ export default function TestDetailPage() {
 
         const loadedQuestions = (questionsData.questions || []) as Question[];
         const loadedAnswerDrafts = loadedQuestions.reduce<Record<string, string>>((acc, question) => {
-          acc[question.id] = question.correct_answer ?? '';
+          acc[question.id] = question.correct_answer
+            ?? (question.question_type === 'mcq' ? question.options?.[0]?.key ?? '' : '');
           return acc;
         }, {});
 
@@ -168,6 +184,22 @@ export default function TestDetailPage() {
     e.preventDefault();
     if (!isTeacher || !newQuestion.trim() || !testId) return;
 
+    if (newQuestionType === 'mcq') {
+      const normalizedOptions = newMcqOptions
+        .map((option) => ({ key: option.key, text: option.text.trim() }))
+        .filter((option) => option.text.length > 0);
+
+      if (normalizedOptions.length < 2) {
+        setActionError('Please provide at least 2 answer options for MCQ.');
+        return;
+      }
+
+      if (!normalizedOptions.some((option) => option.key === newMcqCorrectKey)) {
+        setActionError('Please select a valid correct option key for this MCQ.');
+        return;
+      }
+    }
+
     setAddingQuestion(true);
     setActionError(null);
 
@@ -177,7 +209,11 @@ export default function TestDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: newQuestion.trim(),
-          correct_answer: newQuestionAnswer.trim(),
+          question_type: newQuestionType,
+          correct_answer: newQuestionType === 'mcq' ? newMcqCorrectKey : newQuestionAnswer.trim(),
+          options: newQuestionType === 'mcq'
+            ? newMcqOptions.map((option) => ({ key: option.key, text: option.text.trim() }))
+            : undefined,
         }),
       });
       const data = await res.json();
@@ -186,10 +222,13 @@ export default function TestDetailPage() {
         setQuestions((prev) => [...prev, data.question]);
         setAnswerDrafts((prev) => ({
           ...prev,
-          [data.question.id]: data.question.correct_answer ?? '',
+          [data.question.id]: data.question.correct_answer
+            ?? (data.question.question_type === 'mcq' ? data.question.options?.[0]?.key ?? '' : ''),
         }));
         setNewQuestion('');
         setNewQuestionAnswer('');
+        setNewMcqOptions(DEFAULT_MCQ_OPTIONS.map((option) => ({ ...option })));
+        setNewMcqCorrectKey('A');
       } else {
         setActionError(data.error || 'Unable to add question');
       }
@@ -272,7 +311,8 @@ export default function TestDetailPage() {
       setAnswerDrafts((prev) => {
         const next = { ...prev };
         for (const question of randomQuestions) {
-          next[question.id] = question.correct_answer ?? '';
+          next[question.id] = question.correct_answer
+            ?? (question.question_type === 'mcq' ? question.options?.[0]?.key ?? '' : '');
         }
         return next;
       });
@@ -286,6 +326,15 @@ export default function TestDetailPage() {
   const handleSaveQuestionAnswer = async (questionId: string) => {
     if (!isTeacher || !testId) return;
 
+    const question = questions.find((row) => row.id === questionId);
+    if (!question) return;
+
+    const draftAnswer = answerDrafts[questionId] ?? '';
+    if (question.question_type === 'mcq' && !draftAnswer.trim()) {
+      setActionError('Please select a correct option before saving the MCQ answer key.');
+      return;
+    }
+
     setSavingAnswerId(questionId);
     setActionError(null);
 
@@ -295,7 +344,7 @@ export default function TestDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: questionId,
-          correct_answer: answerDrafts[questionId] ?? '',
+          correct_answer: draftAnswer,
         }),
       });
       const data = await res.json();
@@ -545,13 +594,65 @@ export default function TestDetailPage() {
                 onChange={(e) => setNewQuestion(e.target.value)}
                 maxLength={240}
               />
-              <input
-                className="h-11 w-full rounded-xl border border-border bg-background/90 px-3.5 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                placeholder="Add answer key (example: B or SELECT * FROM students)"
-                value={newQuestionAnswer}
-                onChange={(e) => setNewQuestionAnswer(e.target.value)}
-                maxLength={240}
-              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <select
+                  className="h-11 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                  value={newQuestionType}
+                  onChange={(e) => setNewQuestionType(e.target.value as 'mcq' | 'sql_fill')}
+                >
+                  <option value="mcq">MCQ (multiple choice)</option>
+                  <option value="sql_fill">SQL / text answer</option>
+                </select>
+                {newQuestionType === 'mcq' ? (
+                  <select
+                    className="h-11 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                    value={newMcqCorrectKey}
+                    onChange={(e) => setNewMcqCorrectKey(e.target.value)}
+                  >
+                    {newMcqOptions.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        Correct Option: {option.key}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="h-11 w-full rounded-xl border border-border bg-background/90 px-3.5 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                    placeholder="Answer key (example: SELECT * FROM students)"
+                    value={newQuestionAnswer}
+                    onChange={(e) => setNewQuestionAnswer(e.target.value)}
+                    maxLength={240}
+                  />
+                )}
+              </div>
+
+              {newQuestionType === 'mcq' && (
+                <div className="space-y-2 rounded-xl border border-border/70 bg-background/40 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    MCQ Options
+                  </p>
+                  {newMcqOptions.map((option, index) => (
+                    <div key={option.key} className="flex items-center gap-2">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/80 bg-background/70 text-xs font-semibold text-muted-foreground">
+                        {option.key}
+                      </span>
+                      <input
+                        className="h-9 w-full rounded-lg border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                        placeholder={`Option ${option.key}`}
+                        value={option.text}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setNewMcqOptions((prev) => prev.map((row, rowIndex) => (
+                            rowIndex === index ? { ...row, text: value } : row
+                          )));
+                        }}
+                        maxLength={180}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={addingQuestion || !newQuestion.trim()}
@@ -603,30 +704,68 @@ export default function TestDetailPage() {
             )}
             {questions.map((question) => {
               const isRemoving = removingQuestionId === question.id;
+              const questionTypeLabel = question.question_type === 'mcq' ? 'MCQ' : 'SQL/TEXT';
+              const resolvedAnswer = question.correct_answer?.trim() || 'Not set';
               return (
                 <div
                   key={question.id}
                   className="flex items-start justify-between gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-2.5"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm text-foreground">{question.text}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm text-foreground">{question.text}</p>
+                      <span className="rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                        {questionTypeLabel}
+                      </span>
+                    </div>
+
+                    {question.question_type === 'mcq' && question.options.length > 0 && (
+                      <div className="mt-2 grid gap-1">
+                        {question.options.map((option) => (
+                          <p key={`${question.id}_${option.key}`} className="text-xs text-muted-foreground">
+                            {option.key}. {option.text}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
                     {isTeacher && (
                       <div className="mt-1 space-y-2">
                         <p className="text-xs text-muted-foreground">
-                          Answer Key: {question.correct_answer?.trim() ? question.correct_answer : 'Not set'}
+                          Answer Key: {resolvedAnswer}
                         </p>
                         <div className="flex flex-wrap items-center gap-2">
-                          <input
-                            value={answerDrafts[question.id] ?? ''}
-                            onChange={(e) =>
-                              setAnswerDrafts((prev) => ({
-                                ...prev,
-                                [question.id]: e.target.value,
-                              }))
-                            }
-                            placeholder="Set or update answer key"
-                            className="h-8 w-full rounded-lg border border-border bg-background/80 px-2.5 text-xs outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 sm:w-64"
-                          />
+                          {question.question_type === 'mcq' ? (
+                            <select
+                              value={answerDrafts[question.id] ?? ''}
+                              onChange={(e) =>
+                                setAnswerDrafts((prev) => ({
+                                  ...prev,
+                                  [question.id]: e.target.value,
+                                }))
+                              }
+                              className="h-8 w-full rounded-lg border border-border bg-background/80 px-2.5 text-xs outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 sm:w-64"
+                            >
+                              <option value="">Select correct option</option>
+                              {question.options.map((option) => (
+                                <option key={`${question.id}_answer_${option.key}`} value={option.key}>
+                                  {option.key} - {option.text}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              value={answerDrafts[question.id] ?? ''}
+                              onChange={(e) =>
+                                setAnswerDrafts((prev) => ({
+                                  ...prev,
+                                  [question.id]: e.target.value,
+                                }))
+                              }
+                              placeholder="Set or update answer key"
+                              className="h-8 w-full rounded-lg border border-border bg-background/80 px-2.5 text-xs outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 sm:w-64"
+                            />
+                          )}
                           <button
                             onClick={() => handleSaveQuestionAnswer(question.id)}
                             disabled={savingAnswerId === question.id}
