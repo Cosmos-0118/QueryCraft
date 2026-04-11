@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addRandomQuestionsFromBankToTest, getTestById } from '@/lib/test/test-module-db';
 
+type RandomQuestionType = 'mcq' | 'sql_fill' | 'mixed';
+
 async function resolveTestId(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
 ) {
@@ -34,16 +36,32 @@ export async function POST(
       return NextResponse.json({ error: 'You do not have access to this test.' }, { status: 403 });
     }
 
-    const body = await req.json().catch(() => ({} as { count?: unknown }));
+    const body = await req.json().catch(() => ({} as { count?: unknown; question_type?: unknown }));
     const countValue = body?.count;
+    const requestedType = body?.question_type;
 
     if (typeof countValue !== 'number' || !Number.isFinite(countValue) || countValue <= 0) {
       return NextResponse.json({ error: 'count must be a positive number.' }, { status: 400 });
     }
 
+    if (
+      requestedType !== undefined
+      && requestedType !== 'mcq'
+      && requestedType !== 'sql_fill'
+      && requestedType !== 'mixed'
+    ) {
+      return NextResponse.json(
+        { error: 'question_type must be one of mcq, sql_fill, or mixed.' },
+        { status: 400 },
+      );
+    }
+
+    const questionType = requestedType as RandomQuestionType | undefined;
+
     const questions = await addRandomQuestionsFromBankToTest({
       testId,
       count: countValue,
+      questionType,
     });
 
     if (questions === null) {
@@ -55,9 +73,16 @@ export async function POST(
       added: questions.length,
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to randomize questions.';
+    const isValidationError =
+      message.includes('allows only')
+      || message.includes('questionType must be one of')
+      || message.includes('Mixed questions require')
+      || message.includes('Not enough approved questions for a 3:2 mixed split');
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unable to randomize questions.' },
-      { status: 500 },
+      { error: message },
+      { status: isValidationError ? 400 : 500 },
     );
   }
 }
