@@ -931,6 +931,43 @@ export async function listTests(options?: { role?: TestRole; userId?: string }) 
     return (result.rows as RawTestRow[]).map(mapTestRecord);
   }
 
+  if (role === 'teacher') {
+    if (!userId) {
+      return [];
+    }
+
+    const result = await sql.raw(
+      `
+      SELECT
+        t.id,
+        t.title,
+        t.description,
+        t.status,
+        t.created_by AS created_by_profile_id,
+        creator.app_user_id AS created_by_app_user_id,
+        t.updated_at,
+        t.published_at,
+        invite.invite_code AS test_code,
+        t.duration_minutes,
+        t.question_mode
+      FROM tests t
+      LEFT JOIN users_test_profile creator ON creator.id = t.created_by
+      LEFT JOIN LATERAL (
+        SELECT ti.invite_code
+        FROM test_invites ti
+        WHERE ti.test_id = t.id AND ti.is_active = true
+        ORDER BY ti.created_at DESC
+        LIMIT 1
+      ) invite ON true
+      WHERE creator.app_user_id = $1
+      ORDER BY t.updated_at DESC;
+      `,
+      [userId],
+    );
+
+    return (result.rows as RawTestRow[]).map(mapTestRecord);
+  }
+
   const values: unknown[] = [];
   let whereClause = '';
 

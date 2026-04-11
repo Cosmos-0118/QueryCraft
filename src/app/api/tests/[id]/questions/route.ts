@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   addQuestionToTest,
+  getTestById,
   listQuestionsForTest,
   removeQuestionFromTest,
   updateQuestionAnswer,
@@ -10,9 +11,37 @@ function normalizeOptionKey(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 1);
 }
 
+async function ensureTeacherAccess(req: Request, testId: string) {
+  const searchParams = new URL(req.url).searchParams;
+  const role = searchParams.get('role');
+  const userId = searchParams.get('userId')?.trim();
+
+  if (role !== 'teacher' || !userId) {
+    return { error: NextResponse.json({ error: 'Teacher userId is required.' }, { status: 400 }) };
+  }
+
+  const test = await getTestById(testId);
+  if (!test) {
+    return { error: NextResponse.json({ error: 'Test not found.' }, { status: 404 }) };
+  }
+
+  if (test.created_by !== userId) {
+    return { error: NextResponse.json({ error: 'You do not have access to this test.' }, { status: 403 }) };
+  }
+
+  return { error: null };
+}
+
 export async function GET(req: Request, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
   const params = await Promise.resolve(context.params);
-  const includeAnswer = new URL(req.url).searchParams.get('view') === 'teacher';
+  const searchParams = new URL(req.url).searchParams;
+  const includeAnswer = searchParams.get('view') === 'teacher';
+
+  if (searchParams.get('role') === 'teacher') {
+    const access = await ensureTeacherAccess(req, params.id);
+    if (access.error) return access.error;
+  }
+
   const questions = (await listQuestionsForTest(params.id)).map((question) => (
     includeAnswer
       ? question
@@ -27,6 +56,9 @@ export async function GET(req: Request, context: { params: { id: string } } | { 
 
 export async function POST(req: Request, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
   const params = await Promise.resolve(context.params);
+  const access = await ensureTeacherAccess(req, params.id);
+  if (access.error) return access.error;
+
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
@@ -141,6 +173,9 @@ export async function POST(req: Request, context: { params: { id: string } } | {
 
 export async function PATCH(req: Request, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
   const params = await Promise.resolve(context.params);
+  const access = await ensureTeacherAccess(req, params.id);
+  if (access.error) return access.error;
+
   const body = await req.json();
 
   if (!body?.id || typeof body.id !== 'string') {
@@ -167,6 +202,9 @@ export async function PATCH(req: Request, context: { params: { id: string } } | 
 
 export async function DELETE(req: Request, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
   const params = await Promise.resolve(context.params);
+  const access = await ensureTeacherAccess(req, params.id);
+  if (access.error) return access.error;
+
   const body = await req.json();
 
   if (!body?.id || typeof body.id !== 'string') {

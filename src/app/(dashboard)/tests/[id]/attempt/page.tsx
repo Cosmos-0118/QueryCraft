@@ -91,7 +91,7 @@ export default function TestAttemptPage() {
   const [remainingSeconds, setRemainingSeconds] = useState(30 * 60);
 
   useEffect(() => {
-    if (!testId || !user) return;
+    if (!testId || !user || !isStudent) return;
 
     const controller = new AbortController();
 
@@ -155,7 +155,7 @@ export default function TestAttemptPage() {
     loadAttemptContext();
 
     return () => controller.abort();
-  }, [testId, user]);
+  }, [isStudent, testId, user]);
 
   useEffect(() => {
     if (!test?.duration_minutes) return;

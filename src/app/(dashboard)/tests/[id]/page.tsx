@@ -19,7 +19,6 @@ import {
   Sparkles,
   Trash2,
   UserCircle2,
-  Users,
 } from 'lucide-react';
 
 interface Question {
@@ -31,12 +30,6 @@ interface Question {
     text: string;
   }>;
   correct_answer?: string | null;
-}
-
-interface Assignment {
-  id: string;
-  user: string;
-  role: 'student' | 'teacher';
 }
 
 interface Test {
@@ -99,13 +92,18 @@ export default function TestDetailPage() {
   const isTeacher = user?.role === 'teacher';
 
   const testId = Array.isArray(params?.id) ? params.id[0] : params?.id;
+  const teacherAccessQuery = isTeacher && user?.id
+    ? `?role=teacher&userId=${encodeURIComponent(user.id)}`
+    : '';
+  const teacherQuestionsQuery = isTeacher && user?.id
+    ? `?view=teacher&role=teacher&userId=${encodeURIComponent(user.id)}`
+    : '';
   const [test, setTest] = useState<Test | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
 
   const [newQuestion, setNewQuestion] = useState('');
   const [newQuestionType, setNewQuestionType] = useState<'mcq' | 'sql_fill'>('mcq');
@@ -113,16 +111,12 @@ export default function TestDetailPage() {
   const [newMcqOptions, setNewMcqOptions] = useState(DEFAULT_MCQ_OPTIONS);
   const [newMcqCorrectKey, setNewMcqCorrectKey] = useState('A');
   const [randomCount, setRandomCount] = useState('5');
-  const [newAssignment, setNewAssignment] = useState('');
-  const [newRole, setNewRole] = useState<'student' | 'teacher'>('student');
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
 
   const [addingQuestion, setAddingQuestion] = useState(false);
   const [randomizingQuestions, setRandomizingQuestions] = useState(false);
-  const [addingAssignment, setAddingAssignment] = useState(false);
   const [removingQuestionId, setRemovingQuestionId] = useState<string | null>(null);
   const [savingAnswerId, setSavingAnswerId] = useState<string | null>(null);
-  const [removingAssignmentId, setRemovingAssignmentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!testId) return;
@@ -134,16 +128,14 @@ export default function TestDetailPage() {
       setError(null);
 
       try {
-        const [testRes, questionsRes, assignmentsRes] = await Promise.all([
-          fetch(`/api/tests/${testId}`, { signal: controller.signal }),
-          fetch(`/api/tests/${testId}/questions${isTeacher ? '?view=teacher' : ''}`, { signal: controller.signal }),
-          fetch(`/api/tests/${testId}/assignments`, { signal: controller.signal }),
+        const [testRes, questionsRes] = await Promise.all([
+          fetch(`/api/tests/${testId}${teacherAccessQuery}`, { signal: controller.signal }),
+          fetch(`/api/tests/${testId}/questions${teacherQuestionsQuery}`, { signal: controller.signal }),
         ]);
 
-        const [testData, questionsData, assignmentsData] = await Promise.all([
+        const [testData, questionsData] = await Promise.all([
           testRes.json(),
           questionsRes.json(),
-          assignmentsRes.json(),
         ]);
 
         const loadedQuestions = (questionsData.questions || []) as Question[];
@@ -156,7 +148,6 @@ export default function TestDetailPage() {
         setTest(testData.test || null);
         setQuestions(loadedQuestions);
         setAnswerDrafts(loadedAnswerDrafts);
-        setAssignments(assignmentsData.assignments || []);
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           setError('Failed to load test');
@@ -169,15 +160,14 @@ export default function TestDetailPage() {
     loadTest();
 
     return () => controller.abort();
-  }, [testId, isTeacher]);
+  }, [teacherAccessQuery, teacherQuestionsQuery, testId]);
 
   const stats = useMemo(
     () => ({
       questionCount: questions.length,
-      assignmentCount: assignments.length,
       roleLabel: isTeacher ? 'Teacher Management' : 'Student View',
     }),
-    [questions.length, assignments.length, isTeacher],
+    [questions.length, isTeacher],
   );
 
   const handleAddQuestion = async (e: React.FormEvent) => {
@@ -204,7 +194,7 @@ export default function TestDetailPage() {
     setActionError(null);
 
     try {
-      const res = await fetch(`/api/tests/${testId}/questions`, {
+      const res = await fetch(`/api/tests/${testId}/questions${teacherAccessQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -246,7 +236,7 @@ export default function TestDetailPage() {
     setActionError(null);
 
     try {
-      const res = await fetch(`/api/tests/${testId}/questions`, {
+      const res = await fetch(`/api/tests/${testId}/questions${teacherAccessQuery}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
@@ -283,7 +273,7 @@ export default function TestDetailPage() {
     setActionError(null);
 
     try {
-      const res = await fetch(`/api/tests/${testId}/questions/randomize`, {
+      const res = await fetch(`/api/tests/${testId}/questions/randomize${teacherAccessQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ count: parsedCount }),
@@ -339,7 +329,7 @@ export default function TestDetailPage() {
     setActionError(null);
 
     try {
-      const res = await fetch(`/api/tests/${testId}/questions`, {
+      const res = await fetch(`/api/tests/${testId}/questions${teacherAccessQuery}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -360,60 +350,6 @@ export default function TestDetailPage() {
       setActionError('Unable to save answer key');
     } finally {
       setSavingAnswerId(null);
-    }
-  };
-
-  const handleAddAssignment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isTeacher || !newAssignment.trim() || !testId) return;
-
-    setAddingAssignment(true);
-    setActionError(null);
-
-    try {
-      const res = await fetch(`/api/tests/${testId}/assignments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user: newAssignment.trim(), role: newRole }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.assignment) {
-        setAssignments((prev) => [...prev, data.assignment]);
-        setNewAssignment('');
-      } else {
-        setActionError(data.error || 'Unable to assign user');
-      }
-    } catch {
-      setActionError('Unable to assign user');
-    } finally {
-      setAddingAssignment(false);
-    }
-  };
-
-  const handleRemoveAssignment = async (id: string) => {
-    if (!isTeacher || !testId) return;
-
-    setRemovingAssignmentId(id);
-    setActionError(null);
-
-    try {
-      const res = await fetch(`/api/tests/${testId}/assignments`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-
-      if (res.ok) {
-        setAssignments((prev) => prev.filter((assignment) => assignment.id !== id));
-      } else {
-        const data = await res.json();
-        setActionError(data.error || 'Unable to remove assignment');
-      }
-    } catch {
-      setActionError('Unable to remove assignment');
-    } finally {
-      setRemovingAssignmentId(null);
     }
   };
 
@@ -488,7 +424,7 @@ export default function TestDetailPage() {
           </div>
           <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">{test.title}</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            Manage questions, assignments, and publishing context from one place.
+            Manage questions and publishing context from one place.
           </p>
         </div>
 
@@ -540,18 +476,12 @@ export default function TestDetailPage() {
         </div>
       )}
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Questions"
           value={String(stats.questionCount)}
           description="Current test question set"
           icon={<ClipboardList size={16} />}
-        />
-        <StatCard
-          title="Assignments"
-          value={String(stats.assignmentCount)}
-          description="Users assigned to this test"
-          icon={<Users size={16} />}
         />
         <StatCard
           title="Updated"
@@ -573,7 +503,7 @@ export default function TestDetailPage() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4">
         <section className="rounded-2xl border border-border/70 bg-card/85 p-5 shadow-xl shadow-black/10">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
@@ -785,86 +715,6 @@ export default function TestDetailPage() {
                   {isTeacher && (
                     <button
                       onClick={() => handleRemoveQuestion(question.id)}
-                      disabled={isRemoving}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-500/25 bg-red-500/10 px-2 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isRemoving ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                      Remove
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-border/70 bg-card/85 p-5 shadow-xl shadow-black/10">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">Assignments</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Assign students or teachers to this test context.</p>
-            </div>
-            <span className="rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-              {assignments.length}
-            </span>
-          </div>
-
-          {isTeacher ? (
-            <form onSubmit={handleAddAssignment} className="mb-4 space-y-2">
-              <input
-                className="h-11 w-full rounded-xl border border-border bg-background/90 px-3.5 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                placeholder="Assign user by name..."
-                value={newAssignment}
-                onChange={(e) => setNewAssignment(e.target.value)}
-                maxLength={120}
-              />
-              <div className="flex gap-2">
-                <select
-                  className="h-11 w-40 rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value as 'student' | 'teacher')}
-                >
-                  <option value="student">Student</option>
-                  <option value="teacher">Teacher</option>
-                </select>
-                <button
-                  type="submit"
-                  disabled={addingAssignment || !newAssignment.trim()}
-                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {addingAssignment ? <Loader2 size={14} className="animate-spin" /> : <Plus size={15} />}
-                  {addingAssignment ? 'Assigning...' : 'Assign User'}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className="mb-4 rounded-xl border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
-              Assignment management is available to teachers only.
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {assignments.length === 0 && (
-              <div className="rounded-xl border border-border/60 bg-background/40 px-3 py-4 text-sm text-muted-foreground">
-                No assignments yet.
-              </div>
-            )}
-            {assignments.map((assignment) => {
-              const isRemoving = removingAssignmentId === assignment.id;
-              return (
-                <div
-                  key={assignment.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-2.5"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{assignment.user}</p>
-                    <span className="mt-0.5 inline-flex rounded-full border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      {assignment.role}
-                    </span>
-                  </div>
-                  {isTeacher && (
-                    <button
-                      onClick={() => handleRemoveAssignment(assignment.id)}
                       disabled={isRemoving}
                       className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-500/25 bg-red-500/10 px-2 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                     >

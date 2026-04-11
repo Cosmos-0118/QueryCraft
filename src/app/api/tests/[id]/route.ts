@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTestById, updateDraftTest } from '@/lib/test/test-module-db';
 
+function resolveViewer(req: NextRequest): { role?: 'teacher' | 'student'; userId?: string } {
+  const roleParam = req.nextUrl.searchParams.get('role');
+  const role = roleParam === 'teacher' || roleParam === 'student'
+    ? roleParam
+    : undefined;
+  const userId = req.nextUrl.searchParams.get('userId')?.trim() || undefined;
+
+  return { role, userId };
+}
+
 function getParamId(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
 ) {
@@ -21,6 +31,17 @@ export async function GET(
     const test = await getTestById(id);
     if (!test) {
       return NextResponse.json({ error: 'Test not found.' }, { status: 404 });
+    }
+
+    const viewer = resolveViewer(req);
+    if (viewer.role === 'teacher') {
+      if (!viewer.userId) {
+        return NextResponse.json({ error: 'userId is required for teacher access.' }, { status: 400 });
+      }
+
+      if (test.created_by !== viewer.userId) {
+        return NextResponse.json({ error: 'You do not have access to this test.' }, { status: 403 });
+      }
     }
 
     return NextResponse.json({ test }, { status: 200 });
@@ -45,6 +66,21 @@ export async function PATCH(
     if (!id) {
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
     }
+
+    const viewer = resolveViewer(req);
+    if (viewer.role !== 'teacher' || !viewer.userId) {
+      return NextResponse.json({ error: 'Teacher userId is required.' }, { status: 400 });
+    }
+
+    const current = await getTestById(id);
+    if (!current) {
+      return NextResponse.json({ error: 'Test not found.' }, { status: 404 });
+    }
+
+    if (current.created_by !== viewer.userId) {
+      return NextResponse.json({ error: 'You do not have permission to modify this test.' }, { status: 403 });
+    }
+
     const body = await req.json();
     // Validate input (at least one updatable field)
     if (!body || (!body.title && !body.description && !body.status)) {

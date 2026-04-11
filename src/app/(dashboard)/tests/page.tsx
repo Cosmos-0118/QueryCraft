@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import {
   AlertTriangle,
+  ArrowLeft,
   CheckCircle2,
   ClipboardList,
   Clock3,
@@ -50,11 +51,13 @@ function EditTestModal({
   onClose,
   test,
   onSave,
+  updateQuery,
 }: {
   open: boolean;
   onClose: () => void;
   test: Test | null;
   onSave: (test: Test) => void;
+  updateQuery: string;
 }) {
   const [title, setTitle] = useState(test?.title || '');
   const [loading, setLoading] = useState(false);
@@ -72,7 +75,7 @@ function EditTestModal({
     setError(null);
 
     try {
-      const res = await fetch(`/api/tests/${test.id}`, {
+      const res = await fetch(`/api/tests/${test.id}${updateQuery}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: title.trim() }),
@@ -289,9 +292,18 @@ export default function TestsPage() {
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
 
-  const { user, setRole } = useAuth();
+  const { user, setRole, clearRole } = useAuth();
   const isTeacher = user?.role === 'teacher';
   const isStudent = user?.role === 'student';
+  const teacherAccessQuery = isTeacher && user?.id
+    ? `?role=teacher&userId=${encodeURIComponent(user.id)}`
+    : '';
+
+  const handleBackToRoleChooser = () => {
+    clearRole();
+    setJoinError(null);
+    setError(null);
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -364,7 +376,7 @@ export default function TestsPage() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/tests/${test.id}/publish`, { method: 'POST' });
+      const res = await fetch(`/api/tests/${test.id}/publish${teacherAccessQuery}`, { method: 'POST' });
       const data = await res.json();
       if (res.ok && data.test) {
         setTests((prev) => prev.map((item) => (item.id === test.id ? data.test : item)));
@@ -451,6 +463,13 @@ export default function TestsPage() {
 
       <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
+          <button
+            onClick={handleBackToRoleChooser}
+            className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+          >
+            <ArrowLeft size={13} />
+            Back to Choose Role
+          </button>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
             <Sparkles size={11} />
             Assessment Studio
@@ -555,6 +574,7 @@ export default function TestsPage() {
         onClose={() => setShowEdit(false)}
         test={editingTest}
         onSave={handleSave}
+        updateQuery={teacherAccessQuery}
       />
 
       {loading && (
