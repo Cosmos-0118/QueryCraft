@@ -48,6 +48,16 @@ interface AttemptRecord {
   status: 'in_progress' | 'submitted';
   answers: AttemptAnswer[];
   score: number | null;
+  violation_count?: number;
+  violation_events?: ViolationEvent[];
+}
+
+interface ViolationEvent {
+  id: string;
+  event_type: 'tab_switch' | 'blur' | 'copy' | 'paste' | 'cut' | 'context_menu';
+  action_taken: 'logged' | 'warned' | 'blocked' | 'force_submitted';
+  event_payload?: Record<string, unknown> | null;
+  occurred_at: string;
 }
 
 function formatTime(totalSeconds: number) {
@@ -58,6 +68,71 @@ function formatTime(totalSeconds: number) {
     .toString()
     .padStart(2, '0');
   return `${mins}:${secs}`;
+}
+
+function stableHash(input: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seededShuffle<T>(items: T[], seedText: string): T[] {
+  const out = [...items];
+  let seed = stableHash(seedText) || 1;
+
+  const nextRandom = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(nextRandom() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+
+  return out;
+}
+
+function randomizeQuestionsForAttempt(inputQuestions: Question[], attemptId: string): Question[] {
+  const reorderedQuestions = seededShuffle(inputQuestions, `questions_${attemptId}`);
+
+  return reorderedQuestions.map((question) => {
+    if (question.question_type !== 'mcq' || question.options.length <= 1) {
+      return {
+        ...question,
+        options: [...question.options],
+      };
+    }
+
+    return {
+      ...question,
+      options: seededShuffle(question.options, `options_${attemptId}_${question.id}`),
+    };
+  });
+}
+
+function formatViolationEventType(eventType: ViolationEvent['event_type']) {
+  switch (eventType) {
+    case 'tab_switch':
+      return 'Tab switch';
+    case 'blur':
+      return 'Window blur';
+    case 'copy':
+      return 'Copy blocked';
+    case 'paste':
+      return 'Paste blocked';
+    case 'cut':
+      return 'Cut blocked';
+    case 'context_menu':
+      return 'Right-click blocked';
+    default:
+      return 'Violation';
+  }
 }
 
 export default function TestAttemptPage() {
@@ -84,10 +159,17 @@ export default function TestAttemptPage() {
   const savePromiseRef = useRef<Promise<boolean> | null>(null);
   const lastSavedSnapshotRef = useRef('{}');
   const lastSavedAnswersRef = useRef<Record<string, string>>({});
+  const violationCountRef = useRef(0);
+  const lastTabSwitchAtRef = useRef(0);
+  const blockedEventLastAtRef = useRef<Record<string, number>>({});
+  const forceSubmitInProgressRef = useRef(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [autoSubmitTriggered, setAutoSubmitTriggered] = useState(false);
+  const [violationCount, setViolationCount] = useState(0);
+  const [violationTimeline, setViolationTimeline] = useState<ViolationEvent[]>([]);
+  const [integrityNotice, setIntegrityNotice] = useState<string | null>(null);
 
   const [remainingSeconds, setRemainingSeconds] = useState(30 * 60);
 
@@ -130,12 +212,21 @@ export default function TestAttemptPage() {
         }
 
         const attempt = attemptData.attempt as AttemptRecord;
+        const loadedQuestions = (questionsData.questions || []) as Question[];
+        const randomizedQuestions = randomizeQuestionsForAttempt(loadedQuestions, attempt.id);
+        const initialViolationCount = typeof attempt.violation_count === 'number' ? attempt.violation_count : 0;
+        const initialTimeline = Array.isArray(attempt.violation_events)
+          ? attempt.violation_events
+          : [];
 
         setTest(testData.test || null);
-        setQuestions(questionsData.questions || []);
+        setQuestions(randomizedQuestions);
         setAttemptId(attempt.id);
         setSubmitted(attempt.status === 'submitted');
         setAutoSubmitTriggered(attempt.status === 'submitted');
+        setViolationCount(initialViolationCount);
+        violationCountRef.current = initialViolationCount;
+        setViolationTimeline(initialTimeline);
 
         const mappedAnswers: Record<string, string> = {};
         for (const answer of attempt.answers || []) {
@@ -195,7 +286,7 @@ export default function TestAttemptPage() {
         const res = await fetch(`/api/tests/${testId}/attempts/${attemptId}/submit`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answers }),
+          body: JSON.stringify({ answers: answersRef.current }),
         });
         const data = await res.json();
 
@@ -217,7 +308,6 @@ export default function TestAttemptPage() {
   }, [
     autoSubmitTriggered,
     attemptId,
-    answers,
     loading,
     questions.length,
     remainingSeconds,
@@ -225,6 +315,16 @@ export default function TestAttemptPage() {
     submitting,
     testId,
   ]);
+
+  useEffect(() => {
+    if (!integrityNotice) return;
+
+    const timeoutId = setTimeout(() => {
+      setIntegrityNotice(null);
+    }, 4500);
+
+    return () => clearTimeout(timeoutId);
+  }, [integrityNotice]);
 
   const currentQuestion = questions[currentIndex] ?? null;
 
@@ -234,6 +334,58 @@ export default function TestAttemptPage() {
   );
 
   const progressPercent = questions.length > 0 ? Math.round((answeredCount / questions.length) * 100) : 0;
+
+  const recordViolation = useCallback(
+    async (
+      eventType: ViolationEvent['event_type'],
+      actionTaken: ViolationEvent['action_taken'],
+      payload?: Record<string, unknown>,
+    ) => {
+      if (!attemptId || !testId) return null;
+
+      try {
+        const occurredAt = new Date().toISOString();
+        const res = await fetch(`/api/tests/${testId}/attempts/${attemptId}/violations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event_type: eventType,
+            action_taken: actionTaken,
+            event_payload: payload ?? {},
+            occurred_at: occurredAt,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data?.event) {
+          return null;
+        }
+
+        const event = data.event as ViolationEvent & { violation_count?: unknown };
+
+        if (typeof event.violation_count === 'number') {
+          violationCountRef.current = event.violation_count;
+          setViolationCount(event.violation_count);
+        }
+
+        setViolationTimeline((prev) => [
+          ...prev,
+          {
+            id: event.id,
+            event_type: event.event_type,
+            action_taken: event.action_taken,
+            event_payload: event.event_payload ?? null,
+            occurred_at: event.occurred_at,
+          },
+        ]);
+
+        return event;
+      } catch {
+        return null;
+      }
+    },
+    [attemptId, testId],
+  );
 
   const persistAnswers = useCallback(
     async (mode: 'manual' | 'auto') => {
@@ -330,6 +482,142 @@ export default function TestAttemptPage() {
     [attemptId, submitted, testId],
   );
 
+  const forceSubmitForViolation = useCallback(async () => {
+    if (!questions.length || !attemptId || !testId || submitted || forceSubmitInProgressRef.current) {
+      return;
+    }
+
+    forceSubmitInProgressRef.current = true;
+    setAutoSubmitTriggered(true);
+    setSubmitting(true);
+    setSaveMessage(null);
+    setError(null);
+
+    try {
+      await persistAnswers('auto');
+
+      const res = await fetch(`/api/tests/${testId}/attempts/${attemptId}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers: answersRef.current }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data?.attempt) {
+        setError(data.error || 'Unable to force-submit attempt after violation.');
+        return;
+      }
+
+      setSubmitted(true);
+      setSaveMessage('Attempt auto-submitted after repeated tab switching.');
+    } catch {
+      setError('Unable to force-submit attempt after violation.');
+    } finally {
+      setSubmitting(false);
+      forceSubmitInProgressRef.current = false;
+    }
+  }, [attemptId, persistAnswers, questions.length, submitted, testId]);
+
+  useEffect(() => {
+    if (loading || submitted || !attemptId || !testId) return;
+
+    const logBlocked = (
+      eventType: Extract<ViolationEvent['event_type'], 'copy' | 'paste' | 'cut' | 'context_menu'>,
+      event: Event,
+    ) => {
+      event.preventDefault();
+
+      const now = Date.now();
+      const previous = blockedEventLastAtRef.current[eventType] ?? 0;
+      if (now - previous < 1200) {
+        return;
+      }
+
+      blockedEventLastAtRef.current[eventType] = now;
+      setIntegrityNotice(`${formatViolationEventType(eventType)} is disabled during an active attempt.`);
+      void recordViolation(eventType, 'blocked', {
+        source: 'attempt_ui',
+      });
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'hidden') return;
+
+      const now = Date.now();
+      if (now - lastTabSwitchAtRef.current < 1000) {
+        return;
+      }
+      lastTabSwitchAtRef.current = now;
+
+      const nextCount = violationCountRef.current + 1;
+      const actionTaken: ViolationEvent['action_taken'] = nextCount >= 2 ? 'force_submitted' : 'warned';
+
+      violationCountRef.current = nextCount;
+      setViolationCount(nextCount);
+
+      if (nextCount === 1) {
+        setIntegrityNotice('Warning: tab switch detected. Another switch will auto-submit your attempt.');
+      } else {
+        setIntegrityNotice('Second tab switch detected. Auto-submitting your attempt now.');
+      }
+
+      void recordViolation('tab_switch', actionTaken, {
+        source: 'attempt_ui',
+        visibility_state: document.visibilityState,
+        tab_switch_count: nextCount,
+      });
+
+      if (nextCount >= 2) {
+        void forceSubmitForViolation();
+      }
+    };
+
+    const onWindowBlur = () => {
+      const now = Date.now();
+      const previous = blockedEventLastAtRef.current.blur ?? 0;
+      if (now - previous < 1200) {
+        return;
+      }
+
+      blockedEventLastAtRef.current.blur = now;
+      void recordViolation('blur', 'logged', {
+        source: 'attempt_ui',
+      });
+    };
+
+    const onCopy = (event: ClipboardEvent) => {
+      logBlocked('copy', event);
+    };
+
+    const onPaste = (event: ClipboardEvent) => {
+      logBlocked('paste', event);
+    };
+
+    const onCut = (event: ClipboardEvent) => {
+      logBlocked('cut', event);
+    };
+
+    const onContextMenu = (event: MouseEvent) => {
+      logBlocked('context_menu', event);
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onWindowBlur);
+    document.addEventListener('copy', onCopy);
+    document.addEventListener('paste', onPaste);
+    document.addEventListener('cut', onCut);
+    document.addEventListener('contextmenu', onContextMenu);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onWindowBlur);
+      document.removeEventListener('copy', onCopy);
+      document.removeEventListener('paste', onPaste);
+      document.removeEventListener('cut', onCut);
+      document.removeEventListener('contextmenu', onContextMenu);
+    };
+  }, [attemptId, forceSubmitForViolation, loading, recordViolation, submitted, testId]);
+
   const navigateToQuestion = useCallback(
     (targetIndex: number) => {
       if (questions.length === 0) return;
@@ -378,7 +666,7 @@ export default function TestAttemptPage() {
       const res = await fetch(`/api/tests/${testId}/attempts/${attemptId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers: answersRef.current }),
       });
       const data = await res.json();
 
@@ -560,6 +848,33 @@ export default function TestAttemptPage() {
           {saveMessage}
         </div>
       )}
+
+      {integrityNotice && (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+          {integrityNotice}
+        </div>
+      )}
+
+      <div className="mb-4 rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Integrity Monitor</p>
+          <span className="rounded-full border border-border/70 bg-background/70 px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+            Violations: {violationCount}
+          </span>
+        </div>
+
+        <div className="mt-2 space-y-1">
+          {violationTimeline.length === 0 && (
+            <p className="text-xs text-muted-foreground">No integrity events logged yet.</p>
+          )}
+
+          {violationTimeline.length > 0 && [...violationTimeline].slice(-4).reverse().map((event) => (
+            <p key={event.id} className="text-xs text-muted-foreground">
+              {new Date(event.occurred_at).toLocaleTimeString()} - {formatViolationEventType(event.event_type)} ({event.action_taken})
+            </p>
+          ))}
+        </div>
+      </div>
 
       <div className="rounded-2xl border border-border/70 bg-card/85 p-5 shadow-xl shadow-black/10">
         <div className="mb-4 flex flex-wrap gap-2">

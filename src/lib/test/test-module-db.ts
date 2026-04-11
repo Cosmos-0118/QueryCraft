@@ -6,6 +6,8 @@ type AttemptStatus = 'in_progress' | 'submitted';
 type QuestionMode = 'mcq_only' | 'sql_only' | 'mixed';
 type StoredQuestionType = 'mcq' | 'sql_fill';
 type RandomQuestionTypeFilter = StoredQuestionType | 'mixed';
+type ViolationEventType = 'tab_switch' | 'blur' | 'copy' | 'paste' | 'cut' | 'context_menu';
+type ViolationAction = 'logged' | 'warned' | 'blocked' | 'force_submitted';
 
 export type TestRole = 'student' | 'teacher';
 
@@ -58,6 +60,14 @@ export interface AttemptResult {
   feedback: string;
 }
 
+export interface ViolationEventRecord {
+  id: string;
+  event_type: ViolationEventType;
+  action_taken: ViolationAction;
+  event_payload: Record<string, unknown> | null;
+  occurred_at: string;
+}
+
 export interface AttemptRecord {
   id: string;
   test_id: string;
@@ -72,6 +82,7 @@ export interface AttemptRecord {
   score: number | null;
   max_score: number;
   violation_count: number;
+  violation_events: ViolationEventRecord[];
   published: boolean;
 }
 
@@ -184,6 +195,14 @@ interface AttemptResultRow {
   question_text: string;
   answer: string;
   diagnostics: unknown;
+}
+
+interface ViolationEventRow {
+  id: string;
+  event_type: ViolationEventType;
+  action_taken: ViolationAction;
+  event_payload: unknown;
+  occurred_at: string;
 }
 
 interface EvaluationResult {
@@ -699,6 +718,31 @@ async function loadAttemptResults(attemptId: string): Promise<AttemptResult[]> {
   });
 }
 
+async function loadViolationEvents(attemptId: string): Promise<ViolationEventRecord[]> {
+  const eventsRes = await sql.raw(
+    `
+    SELECT
+      ve.id,
+      ve.event_type,
+      ve.action_taken,
+      ve.event_payload,
+      ve.occurred_at
+    FROM violation_events ve
+    WHERE ve.attempt_id = $1
+    ORDER BY ve.occurred_at ASC, ve.created_at ASC;
+    `,
+    [attemptId],
+  );
+
+  return (eventsRes.rows as ViolationEventRow[]).map((row) => ({
+    id: row.id,
+    event_type: row.event_type,
+    action_taken: row.action_taken,
+    event_payload: asObject(row.event_payload),
+    occurred_at: row.occurred_at,
+  }));
+}
+
 async function hydrateAttemptById(testId: string, attemptId: string): Promise<AttemptRecord | null> {
   const attemptRes = await sql.raw(
     `
@@ -726,9 +770,10 @@ async function hydrateAttemptById(testId: string, attemptId: string): Promise<At
   const header = attemptRes.rows[0] as AttemptHeaderRow | undefined;
   if (!header) return null;
 
-  const [answers, results] = await Promise.all([
+  const [answers, results, violationEvents] = await Promise.all([
     loadAttemptAnswers(header.id),
     loadAttemptResults(header.id),
+    loadViolationEvents(header.id),
   ]);
 
   return {
@@ -745,7 +790,106 @@ async function hydrateAttemptById(testId: string, attemptId: string): Promise<At
     score: header.status === 'submitted' ? toNumber(header.score_raw) : null,
     max_score: results.length,
     violation_count: header.violation_count,
+    violation_events: violationEvents,
     published: header.status === 'submitted' ? header.published_raw === true : false,
+  };
+}
+
+export async function recordAttemptViolationEvent(options: {
+  testId: string;
+  attemptId: string;
+  eventType: ViolationEventType;
+  actionTaken: ViolationAction;
+  eventPayload?: Record<string, unknown>;
+  occurredAt?: string;
+}) {
+  const allowedEventTypes: ViolationEventType[] = ['tab_switch', 'blur', 'copy', 'paste', 'cut', 'context_menu'];
+  const allowedActions: ViolationAction[] = ['logged', 'warned', 'blocked', 'force_submitted'];
+
+  if (!allowedEventTypes.includes(options.eventType)) {
+    throw new Error('Unsupported violation event_type.');
+  }
+
+  if (!allowedActions.includes(options.actionTaken)) {
+    throw new Error('Unsupported violation action_taken.');
+  }
+
+  const attemptRes = await sql.raw(
+    `
+    SELECT id, status, violation_count
+    FROM attempts
+    WHERE test_id = $1
+      AND id = $2
+    LIMIT 1;
+    `,
+    [options.testId, options.attemptId],
+  );
+
+  const attempt = attemptRes.rows[0] as {
+    id: string;
+    status: AttemptStatus;
+    violation_count: number | string;
+  } | undefined;
+
+  if (!attempt) {
+    throw new Error('Attempt not found.');
+  }
+
+  const normalizedOccurredAt = (() => {
+    const candidate = options.occurredAt ? new Date(options.occurredAt) : new Date();
+    return Number.isNaN(candidate.getTime()) ? new Date().toISOString() : candidate.toISOString();
+  })();
+
+  const eventPayload = options.eventPayload ?? {};
+
+  const eventInsertRes = await sql.raw(
+    `
+    INSERT INTO violation_events (
+      attempt_id,
+      event_type,
+      action_taken,
+      event_payload,
+      occurred_at,
+      created_at
+    )
+    VALUES ($1, $2, $3, $4::jsonb, $5, now())
+    RETURNING id;
+    `,
+    [
+      options.attemptId,
+      options.eventType,
+      options.actionTaken,
+      JSON.stringify(eventPayload),
+      normalizedOccurredAt,
+    ],
+  );
+
+  let nextViolationCount = toNumber(attempt.violation_count);
+
+  if (attempt.status === 'in_progress' && options.eventType === 'tab_switch') {
+    const updateRes = await sql.raw(
+      `
+      UPDATE attempts
+      SET
+        violation_count = violation_count + 1,
+        updated_at = now()
+      WHERE id = $1
+      RETURNING violation_count;
+      `,
+      [options.attemptId],
+    );
+
+    const updated = updateRes.rows[0] as { violation_count: number | string } | undefined;
+    nextViolationCount = updated ? toNumber(updated.violation_count) : nextViolationCount + 1;
+  }
+
+  return {
+    id: (eventInsertRes.rows[0] as { id: string }).id,
+    event_type: options.eventType,
+    action_taken: options.actionTaken,
+    event_payload: eventPayload,
+    occurred_at: normalizedOccurredAt,
+    violation_count: nextViolationCount,
   };
 }
 
