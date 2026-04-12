@@ -12,10 +12,6 @@ IDEAS TO BE ADDED - TEST PLATFORM
 - Let teachers define topic weights and difficulty mix before generating tests.
 - Enforce coverage rules automatically.
 
-4. Configurable Mixed-Mode Ratio
-- Let teachers choose MCQ to text ratio (for example: 70:30, 60:40), not only fixed 3:2.
-- Save ratio presets for reuse.
-
 5. Versioned Question Bank Workflow
 - Add draft, review, approve, and retire states.
 - Keep full edit history and rollback for each question.

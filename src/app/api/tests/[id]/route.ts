@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTestById, updateDraftTest } from '@/lib/test/test-module-db';
 
+type QuestionMode = 'mcq_only' | 'sql_only' | 'mixed';
+
+function parseOptionalPercent(value: unknown, fieldName: 'mix_mcq_percent' | 'mix_sql_fill_percent') {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${fieldName} must be a number.`);
+  }
+
+  return Math.round(value);
+}
+
 function resolveViewer(req: NextRequest): { role?: 'teacher' | 'student'; userId?: string } {
   const roleParam = req.nextUrl.searchParams.get('role');
   const role = roleParam === 'teacher' || roleParam === 'student'
@@ -81,18 +99,55 @@ export async function PATCH(
       return NextResponse.json({ error: 'You do not have permission to modify this test.' }, { status: 403 });
     }
 
-    const body = await req.json();
-    // Validate input (at least one updatable field)
-    if (!body || (!body.title && !body.description && !body.status)) {
+    const body = await req.json().catch(() => ({} as Record<string, unknown>));
+    const hasUpdatableField =
+      body.title !== undefined
+      || body.description !== undefined
+      || body.status !== undefined
+      || body.question_mode !== undefined
+      || body.mix_mcq_percent !== undefined
+      || body.mix_sql_fill_percent !== undefined;
+
+    if (!hasUpdatableField) {
       return NextResponse.json({ error: 'No updatable fields provided.' }, { status: 400 });
     }
-    const updated = await updateDraftTest(id, body);
+
+    const questionMode = body.question_mode;
+    if (
+      questionMode !== undefined
+      && questionMode !== 'mcq_only'
+      && questionMode !== 'sql_only'
+      && questionMode !== 'mixed'
+    ) {
+      return NextResponse.json(
+        { error: 'question_mode must be one of mcq_only, sql_only, or mixed.' },
+        { status: 400 },
+      );
+    }
+
+    const updated = await updateDraftTest(id, {
+      title: typeof body.title === 'string' ? body.title : undefined,
+      description: typeof body.description === 'string' ? body.description : undefined,
+      status: typeof body.status === 'string'
+        ? body.status as 'draft' | 'published' | 'closed' | 'archived'
+        : undefined,
+      question_mode: questionMode as QuestionMode | undefined,
+      mix_mcq_percent: parseOptionalPercent(body.mix_mcq_percent, 'mix_mcq_percent'),
+      mix_sql_fill_percent: parseOptionalPercent(body.mix_sql_fill_percent, 'mix_sql_fill_percent'),
+    });
+
     if (!updated) {
       return NextResponse.json({ error: 'Test not found or not updatable.' }, { status: 404 });
     }
     return NextResponse.json({ test: updated }, { status: 200 });
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update test.';
+    const isValidationError =
+      message.includes('mix_')
+      || message.includes('question_mode')
+      || message.includes('add up to 100');
+
     console.error('[PATCH /api/tests/:id] Error:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to update test.' }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: isValidationError ? 400 : 500 });
   }
 }

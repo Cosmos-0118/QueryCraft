@@ -36,9 +36,16 @@ export async function POST(
       return NextResponse.json({ error: 'You do not have access to this test.' }, { status: 403 });
     }
 
-    const body = await req.json().catch(() => ({} as { count?: unknown; question_type?: unknown }));
+    const body = await req.json().catch(() => ({} as {
+      count?: unknown;
+      question_type?: unknown;
+      mix_mcq_percent?: unknown;
+      mix_mcq_count?: unknown;
+    }));
     const countValue = body?.count;
     const requestedType = body?.question_type;
+    const requestedMixMcqPercent = body?.mix_mcq_percent;
+    const requestedMixMcqCount = body?.mix_mcq_count;
 
     if (typeof countValue !== 'number' || !Number.isFinite(countValue) || countValue <= 0) {
       return NextResponse.json({ error: 'count must be a positive number.' }, { status: 400 });
@@ -58,10 +65,42 @@ export async function POST(
 
     const questionType = requestedType as RandomQuestionType | undefined;
 
+    if (requestedMixMcqCount !== undefined && requestedMixMcqCount !== null) {
+      if (typeof requestedMixMcqCount !== 'number' || !Number.isFinite(requestedMixMcqCount)) {
+        return NextResponse.json({ error: 'mix_mcq_count must be a number.' }, { status: 400 });
+      }
+
+      if (questionType === 'mcq' || questionType === 'sql_fill') {
+        return NextResponse.json(
+          { error: 'mix_mcq_count can only be used with mixed question_type.' },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (requestedMixMcqPercent !== undefined && requestedMixMcqPercent !== null) {
+      if (typeof requestedMixMcqPercent !== 'number' || !Number.isFinite(requestedMixMcqPercent)) {
+        return NextResponse.json({ error: 'mix_mcq_percent must be a number.' }, { status: 400 });
+      }
+
+      if (questionType === 'mcq' || questionType === 'sql_fill') {
+        return NextResponse.json(
+          { error: 'mix_mcq_percent can only be used with mixed question_type.' },
+          { status: 400 },
+        );
+      }
+    }
+
     const questions = await addRandomQuestionsFromBankToTest({
       testId,
       count: countValue,
       questionType,
+      mixMcqPercent: typeof requestedMixMcqPercent === 'number'
+        ? Math.round(requestedMixMcqPercent)
+        : undefined,
+      mixMcqCount: typeof requestedMixMcqCount === 'number'
+        ? Math.round(requestedMixMcqCount)
+        : undefined,
     });
 
     if (questions === null) {
@@ -78,7 +117,10 @@ export async function POST(
       message.includes('allows only')
       || message.includes('questionType must be one of')
       || message.includes('Mixed questions require')
-      || message.includes('Not enough approved questions for a 3:2 mixed split');
+      || message.includes('Not enough approved questions for a')
+      || message.includes('mix_')
+      || message.includes('mixMcqCount')
+      || message.includes('add up to 100');
 
     return NextResponse.json(
       { error: message },

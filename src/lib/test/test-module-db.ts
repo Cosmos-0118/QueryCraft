@@ -9,6 +9,10 @@ type RandomQuestionTypeFilter = StoredQuestionType | 'mixed';
 type ViolationEventType = 'tab_switch' | 'blur' | 'copy' | 'paste' | 'cut' | 'context_menu';
 type ViolationAction = 'logged' | 'warned' | 'blocked' | 'force_submitted';
 
+const DEFAULT_MIX_MCQ_PERCENT = 60;
+const MIN_MIX_MCQ_PERCENT = 10;
+const MAX_MIX_MCQ_PERCENT = 90;
+
 export type TestRole = 'student' | 'teacher';
 
 export interface TestRecord {
@@ -22,6 +26,8 @@ export interface TestRecord {
   test_code: string | null;
   duration_minutes: number;
   question_mode: QuestionMode;
+  mix_mcq_percent: number | null;
+  mix_sql_fill_percent: number | null;
 }
 
 export interface QuestionRecord {
@@ -91,6 +97,8 @@ interface CreateDraftTestInput {
   description?: string;
   created_by: string;
   question_mode?: QuestionMode;
+  mix_mcq_percent?: number | null;
+  mix_sql_fill_percent?: number | null;
   duration_minutes?: number;
 }
 
@@ -108,6 +116,9 @@ interface UpdateDraftTestInput {
   title?: string;
   description?: string;
   status?: TestStatus;
+  question_mode?: QuestionMode;
+  mix_mcq_percent?: number | null;
+  mix_sql_fill_percent?: number | null;
 }
 
 interface StartAttemptInput {
@@ -134,6 +145,8 @@ interface RawTestRow {
   test_code: string | null;
   duration_minutes: number;
   question_mode: QuestionMode;
+  mix_mcq_percent: number | string | null;
+  mix_sql_fill_percent: number | string | null;
 }
 
 interface UserProfileRow {
@@ -220,6 +233,61 @@ function toNumber(value: number | string | null | undefined): number {
     return Number.isFinite(parsed) ? parsed : 0;
   }
   return 0;
+}
+
+function normalizeOptionalPercent(value: number | null | undefined, fieldName: 'mix_mcq_percent' | 'mix_sql_fill_percent') {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (!Number.isFinite(value)) {
+    throw new Error(`${fieldName} must be a number.`);
+  }
+
+  return Math.round(value);
+}
+
+function resolveMixedModeRatio(options: {
+  questionMode: QuestionMode;
+  mixMcqPercent?: number | null;
+  mixSqlFillPercent?: number | null;
+}) {
+  if (options.questionMode !== 'mixed') {
+    return {
+      mixMcqPercent: null,
+      mixSqlFillPercent: null,
+    };
+  }
+
+  const normalizedMcq = normalizeOptionalPercent(options.mixMcqPercent, 'mix_mcq_percent');
+  const normalizedSql = normalizeOptionalPercent(options.mixSqlFillPercent, 'mix_sql_fill_percent');
+
+  let resolvedMcq = DEFAULT_MIX_MCQ_PERCENT;
+
+  if (normalizedMcq !== null && normalizedSql !== null) {
+    if (normalizedMcq + normalizedSql !== 100) {
+      throw new Error('mix_mcq_percent and mix_sql_fill_percent must add up to 100.');
+    }
+    resolvedMcq = normalizedMcq;
+  } else if (normalizedMcq !== null) {
+    resolvedMcq = normalizedMcq;
+  } else if (normalizedSql !== null) {
+    resolvedMcq = 100 - normalizedSql;
+  }
+
+  const resolvedSql = 100 - resolvedMcq;
+  if (resolvedMcq < MIN_MIX_MCQ_PERCENT || resolvedMcq > MAX_MIX_MCQ_PERCENT) {
+    throw new Error(`mix_mcq_percent must be between ${MIN_MIX_MCQ_PERCENT} and ${MAX_MIX_MCQ_PERCENT} for mixed mode.`);
+  }
+
+  if (resolvedSql < MIN_MIX_MCQ_PERCENT || resolvedSql > MAX_MIX_MCQ_PERCENT) {
+    throw new Error(`mix_sql_fill_percent must be between ${MIN_MIX_MCQ_PERCENT} and ${MAX_MIX_MCQ_PERCENT} for mixed mode.`);
+  }
+
+  return {
+    mixMcqPercent: resolvedMcq,
+    mixSqlFillPercent: resolvedSql,
+  };
 }
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -348,6 +416,8 @@ function mapTestRecord(row: RawTestRow): TestRecord {
     test_code: row.test_code,
     duration_minutes: row.duration_minutes,
     question_mode: row.question_mode,
+    mix_mcq_percent: row.mix_mcq_percent === null ? null : toNumber(row.mix_mcq_percent),
+    mix_sql_fill_percent: row.mix_sql_fill_percent === null ? null : toNumber(row.mix_sql_fill_percent),
   };
 }
 
@@ -907,7 +977,9 @@ async function getTestRowById(testId: string): Promise<TestRecord | null> {
       t.published_at,
       invite.invite_code AS test_code,
       t.duration_minutes,
-      t.question_mode
+      t.question_mode,
+      t.mix_mcq_percent,
+      t.mix_sql_fill_percent
     FROM tests t
     LEFT JOIN users_test_profile creator ON creator.id = t.created_by
     LEFT JOIN LATERAL (
@@ -1065,7 +1137,9 @@ export async function listTests(options?: { role?: TestRole; userId?: string }) 
         t.published_at,
         invite.invite_code AS test_code,
         t.duration_minutes,
-        t.question_mode
+        t.question_mode,
+        t.mix_mcq_percent,
+        t.mix_sql_fill_percent
       FROM tests t
       LEFT JOIN users_test_profile creator ON creator.id = t.created_by
       LEFT JOIN LATERAL (
@@ -1111,7 +1185,9 @@ export async function listTests(options?: { role?: TestRole; userId?: string }) 
         t.published_at,
         invite.invite_code AS test_code,
         t.duration_minutes,
-        t.question_mode
+        t.question_mode,
+        t.mix_mcq_percent,
+        t.mix_sql_fill_percent
       FROM tests t
       LEFT JOIN users_test_profile creator ON creator.id = t.created_by
       LEFT JOIN LATERAL (
@@ -1150,7 +1226,9 @@ export async function listTests(options?: { role?: TestRole; userId?: string }) 
       t.published_at,
       invite.invite_code AS test_code,
       t.duration_minutes,
-      t.question_mode
+      t.question_mode,
+      t.mix_mcq_percent,
+      t.mix_sql_fill_percent
     FROM tests t
     LEFT JOIN users_test_profile creator ON creator.id = t.created_by
     LEFT JOIN LATERAL (
@@ -1174,6 +1252,13 @@ export async function getTestById(testId: string) {
 }
 
 export async function createDraftTest(input: CreateDraftTestInput): Promise<TestRecord> {
+  const questionMode = input.question_mode ?? 'mcq_only';
+  const resolvedRatio = resolveMixedModeRatio({
+    questionMode,
+    mixMcqPercent: input.mix_mcq_percent,
+    mixSqlFillPercent: input.mix_sql_fill_percent,
+  });
+
   const profile = await ensureUserProfile({
     appUserId: input.created_by,
     role: 'teacher',
@@ -1187,6 +1272,8 @@ export async function createDraftTest(input: CreateDraftTestInput): Promise<Test
       title,
       description,
       question_mode,
+      mix_mcq_percent,
+      mix_sql_fill_percent,
       duration_minutes,
       anti_cheat_policy,
       status,
@@ -1201,6 +1288,8 @@ export async function createDraftTest(input: CreateDraftTestInput): Promise<Test
       $3,
       $4,
       $5,
+      $6,
+      $7,
       '{}'::jsonb,
       'draft',
       NULL,
@@ -1214,7 +1303,9 @@ export async function createDraftTest(input: CreateDraftTestInput): Promise<Test
       profile.id,
       input.title.trim(),
       input.description?.trim() ?? '',
-      input.question_mode ?? 'mcq_only',
+      questionMode,
+      resolvedRatio.mixMcqPercent,
+      resolvedRatio.mixSqlFillPercent,
       input.duration_minutes ?? 30,
     ],
   );
@@ -1246,6 +1337,34 @@ export async function updateDraftTest(testId: string, input: UpdateDraftTestInpu
   if (input.status !== undefined) {
     values.push(input.status);
     fields.push(`status = $${values.length}`);
+  }
+
+  const shouldUpdateMode =
+    input.question_mode !== undefined
+    || input.mix_mcq_percent !== undefined
+    || input.mix_sql_fill_percent !== undefined;
+
+  if (shouldUpdateMode) {
+    const current = await getTestRowById(testId);
+    if (!current) {
+      return null;
+    }
+
+    const nextQuestionMode = input.question_mode ?? current.question_mode;
+    const resolvedRatio = resolveMixedModeRatio({
+      questionMode: nextQuestionMode,
+      mixMcqPercent: input.mix_mcq_percent === undefined ? current.mix_mcq_percent : input.mix_mcq_percent,
+      mixSqlFillPercent: input.mix_sql_fill_percent === undefined ? current.mix_sql_fill_percent : input.mix_sql_fill_percent,
+    });
+
+    values.push(nextQuestionMode);
+    fields.push(`question_mode = $${values.length}`);
+
+    values.push(resolvedRatio.mixMcqPercent);
+    fields.push(`mix_mcq_percent = $${values.length}`);
+
+    values.push(resolvedRatio.mixSqlFillPercent);
+    fields.push(`mix_sql_fill_percent = $${values.length}`);
   }
 
   if (fields.length === 0) {
@@ -1331,12 +1450,14 @@ export async function addRandomQuestionsFromBankToTest(options: {
   testId: string;
   count: number;
   questionType?: RandomQuestionTypeFilter;
+  mixMcqPercent?: number;
+  mixMcqCount?: number;
 }) {
   const normalizedCount = Math.max(1, Math.min(50, Math.floor(options.count)));
 
   const testRes = await sql.raw(
     `
-    SELECT id, question_mode
+    SELECT id, question_mode, mix_mcq_percent, mix_sql_fill_percent
     FROM tests
     WHERE id = $1
     LIMIT 1;
@@ -1344,7 +1465,12 @@ export async function addRandomQuestionsFromBankToTest(options: {
     [options.testId],
   );
 
-  const testRow = testRes.rows[0] as { id: string; question_mode: QuestionMode } | undefined;
+  const testRow = testRes.rows[0] as {
+    id: string;
+    question_mode: QuestionMode;
+    mix_mcq_percent: number | string | null;
+    mix_sql_fill_percent: number | string | null;
+  } | undefined;
   if (!testRow) return null;
 
   const requestedQuestionType: RandomQuestionTypeFilter = options.questionType ?? 'mixed';
@@ -1402,8 +1528,27 @@ export async function addRandomQuestionsFromBankToTest(options: {
       throw new Error('Mixed questions require at least 2 questions to include both types.');
     }
 
-    let mcqCount = Math.round((normalizedCount * 3) / 5);
-    mcqCount = Math.max(1, Math.min(normalizedCount - 1, mcqCount));
+    let mcqCount: number;
+    if (options.mixMcqCount !== undefined) {
+      const requestedMcqCount = Math.floor(options.mixMcqCount);
+      if (!Number.isFinite(requestedMcqCount) || requestedMcqCount < 1 || requestedMcqCount >= normalizedCount) {
+        throw new Error('mixMcqCount must be between 1 and count - 1 for mixed questions.');
+      }
+      mcqCount = requestedMcqCount;
+    } else {
+      const storedMixMcq = testRow.mix_mcq_percent === null ? null : toNumber(testRow.mix_mcq_percent);
+      const storedMixSql = testRow.mix_sql_fill_percent === null ? null : toNumber(testRow.mix_sql_fill_percent);
+      const resolvedRatio = resolveMixedModeRatio({
+        questionMode: 'mixed',
+        mixMcqPercent: options.mixMcqPercent ?? storedMixMcq,
+        mixSqlFillPercent: options.mixMcqPercent === undefined ? storedMixSql : null,
+      });
+
+      const mixMcqPercent = resolvedRatio.mixMcqPercent ?? DEFAULT_MIX_MCQ_PERCENT;
+      mcqCount = Math.round((normalizedCount * mixMcqPercent) / 100);
+      mcqCount = Math.max(1, Math.min(normalizedCount - 1, mcqCount));
+    }
+
     const sqlCount = normalizedCount - mcqCount;
 
     const [mcqRows, sqlRows] = await Promise.all([
@@ -1413,7 +1558,7 @@ export async function addRandomQuestionsFromBankToTest(options: {
 
     if (mcqRows.length < mcqCount || sqlRows.length < sqlCount) {
       throw new Error(
-        `Not enough approved questions for a 3:2 mixed split. Need ${mcqCount} MCQ and ${sqlCount} SQL/TEXT questions.`,
+        `Not enough approved questions for the requested mixed split. Need ${mcqCount} MCQ and ${sqlCount} SQL/TEXT questions.`,
       );
     }
 
@@ -2045,7 +2190,9 @@ export async function joinPublishedTestByCode(input: JoinByCodeInput) {
       t.published_at,
       ti.invite_code AS test_code,
       t.duration_minutes,
-      t.question_mode
+      t.question_mode,
+      t.mix_mcq_percent,
+      t.mix_sql_fill_percent
     FROM test_invites ti
     JOIN tests t ON t.id = ti.test_id
     LEFT JOIN users_test_profile creator ON creator.id = t.created_by

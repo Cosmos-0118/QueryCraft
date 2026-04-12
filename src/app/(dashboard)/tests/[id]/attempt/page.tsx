@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import {
@@ -58,6 +58,12 @@ interface ViolationEvent {
   action_taken: 'logged' | 'warned' | 'blocked' | 'force_submitted';
   event_payload?: Record<string, unknown> | null;
   occurred_at: string;
+}
+
+interface TabSwitchPopupState {
+  step: 1 | 2;
+  message: string;
+  dismissible?: boolean;
 }
 
 function formatTime(totalSeconds: number) {
@@ -136,6 +142,7 @@ function formatViolationEventType(eventType: ViolationEvent['event_type']) {
 }
 
 export default function TestAttemptPage() {
+  const router = useRouter();
   const params = useParams();
   const { user } = useAuth();
 
@@ -170,6 +177,7 @@ export default function TestAttemptPage() {
   const [violationCount, setViolationCount] = useState(0);
   const [violationTimeline, setViolationTimeline] = useState<ViolationEvent[]>([]);
   const [integrityNotice, setIntegrityNotice] = useState<string | null>(null);
+  const [tabSwitchPopup, setTabSwitchPopup] = useState<TabSwitchPopupState | null>(null);
 
   const [remainingSeconds, setRemainingSeconds] = useState(30 * 60);
 
@@ -493,6 +501,8 @@ export default function TestAttemptPage() {
     setSaveMessage(null);
     setError(null);
 
+    let forceSubmitSucceeded = false;
+
     try {
       await persistAnswers('auto');
 
@@ -505,18 +515,40 @@ export default function TestAttemptPage() {
 
       if (!res.ok || !data?.attempt) {
         setError(data.error || 'Unable to force-submit attempt after violation.');
+        setTabSwitchPopup({
+          step: 2,
+          message: 'Auto-submit failed. Please submit manually now.',
+          dismissible: true,
+        });
         return;
       }
 
-      setSubmitted(true);
+      forceSubmitSucceeded = true;
       setSaveMessage('Attempt auto-submitted after repeated tab switching.');
+      setTabSwitchPopup({
+        step: 2,
+        message: 'Test auto submitted. Redirecting to your result...',
+      });
+
+      const resultPath = `/tests/${testId}/result${attemptId ? `?attemptId=${encodeURIComponent(attemptId)}` : ''}`;
+      window.setTimeout(() => {
+        forceSubmitInProgressRef.current = false;
+        router.push(resultPath);
+      }, 1300);
     } catch {
       setError('Unable to force-submit attempt after violation.');
+      setTabSwitchPopup({
+        step: 2,
+        message: 'Auto-submit failed. Please submit manually now.',
+        dismissible: true,
+      });
     } finally {
       setSubmitting(false);
-      forceSubmitInProgressRef.current = false;
+      if (!forceSubmitSucceeded) {
+        forceSubmitInProgressRef.current = false;
+      }
     }
-  }, [attemptId, persistAnswers, questions.length, submitted, testId]);
+  }, [attemptId, persistAnswers, questions.length, router, submitted, testId]);
 
   useEffect(() => {
     if (loading || submitted || !attemptId || !testId) return;
@@ -556,9 +588,16 @@ export default function TestAttemptPage() {
       setViolationCount(nextCount);
 
       if (nextCount === 1) {
-        setIntegrityNotice('Warning: tab switch detected. Another switch will auto-submit your attempt.');
+        setTabSwitchPopup({
+          step: 1,
+          message: 'Warning: tab switch detected. Another switch will auto-submit your attempt.',
+          dismissible: true,
+        });
       } else {
-        setIntegrityNotice('Second tab switch detected. Auto-submitting your attempt now.');
+        setTabSwitchPopup({
+          step: 2,
+          message: 'Second tab switch detected. Auto-submitting your attempt now.',
+        });
       }
 
       void recordViolation('tab_switch', actionTaken, {
@@ -855,6 +894,36 @@ export default function TestAttemptPage() {
         </div>
       )}
 
+      {tabSwitchPopup && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-amber-500/35 bg-zinc-950/95 p-6 shadow-2xl shadow-black/50 backdrop-blur">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-amber-500/35 bg-amber-500/15 text-amber-200">
+              {tabSwitchPopup.step === 1 ? <ShieldAlert size={22} /> : <AlertTriangle size={22} />}
+            </div>
+
+            <h2 className="mt-4 text-center text-xl font-bold tracking-tight text-amber-100">
+              {tabSwitchPopup.step === 1 ? 'Tab Switch Warning' : 'Attempt Submitted'}
+            </h2>
+            <p className="mt-2 text-center text-sm text-amber-100/85">{tabSwitchPopup.message}</p>
+
+            {tabSwitchPopup.dismissible ? (
+              <button
+                type="button"
+                onClick={() => setTabSwitchPopup(null)}
+                className="mt-5 w-full rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
+              >
+                {tabSwitchPopup.step === 1 ? 'Continue Test' : 'Close'}
+              </button>
+            ) : (
+              <div className="mt-5 flex items-center justify-center gap-2 text-xs text-amber-100/80">
+                <Loader2 size={14} className="animate-spin" />
+                Redirecting...
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="mb-4 rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Integrity Monitor</p>
@@ -982,7 +1051,7 @@ export default function TestAttemptPage() {
 
               <div className="flex items-center gap-2">
                 <span className="hidden text-xs text-muted-foreground sm:inline">
-                  Auto-save every 7s
+                  Auto saving answers
                 </span>
                 <button
                   onClick={handleSaveCurrent}
