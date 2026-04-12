@@ -39,10 +39,14 @@ interface Test {
   created_by: string;
   updated_at: string;
   question_mode: 'mcq_only' | 'sql_only' | 'mixed';
+  mix_mcq_percent: number | null;
+  mix_sql_fill_percent: number | null;
   test_code?: string | null;
 }
 
 type RandomQuestionType = 'mcq' | 'sql_fill' | 'mixed';
+
+const MIN_MIX_MCQ_COUNT = 1;
 
 function formatStatus(status: string) {
   return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
@@ -115,12 +119,31 @@ export default function TestDetailPage() {
   const [newMcqCorrectKey, setNewMcqCorrectKey] = useState('A');
   const [randomCount, setRandomCount] = useState('5');
   const [randomQuestionType, setRandomQuestionType] = useState<RandomQuestionType>('mixed');
+  const [mixMcqCountInput, setMixMcqCountInput] = useState('3');
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
 
   const [addingQuestion, setAddingQuestion] = useState(false);
   const [randomizingQuestions, setRandomizingQuestions] = useState(false);
   const [removingQuestionId, setRemovingQuestionId] = useState<string | null>(null);
   const [savingAnswerId, setSavingAnswerId] = useState<string | null>(null);
+
+  const normalizedRandomCountPreview = useMemo(() => {
+    const parsed = Number(randomCount);
+    if (!Number.isFinite(parsed)) return 1;
+    return Math.max(1, Math.min(50, Math.floor(parsed)));
+  }, [randomCount]);
+
+  const normalizedMixMcqCountPreview = useMemo(() => {
+    const maxMcqCount = Math.max(MIN_MIX_MCQ_COUNT, normalizedRandomCountPreview - 1);
+    const parsed = Number(mixMcqCountInput);
+    if (!Number.isFinite(parsed)) {
+      return Math.min(3, maxMcqCount);
+    }
+
+    return Math.max(MIN_MIX_MCQ_COUNT, Math.min(maxMcqCount, Math.floor(parsed)));
+  }, [mixMcqCountInput, normalizedRandomCountPreview]);
+
+  const normalizedMixSqlCountPreview = Math.max(0, normalizedRandomCountPreview - normalizedMixMcqCountPreview);
 
   useEffect(() => {
     if (!testId) return;
@@ -149,7 +172,8 @@ export default function TestDetailPage() {
           return acc;
         }, {});
 
-        setTest(testData.test || null);
+        const loadedTest = (testData.test || null) as Test | null;
+        setTest(loadedTest);
         setQuestions(loadedQuestions);
         setAnswerDrafts(loadedAnswerDrafts);
       } catch (err) {
@@ -273,9 +297,26 @@ export default function TestDetailPage() {
       return;
     }
 
-    if (randomQuestionType === 'mixed' && parsedCount < 2) {
+    const normalizedCount = Math.max(1, Math.min(50, Math.floor(parsedCount)));
+
+    if (randomQuestionType === 'mixed' && normalizedCount < 2) {
       setActionError('Mixed questions require at least 2 questions to include both types.');
       return;
+    }
+
+    let requestedMixMcqCount: number | undefined;
+    if (randomQuestionType === 'mixed') {
+      const parsedMcqCount = Number(mixMcqCountInput);
+      if (!Number.isFinite(parsedMcqCount)) {
+        setActionError('Set a valid MCQ question count for mixed mode.');
+        return;
+      }
+
+      requestedMixMcqCount = Math.floor(parsedMcqCount);
+      if (requestedMixMcqCount < MIN_MIX_MCQ_COUNT || requestedMixMcqCount >= normalizedCount) {
+        setActionError(`MCQ count must be between ${MIN_MIX_MCQ_COUNT} and ${normalizedCount - 1} for ${normalizedCount} mixed questions.`);
+        return;
+      }
     }
 
     setRandomizingQuestions(true);
@@ -286,8 +327,9 @@ export default function TestDetailPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          count: parsedCount,
+          count: normalizedCount,
           question_type: randomQuestionType,
+          mix_mcq_count: requestedMixMcqCount,
         }),
       });
       const data = await res.json();
@@ -626,7 +668,7 @@ export default function TestDetailPage() {
                     className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="mixed">
-                      Mixed Questions (3:2 MCQ/TEXT)
+                      Mixed Questions (MCQ + SQL/TEXT)
                     </option>
                     <option value="mcq">
                       MCQ only
@@ -645,9 +687,34 @@ export default function TestDetailPage() {
                     {randomizingQuestions ? 'Randomizing...' : 'Add Random'}
                   </button>
                 </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  Mixed Questions uses a 3:2 MCQ-to-TEXT split.
-                </p>
+
+                {randomQuestionType === 'mixed' && (
+                  <div className="mt-3 space-y-3 rounded-xl border border-teal-500/20 bg-teal-500/[0.05] p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-teal-200">
+                        Mixed-Mode Split
+                      </p>
+                      <span className="rounded-full border border-teal-500/30 bg-teal-500/10 px-2 py-0.5 text-[11px] font-semibold text-teal-100">
+                        {normalizedMixMcqCountPreview} MCQ + {normalizedMixSqlCountPreview} SQL/TEXT
+                      </span>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-[140px_minmax(0,1fr)] sm:items-center">
+                      <input
+                        type="number"
+                        min={MIN_MIX_MCQ_COUNT}
+                        max={Math.max(MIN_MIX_MCQ_COUNT, normalizedRandomCountPreview - 1)}
+                        step={1}
+                        value={mixMcqCountInput}
+                        onChange={(e) => setMixMcqCountInput(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Choose how many MCQ questions to include out of {normalizedRandomCountPreview}. The remaining {normalizedMixSqlCountPreview} question(s) will be SQL/TEXT.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </form>
           ) : (
