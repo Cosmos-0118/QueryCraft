@@ -8,6 +8,8 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
   Clock3,
   Eye,
@@ -17,7 +19,6 @@ import {
   Plus,
   Send,
   ShieldCheck,
-  Sparkles,
   UserCheck,
   Users,
 } from 'lucide-react';
@@ -38,9 +39,9 @@ function formatStatus(status: string) {
 function getStatusClasses(status: string) {
   switch (status.toLowerCase()) {
     case 'published':
-      return 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300';
+      return 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/12 dark:text-emerald-300';
     case 'draft':
-      return 'border-amber-500/30 bg-amber-500/12 text-amber-300';
+      return 'border-slate-300 bg-slate-100 text-slate-700 dark:border-zinc-600 dark:bg-zinc-800/70 dark:text-zinc-200';
     default:
       return 'border-border/70 bg-muted/40 text-muted-foreground';
   }
@@ -268,8 +269,8 @@ function StatCard({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm backdrop-blur">
-      <div className="mb-3 inline-flex rounded-lg border border-border/70 bg-background/60 p-2 text-muted-foreground">
+    <div className="rounded-2xl border border-border/90 bg-card/80 p-4 shadow-sm backdrop-blur">
+      <div className="mb-3 inline-flex rounded-lg border border-border/85 bg-background/60 p-2 text-muted-foreground">
         {icon}
       </div>
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{title}</p>
@@ -288,6 +289,7 @@ export default function TestsPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [editingTest, setEditingTest] = useState<Test | null>(null);
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [expandedTestId, setExpandedTestId] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -334,7 +336,20 @@ export default function TestsPage() {
   }, [user?.id, user?.role]);
 
   const sortedTests = useMemo(
-    () => [...tests].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+    () => {
+      const latestById = new Map<string, Test>();
+
+      for (const test of tests) {
+        const existing = latestById.get(test.id);
+        if (!existing || new Date(test.updated_at).getTime() > new Date(existing.updated_at).getTime()) {
+          latestById.set(test.id, test);
+        }
+      }
+
+      return [...latestById.values()].sort(
+        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+      );
+    },
     [tests],
   );
 
@@ -425,28 +440,24 @@ export default function TestsPage() {
 
   if (!user?.role) {
     return (
-      <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+      <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col items-center justify-center px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
         <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
-        <div className="rounded-2xl border border-border/70 bg-card/85 p-8 shadow-xl shadow-black/10">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
-            <Sparkles size={11} />
-            Role Checkpoint
-          </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Choose Your Test Module Role</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
+        <div className="w-full max-w-4xl rounded-2xl border border-border/90 bg-card/85 p-8 shadow-xl shadow-black/10">
+          <h1 className="mt-3 text-center text-2xl font-bold tracking-tight sm:text-3xl">Choose Your Test Module Role</h1>
+          <p className="mx-auto mt-1.5 max-w-2xl text-center text-sm text-muted-foreground">
             Continue as a teacher to create and publish tests, or as a student to join via test code.
           </p>
-          <div className="mt-6 flex flex-wrap gap-2">
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
             <button
               onClick={() => setRole('teacher')}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
+              className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-teal-300/60 hover:bg-gradient-to-r hover:from-teal-400 hover:to-cyan-500 hover:text-zinc-950 hover:shadow-lg hover:shadow-teal-500/20"
             >
               <UserCheck size={15} />
               Continue as Teacher
             </button>
             <button
               onClick={() => setRole('student')}
-              className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+              className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-teal-300/60 hover:bg-gradient-to-r hover:from-teal-400 hover:to-cyan-500 hover:text-zinc-950 hover:shadow-lg hover:shadow-teal-500/20"
             >
               <Users size={15} />
               Continue as Student
@@ -465,26 +476,18 @@ export default function TestsPage() {
         <div>
           <button
             onClick={handleBackToRoleChooser}
-            className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            className="mb-3 inline-flex items-center gap-2 rounded-full border border-teal-300/60 bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
           >
             <ArrowLeft size={13} />
-            Back to Choose Role
+            Back
           </button>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
-            <Sparkles size={11} />
-            Assessment Studio
-          </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Test Module</h1>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Test Module - Assessment Studio</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             Create, manage, publish, and review assessments in one smooth workspace.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/80 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-            <ShieldCheck size={13} className="text-teal-300" />
-            {stats.roleLabel}
-          </div>
           {isTeacher && (
             <button
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
@@ -527,7 +530,7 @@ export default function TestsPage() {
       {isStudent && (
         <form
           onSubmit={handleJoinByCode}
-          className="mb-6 rounded-2xl border border-border/70 bg-card/85 p-5 shadow-xl shadow-black/10"
+          className="mb-6 rounded-2xl border border-border/90 bg-card/85 p-5 shadow-xl shadow-black/10"
         >
           <div className="mb-3 flex items-center gap-2">
             <div className="inline-flex rounded-lg border border-border/70 bg-background/60 p-2 text-muted-foreground">
@@ -578,7 +581,7 @@ export default function TestsPage() {
       />
 
       {loading && (
-        <div className="rounded-2xl border border-border/70 bg-card/70 p-6">
+        <div className="rounded-2xl border border-border/90 bg-card/70 p-6">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 size={15} className="animate-spin" />
             Loading tests...
@@ -604,8 +607,8 @@ export default function TestsPage() {
       )}
 
       {!loading && !error && visibleTests.length === 0 && (
-        <div className="rounded-2xl border border-border/70 bg-card/80 p-10 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-border/70 bg-background/60 text-muted-foreground">
+        <div className="rounded-2xl border border-border/90 bg-card/80 p-10 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-border/85 bg-background/60 text-muted-foreground">
             <ClipboardList size={20} />
           </div>
           <h2 className="mt-4 text-lg font-semibold tracking-tight">No tests yet</h2>
@@ -627,26 +630,33 @@ export default function TestsPage() {
       )}
 
       {!loading && !error && visibleTests.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card/85 shadow-xl shadow-black/10">
-          <div className="hidden grid-cols-[minmax(220px,1.4fr)_120px_170px_170px_230px] gap-3 border-b border-border/70 bg-background/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground md:grid">
+        <div className="overflow-hidden rounded-2xl border border-border/90 bg-card/85 shadow-xl shadow-black/10">
+          <div className="hidden grid-cols-[minmax(220px,1fr)_auto] gap-3 border-b border-border/85 bg-background/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground md:grid">
             <span>Test</span>
-            <span>Status</span>
-            <span>Author</span>
-            <span>Updated</span>
             <span>Actions</span>
           </div>
 
           {visibleTests.map((test) => {
             const isPublished = test.status.toLowerCase() === 'published';
             const isPublishing = publishingId === test.id;
+            const isExpanded = expandedTestId === test.id;
 
             return (
               <div
                 key={test.id}
-                className="border-t border-border/60 px-4 py-4 transition-colors first:border-t-0 hover:bg-muted/20"
+                className="border-t border-border/80 px-4 py-4 transition-colors first:border-t-0 hover:bg-muted/20"
               >
-                <div className="grid gap-3 md:grid-cols-[minmax(220px,1.4fr)_120px_170px_170px_230px] md:items-center">
-                  <div>
+                <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_auto] md:items-center">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <button
+                      onClick={() => setExpandedTestId(isExpanded ? null : test.id)}
+                      className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      aria-label={isExpanded ? 'Collapse test details' : 'Expand test details'}
+                    >
+                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </button>
+
+                    <div className="min-w-0">
                     <Link
                       href={`/tests/${test.id}`}
                       className="group inline-flex items-center gap-1.5 text-sm font-semibold text-foreground transition-colors hover:text-primary"
@@ -654,35 +664,18 @@ export default function TestsPage() {
                       {test.title}
                       <Eye size={14} className="opacity-0 transition group-hover:opacity-100" />
                     </Link>
-                    <p className="mt-1 text-xs text-muted-foreground md:hidden">
-                      Updated {new Date(test.updated_at).toLocaleString()}
-                    </p>
-                  </div>
-
-                  <div>
-                    <span
-                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(test.status)}`}
-                    >
-                      {formatStatus(test.status)}
-                    </span>
                     {isTeacher && isPublished && test.test_code && (
-                      <p className="mt-1 text-[11px] font-semibold tracking-[0.08em] text-teal-300">
+                      <p className="mt-1 text-[11px] font-semibold tracking-[0.08em] text-teal-700 dark:text-teal-300">
                         Code: {test.test_code}
                       </p>
                     )}
                   </div>
-
-                  <p className="text-xs text-muted-foreground">{test.created_by}</p>
-
-                  <p className="hidden items-center gap-1.5 text-xs text-muted-foreground md:inline-flex">
-                    <Clock3 size={12} />
-                    {new Date(test.updated_at).toLocaleString()}
-                  </p>
+                  </div>
 
                   <div className="flex flex-wrap items-center gap-2 md:justify-start">
                     <Link
                       href={isTeacher ? `/tests/${test.id}` : `/tests/${test.id}/attempt`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50 dark:border-border/80 dark:bg-background/70 dark:text-muted-foreground dark:hover:border-border dark:hover:text-foreground"
                     >
                       <Eye size={13} />
                       {isTeacher ? 'Open' : 'Attempt'}
@@ -690,7 +683,7 @@ export default function TestsPage() {
 
                     {isTeacher && (
                       <button
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-cyan-500/30 hover:bg-cyan-500/10 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700 dark:border-border/80 dark:bg-background/70 dark:text-muted-foreground dark:hover:border-cyan-500/30 dark:hover:bg-cyan-500/10 dark:hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => handleEdit(test)}
                         disabled={isPublished}
                       >
@@ -700,8 +693,18 @@ export default function TestsPage() {
                     )}
 
                     {isTeacher && (
+                      <Link
+                        href={`/tests/${test.id}/review`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 dark:border-border/80 dark:bg-background/70 dark:text-muted-foreground dark:hover:border-violet-500/30 dark:hover:bg-violet-500/10 dark:hover:text-violet-200"
+                      >
+                        <ClipboardList size={13} />
+                        Review Submissions
+                      </Link>
+                    )}
+
+                    {isTeacher && (
                       <button
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/12 px-2.5 py-1.5 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:border-primary/60 hover:brightness-110 dark:border-primary/30 dark:bg-primary/85 dark:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => handlePublish(test)}
                         disabled={isPublished || isPublishing}
                       >
@@ -711,6 +714,30 @@ export default function TestsPage() {
                     )}
                   </div>
                 </div>
+
+                {isExpanded && (
+                  <div className="mt-3 rounded-xl border border-border/70 bg-muted/30 px-3 py-3">
+                    <div className="grid gap-3 text-xs sm:grid-cols-3">
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Status</p>
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(test.status)}`}>
+                          {formatStatus(test.status)}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Author</p>
+                        <p className="break-all text-sm text-foreground/90">{test.created_by}</p>
+                      </div>
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Updated</p>
+                        <p className="inline-flex items-center gap-1.5 text-sm text-foreground/90">
+                          <Clock3 size={13} className="text-muted-foreground" />
+                          {new Date(test.updated_at).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

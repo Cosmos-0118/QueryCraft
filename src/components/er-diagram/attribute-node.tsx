@@ -18,44 +18,44 @@ const kindConfig: Record<AttributeKind, {
   textClass: string;
 }> = {
   regular: {
-    gradient: 'linear-gradient(135deg, rgba(113,113,122,0.08) 0%, rgba(113,113,122,0.02) 100%)',
-    border: 'border-zinc-700/60',
+    gradient: 'linear-gradient(135deg, rgba(148,163,184,0.16) 0%, rgba(148,163,184,0.06) 100%)',
+    border: 'border-slate-300',
     dot: 'bg-zinc-500',
     glow: '',
     badgeLabel: '',
-    textClass: 'text-zinc-300',
+    textClass: 'text-slate-700',
   },
   key: {
-    gradient: 'linear-gradient(135deg, rgba(234,179,8,0.12) 0%, rgba(234,179,8,0.03) 100%)',
-    border: 'border-yellow-500/40',
+    gradient: 'linear-gradient(135deg, rgba(234,179,8,0.2) 0%, rgba(234,179,8,0.07) 100%)',
+    border: 'border-yellow-400/70',
     dot: 'bg-yellow-400 shadow-[0_0_6px_rgba(234,179,8,0.6)]',
     glow: 'shadow-yellow-500/5',
     badgeLabel: 'PK',
-    textClass: 'text-yellow-200 font-semibold',
+    textClass: 'text-yellow-700 font-semibold',
   },
   multivalued: {
-    gradient: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(59,130,246,0.03) 100%)',
-    border: 'border-blue-500/40',
+    gradient: 'linear-gradient(135deg, rgba(59,130,246,0.18) 0%, rgba(59,130,246,0.06) 100%)',
+    border: 'border-blue-400/70',
     dot: 'bg-blue-400 shadow-[0_0_6px_rgba(59,130,246,0.6)]',
     glow: 'shadow-blue-500/5',
     badgeLabel: 'MV',
-    textClass: 'text-blue-200',
+    textClass: 'text-blue-700',
   },
   derived: {
-    gradient: 'linear-gradient(135deg, rgba(113,113,122,0.06) 0%, rgba(113,113,122,0.02) 100%)',
-    border: 'border-dashed border-zinc-600/60',
+    gradient: 'linear-gradient(135deg, rgba(148,163,184,0.14) 0%, rgba(148,163,184,0.05) 100%)',
+    border: 'border-dashed border-slate-400',
     dot: 'bg-zinc-500',
     glow: '',
     badgeLabel: 'D',
-    textClass: 'text-zinc-400 italic',
+    textClass: 'text-slate-500 italic',
   },
   composite: {
-    gradient: 'linear-gradient(135deg, rgba(34,197,94,0.12) 0%, rgba(34,197,94,0.03) 100%)',
-    border: 'border-green-500/40',
+    gradient: 'linear-gradient(135deg, rgba(34,197,94,0.18) 0%, rgba(34,197,94,0.06) 100%)',
+    border: 'border-green-400/70',
     dot: 'bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.6)]',
     glow: 'shadow-green-500/5',
     badgeLabel: 'C',
-    textClass: 'text-green-200',
+    textClass: 'text-green-700',
   },
 };
 
@@ -80,7 +80,7 @@ export const AttributeNode = memo(function AttributeNode({ data, selected }: Nod
 
         {/* Badge */}
         {c.badgeLabel && (
-          <span className="rounded-sm bg-white/[0.06] px-1 py-px text-[8px] font-bold uppercase leading-none tracking-wider text-zinc-400">
+          <span className="rounded-sm bg-slate-100 px-1 py-px text-[8px] font-bold uppercase leading-none tracking-wider text-slate-500">
             {c.badgeLabel}
           </span>
         )}

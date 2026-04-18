@@ -89,7 +89,7 @@ export function ERCanvas() {
         source: attr.entityId,
         target: attr.id,
         type: 'floating',
-        style: { stroke: 'rgba(113,113,122,0.3)', strokeWidth: 1 },
+        style: { stroke: 'rgba(100,116,139,0.45)', strokeWidth: 1 },
         animated: false,
       });
     }
@@ -105,9 +105,9 @@ export function ERCanvas() {
         label: labelParts[0],
         labelBgPadding: [6, 3] as [number, number],
         labelBgBorderRadius: 4,
-        labelStyle: { fontWeight: 700, fontSize: 10, fill: '#d4d4d8', fontFamily: 'system-ui' },
-        labelBgStyle: { fill: '#1c1c1f', stroke: 'rgba(63,63,70,0.4)', strokeWidth: 1 },
-        style: { stroke: 'rgba(139,92,246,0.4)', strokeWidth: 1.5 },
+        labelStyle: { fontWeight: 700, fontSize: 10, fill: '#334155', fontFamily: 'system-ui' },
+        labelBgStyle: { fill: '#e2e8f0', stroke: 'rgba(148,163,184,0.7)', strokeWidth: 1 },
+        style: { stroke: 'rgba(99,102,241,0.45)', strokeWidth: 1.5 },
       });
       e.push({
         id: `rel-${rel.id}-${e2}`,
@@ -117,9 +117,9 @@ export function ERCanvas() {
         label: labelParts[1],
         labelBgPadding: [6, 3] as [number, number],
         labelBgBorderRadius: 4,
-        labelStyle: { fontWeight: 700, fontSize: 10, fill: '#d4d4d8', fontFamily: 'system-ui' },
-        labelBgStyle: { fill: '#1c1c1f', stroke: 'rgba(63,63,70,0.4)', strokeWidth: 1 },
-        style: { stroke: 'rgba(139,92,246,0.4)', strokeWidth: 1.5 },
+        labelStyle: { fontWeight: 700, fontSize: 10, fill: '#334155', fontFamily: 'system-ui' },
+        labelBgStyle: { fill: '#e2e8f0', stroke: 'rgba(148,163,184,0.7)', strokeWidth: 1 },
+        style: { stroke: 'rgba(99,102,241,0.45)', strokeWidth: 1.5 },
       });
     }
     return e;
@@ -150,8 +150,8 @@ export function ERCanvas() {
   return (
     <div
       ref={wrapperRef}
-      className="er-canvas-wrapper h-full w-full overflow-hidden rounded-xl border border-zinc-800/80"
-      style={{ background: 'linear-gradient(180deg, #0c0c0f 0%, #111114 100%)' }}
+      className="er-canvas-wrapper h-full w-full overflow-hidden rounded-xl border border-slate-300"
+      style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)' }}
     >
       {/* Hide React Flow's default node selection outlines / bounding boxes */}
       <style>{`
@@ -190,12 +190,12 @@ export function ERCanvas() {
           variant={BackgroundVariant.Dots}
           gap={24}
           size={1}
-          color="rgba(113,113,122,0.12)"
+          color="rgba(148,163,184,0.24)"
           style={{ background: 'transparent' }}
         />
         <Controls
           showInteractive={false}
-          className="!rounded-xl !border !border-zinc-800/60 !bg-zinc-900/90 !shadow-xl !shadow-black/20 !backdrop-blur-sm [&>button]:!border-zinc-800/40 [&>button]:!bg-transparent [&>button]:!text-zinc-400 [&>button:hover]:!bg-zinc-800/60"
+          className="!rounded-xl !border !border-slate-300 !bg-white/95 !shadow-lg !shadow-slate-300/30 !backdrop-blur-sm [&>button]:!border-slate-200 [&>button]:!bg-transparent [&>button]:!text-slate-600 [&>button:hover]:!bg-slate-100"
         />
       </ReactFlow>
     </div>

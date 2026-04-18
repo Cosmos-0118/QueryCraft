@@ -1,11 +1,21 @@
 import type { NextConfig } from 'next';
 
+const isProd = process.env.NODE_ENV === 'production';
+
 const securityHeaders = [
   {
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+      [
+        "script-src",
+        "'self'",
+        "'unsafe-inline'",
+        "'wasm-unsafe-eval'",
+        !isProd ? "'unsafe-eval'" : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self'",

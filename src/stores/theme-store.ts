@@ -1,23 +1,18 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type ColorTheme = 'purple' | 'ocean' | 'emerald';
-export type AppearanceMode = 'dark';
+export type ThemeMode = 'light' | 'dark' | 'signature' | 'crimson' | 'aurora' | 'electric-night';
 
 interface ThemeStore {
-  appearance: AppearanceMode;
-  colorTheme: ColorTheme;
-  setAppearance: (mode: AppearanceMode) => void;
-  setColorTheme: (theme: ColorTheme) => void;
+  theme: ThemeMode;
+  setTheme: (mode: ThemeMode) => void;
 }
 
 export const useThemeStore = create<ThemeStore>()(
   persist(
     (set) => ({
-      appearance: 'dark',
-      colorTheme: 'purple',
-      setAppearance: () => set({ appearance: 'dark' }),
-      setColorTheme: (colorTheme) => set({ colorTheme }),
+      theme: 'dark',
+      setTheme: (theme) => set({ theme }),
     }),
     { name: 'querycraft-theme' },
   ),

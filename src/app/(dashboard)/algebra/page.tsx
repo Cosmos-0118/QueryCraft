@@ -311,14 +311,14 @@ export default function AlgebraPage() {
               <button
                 onClick={() => setShowGroups((v) => !v)}
                 disabled={!isReady}
-                className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/60 bg-zinc-900/60 px-3 py-2 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-700 hover:bg-zinc-800/60 disabled:opacity-40"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-700 px-3 py-2 text-[11px] font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 disabled:opacity-40"
               >
-                <Database className="h-3.5 w-3.5 text-sky-300" />
+                <Database className="h-3.5 w-3.5 text-slate-200" />
                 Groups
-                <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400">
+                <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
                   {activeDatabase}
                 </span>
-                <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+                <ChevronDown className="h-3.5 w-3.5 text-slate-300" />
               </button>
 
               {showGroups && (
@@ -375,11 +375,11 @@ export default function AlgebraPage() {
               )}
             </div>
 
-            <div className="mx-1 h-5 w-px bg-zinc-700/50" />
+            <div className="mx-1 h-5 w-px bg-slate-500/70" />
             <button
               onClick={() => setCreateOpen(true)}
               disabled={!isReady}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 disabled:opacity-40"
             >
               <Plus className="h-3.5 w-3.5" />
               Create Table
@@ -387,7 +387,7 @@ export default function AlgebraPage() {
             <button
               onClick={() => setShowImport(!showImport)}
               disabled={!isReady}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 disabled:opacity-40"
             >
               <ClipboardPaste className="h-3.5 w-3.5" />
               Import SQL
@@ -395,21 +395,21 @@ export default function AlgebraPage() {
             <button
               onClick={() => setBrowserOpen(true)}
               disabled={tables.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 disabled:opacity-40"
             >
               <Database className="h-3.5 w-3.5" />
               Browse Tables
             </button>
             <button
               onClick={handleClearInputOutput}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 active:scale-95"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Clear
             </button>
             <button
               onClick={handleResetWorkspace}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 active:scale-95"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Reset

@@ -12,10 +12,8 @@ import {
   ClipboardList,
   Clock3,
   Loader2,
-  Play,
   Plus,
   Save,
-  ShieldCheck,
   Sparkles,
   Trash2,
   UserCircle2,
@@ -55,9 +53,9 @@ function formatStatus(status: string) {
 function getStatusClasses(status: string) {
   switch (status.toLowerCase()) {
     case 'published':
-      return 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300';
+      return 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/12 dark:text-emerald-300';
     case 'draft':
-      return 'border-amber-500/30 bg-amber-500/12 text-amber-300';
+      return 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300';
     default:
       return 'border-border/70 bg-muted/40 text-muted-foreground';
   }
@@ -193,9 +191,8 @@ export default function TestDetailPage() {
   const stats = useMemo(
     () => ({
       questionCount: questions.length,
-      roleLabel: isTeacher ? 'Teacher Management' : 'Student View',
     }),
-    [questions.length, isTeacher],
+    [questions.length],
   );
 
   const handleAddQuestion = async (e: React.FormEvent) => {
@@ -472,10 +469,6 @@ export default function TestDetailPage() {
             <ArrowLeft size={13} />
             Back to Tests
           </Link>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
-            <Sparkles size={11} />
-            Assessment Studio
-          </div>
           <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">{test.title}</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             Manage questions and publishing context from one place.
@@ -488,21 +481,10 @@ export default function TestDetailPage() {
           >
             {formatStatus(test.status)}
           </span>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/80 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-            <ShieldCheck size={13} className="text-teal-300" />
-            {stats.roleLabel}
-          </div>
         </div>
       </div>
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
-        <Link
-          href={`/tests/${test.id}/attempt`}
-          className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-        >
-          <Play size={14} />
-          Open Attempt
-        </Link>
         <Link
           href={`/tests/${test.id}/result`}
           className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
@@ -646,11 +628,11 @@ export default function TestDetailPage() {
                 {addingQuestion ? 'Adding Question...' : 'Add Question'}
               </button>
 
-              <div className="rounded-xl border border-border/70 bg-background/40 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <div className="rounded-xl border !border-zinc-700 !bg-zinc-200 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] !text-black">
                   Add Random Questions From Database
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-xs !text-zinc-800">
                   Pull approved sample questions from the question bank and choose which type to add.
                 </p>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row">
@@ -658,14 +640,14 @@ export default function TestDetailPage() {
                     type="number"
                     min={1}
                     max={50}
-                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 sm:w-32"
+                    className="h-10 w-full rounded-xl border !border-zinc-700 !bg-white px-3 text-sm !text-black outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 sm:w-32"
                     value={randomCount}
                     onChange={(e) => setRandomCount(e.target.value)}
                   />
                   <select
                     value={randomQuestionType}
                     onChange={(e) => setRandomQuestionType(e.target.value as RandomQuestionType)}
-                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                    className="h-10 w-full rounded-xl border !border-zinc-700 !bg-white px-3 text-sm !text-black outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="mixed">
                       Mixed Questions (MCQ + SQL/TEXT)
@@ -681,7 +663,7 @@ export default function TestDetailPage() {
                     type="button"
                     onClick={handleAddRandomQuestions}
                     disabled={randomizingQuestions}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border !border-zinc-700 !bg-zinc-300 px-4 py-2 text-sm font-semibold !text-zinc-950 transition hover:!border-zinc-800 hover:!bg-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {randomizingQuestions ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                     {randomizingQuestions ? 'Randomizing...' : 'Add Random'}
@@ -689,12 +671,12 @@ export default function TestDetailPage() {
                 </div>
 
                 {randomQuestionType === 'mixed' && (
-                  <div className="mt-3 space-y-3 rounded-xl border border-teal-500/20 bg-teal-500/[0.05] p-3">
+                  <div className="mt-3 space-y-3 rounded-xl border !border-zinc-700 !bg-zinc-300 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-teal-200">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] !text-zinc-900">
                         Mixed-Mode Split
                       </p>
-                      <span className="rounded-full border border-teal-500/30 bg-teal-500/10 px-2 py-0.5 text-[11px] font-semibold text-teal-100">
+                      <span className="rounded-full border !border-zinc-800 !bg-zinc-200 px-2 py-0.5 text-[11px] font-semibold !text-zinc-900">
                         {normalizedMixMcqCountPreview} MCQ + {normalizedMixSqlCountPreview} SQL/TEXT
                       </span>
                     </div>
@@ -707,9 +689,9 @@ export default function TestDetailPage() {
                         step={1}
                         value={mixMcqCountInput}
                         onChange={(e) => setMixMcqCountInput(e.target.value)}
-                        className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                        className="h-10 w-full rounded-xl border !border-zinc-700 !bg-white px-3 text-sm !text-black outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                       />
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs !text-zinc-900">
                         Choose how many MCQ questions to include out of {normalizedRandomCountPreview}. The remaining {normalizedMixSqlCountPreview} question(s) will be SQL/TEXT.
                       </p>
                     </div>
@@ -813,7 +795,7 @@ export default function TestDetailPage() {
                     <button
                       onClick={() => handleRemoveQuestion(question.id)}
                       disabled={isRemoving}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-500/25 bg-red-500/10 px-2 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-rose-300 bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700 transition hover:border-rose-400 hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300 dark:hover:border-red-500/35 dark:hover:bg-red-500/20"
                     >
                       {isRemoving ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                       Remove

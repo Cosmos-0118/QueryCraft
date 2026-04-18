@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useGeneratorStore } from '@/stores/generator-store';
+import { useThemeStore } from '@/stores/theme-store';
 import {
   TABLE_TEMPLATES,
   type ColumnType,
@@ -99,10 +100,12 @@ type OpenMenu = {
 
 export default function GeneratorPage() {
   const store = useGeneratorStore();
+  const { theme } = useThemeStore();
   const [copied, setCopied] = useState(false);
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [expandedTables, setExpandedTables] = useState<Set<number>>(new Set([0]));
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
+  const isLightTheme = theme === 'light';
 
   const groupedHints = useMemo(() => {
     const groups: Record<string, typeof HINT_OPTIONS> = {};
@@ -202,7 +205,12 @@ export default function GeneratorPage() {
           {/* Clear */}
           <button
             onClick={() => { store.clear(); setShowSqlModal(false); }}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10"
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors',
+              isLightTheme
+                ? 'border-red-200 bg-white text-red-600 hover:border-red-300 hover:bg-red-50'
+                : 'border-red-500/20 text-red-400/80 hover:border-red-500/40 hover:bg-red-500/10',
+            )}
           >
             <RotateCcw className="h-3.5 w-3.5" />
             Reset
@@ -331,14 +339,29 @@ export default function GeneratorPage() {
                                 }
                                 className={cn(
                                   'flex w-full items-center justify-between rounded-lg px-2 py-1 text-[11px] font-semibold outline-none transition-colors',
-                                  typeOpt?.color || 'bg-zinc-800 text-zinc-400',
+                                  isLightTheme
+                                    ? 'border border-slate-300 bg-slate-100 text-slate-700 hover:border-slate-400 hover:bg-slate-50'
+                                    : typeOpt?.color || 'bg-zinc-800 text-zinc-400',
                                 )}
                               >
                                 <span>{typeOpt?.label ?? 'TEXT'}</span>
-                                <ChevronDown className={cn('h-3 w-3 text-zinc-500 transition-transform', isTypeOpen && 'rotate-180')} />
+                                <ChevronDown
+                                  className={cn(
+                                    'h-3 w-3 transition-transform',
+                                    isLightTheme ? 'text-slate-500' : 'text-zinc-500',
+                                    isTypeOpen && 'rotate-180',
+                                  )}
+                                />
                               </button>
                               {isTypeOpen && (
-                                <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-44 overflow-hidden rounded-xl border border-zinc-700/60 bg-zinc-900/95 p-1 shadow-2xl backdrop-blur-sm">
+                                <div
+                                  className={cn(
+                                    'absolute left-0 top-[calc(100%+6px)] z-30 w-44 overflow-hidden rounded-xl p-1 backdrop-blur-sm',
+                                    isLightTheme
+                                      ? 'border border-slate-200 bg-white shadow-xl shadow-slate-900/10'
+                                      : 'border border-zinc-700/60 bg-zinc-900/95 shadow-2xl',
+                                  )}
+                                >
                                   {TYPE_OPTIONS.map((t) => (
                                     <button
                                       key={t.value}
@@ -349,13 +372,19 @@ export default function GeneratorPage() {
                                       }}
                                       className={cn(
                                         'flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors',
-                                        col.type === t.value
-                                          ? 'bg-violet-500/15 text-violet-200'
-                                          : 'text-zinc-300 hover:bg-zinc-800/80',
+                                        isLightTheme
+                                          ? col.type === t.value
+                                            ? 'bg-slate-700 text-white'
+                                            : 'text-slate-700 hover:bg-slate-100'
+                                          : col.type === t.value
+                                            ? 'bg-violet-500/15 text-violet-200'
+                                            : 'text-zinc-300 hover:bg-zinc-800/80',
                                       )}
                                     >
                                       <span>{t.label}</span>
-                                      {col.type === t.value && <Check className="h-3 w-3 text-violet-300" />}
+                                      {col.type === t.value && (
+                                        <Check className={cn('h-3 w-3', isLightTheme ? 'text-white' : 'text-violet-300')} />
+                                      )}
                                     </button>
                                   ))}
                                 </div>

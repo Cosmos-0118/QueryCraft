@@ -2,18 +2,21 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
-import { useThemeStore, type ColorTheme } from '@/stores/theme-store';
-import { Moon } from 'lucide-react';
+import { useThemeStore, type ThemeMode } from '@/stores/theme-store';
+import { Moon, Palette, Sun } from 'lucide-react';
 
-const COLOR_THEMES: { value: ColorTheme; label: string; swatch: string; desc: string }[] = [
-  { value: 'purple', label: 'Purple', swatch: '#6d28d9', desc: 'Royal purple and violet' },
-  { value: 'ocean', label: 'Ocean', swatch: '#0369a1', desc: 'Deep blue and sky tones' },
-  { value: 'emerald', label: 'Emerald', swatch: '#059669', desc: 'Green and emerald hues' },
+const THEME_OPTIONS: { value: ThemeMode; label: string; icon: React.ReactNode }[] = [
+  { value: 'light', label: 'Light', icon: <Sun size={15} /> },
+  { value: 'dark', label: 'Dark', icon: <Moon size={15} /> },
+  { value: 'signature', label: 'Signature', icon: <Palette size={15} /> },
+  { value: 'crimson', label: 'Crimson', icon: <Palette size={15} /> },
+  { value: 'aurora', label: 'Aurora', icon: <Palette size={15} /> },
+  { value: 'electric-night', label: 'Electric Night', icon: <Palette size={15} /> },
 ];
 
 export default function SettingsPage() {
   const { user, updateName, changePassword } = useAuth();
-  const { colorTheme, setColorTheme } = useThemeStore();
+  const { theme, setTheme } = useThemeStore();
 
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -124,39 +127,23 @@ export default function SettingsPage() {
         </form>
       </section>
 
-      {/* Appearance */}
+      {/* Theme */}
       <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold">Appearance</h2>
-        <p className="mt-1 text-sm text-muted-foreground">This app now uses dark mode only.</p>
-        <div className="mt-4 inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary">
-          <Moon size={15} />
-          Dark mode enabled
-        </div>
-      </section>
-
-      {/* Color Theme */}
-      <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold">Color Theme</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Pick an accent color palette.</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          {COLOR_THEMES.map((t) => (
+        <h2 className="text-lg font-semibold">Theme</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Choose a theme from the list.</p>
+        <div className="mt-4 space-y-2">
+          {THEME_OPTIONS.map((option) => (
             <button
-              key={t.value}
-              onClick={() => setColorTheme(t.value)}
-              className={`flex items-center gap-3 rounded-lg border p-4 text-left transition-colors ${
-                colorTheme === t.value
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border hover:bg-muted'
+              key={option.value}
+              onClick={() => setTheme(option.value)}
+              className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                theme === option.value
+                  ? 'border-primary/30 bg-primary/10 text-primary'
+                  : 'border-border bg-background text-muted-foreground hover:border-border/90 hover:text-foreground'
               }`}
             >
-              <span
-                className="h-8 w-8 shrink-0 rounded-full border-2 border-white shadow"
-                style={{ backgroundColor: t.swatch }}
-              />
-              <div>
-                <p className="text-sm font-semibold">{t.label}</p>
-                <p className="text-xs text-muted-foreground">{t.desc}</p>
-              </div>
+              {option.icon}
+              {option.label}
             </button>
           ))}
         </div>

@@ -298,3 +298,13 @@ body {
 :root[data-resolved-theme='light'] .placeholder\:text-zinc-600::placeholder {
   color: color-mix(in oklab, var(--muted-foreground) 84%, transparent) !important;
 }
+
+/* In light theme, convert teal-cyan action gradients to dark neutral buttons. */
+:root[data-resolved-theme='light'] :is(button, a).bg-gradient-to-r.from-teal-400.to-cyan-500,
+:root[data-resolved-theme='light'] :is(button, a).bg-gradient-to-br.from-teal-400.to-cyan-500 {
+  background-image: none !important;
+  background-color: #374151 !important;
+  border-color: #4b5563 !important;
+  color: #f9fafb !important;
+  box-shadow: 0 10px 24px -14px rgba(17, 24, 39, 0.8) !important;
+}
