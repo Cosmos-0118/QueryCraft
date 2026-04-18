@@ -26,26 +26,26 @@ export const RelationshipNode = memo(function RelationshipNode({ data, selected 
       <svg
         viewBox="0 0 160 80"
         className="absolute inset-0 h-full w-full overflow-visible"
-        style={{ filter: selected ? 'drop-shadow(0 0 10px rgba(139,92,246,0.35))' : 'drop-shadow(0 2px 6px rgba(0,0,0,0.3))' }}
+        style={{ filter: selected ? 'drop-shadow(0 0 10px rgba(139,92,246,0.35))' : 'drop-shadow(0 2px 6px rgba(148,163,184,0.35))' }}
       >
         <defs>
           <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor={selected ? 'rgba(139,92,246,0.15)' : 'rgba(39,39,42,0.95)'} />
-            <stop offset="100%" stopColor={selected ? 'rgba(139,92,246,0.05)' : 'rgba(24,24,27,0.95)'} />
+            <stop offset="0%" stopColor={selected ? 'rgba(139,92,246,0.18)' : 'rgba(241,245,249,0.96)'} />
+            <stop offset="100%" stopColor={selected ? 'rgba(139,92,246,0.08)' : 'rgba(226,232,240,0.96)'} />
           </linearGradient>
         </defs>
         <polygon
           points="80,4 156,40 80,76 4,40"
           fill={`url(#${gradId})`}
-          stroke={selected ? 'rgba(139,92,246,0.6)' : 'rgba(63,63,70,0.5)'}
+          stroke={selected ? 'rgba(139,92,246,0.6)' : 'rgba(148,163,184,0.8)'}
           strokeWidth={selected ? 2 : 1.2}
         />
       </svg>
 
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center gap-0.5 px-4">
-        <span className="max-w-[100px] truncate text-center text-[11px] font-semibold leading-tight text-zinc-200">{label}</span>
-        <span className="rounded-sm bg-violet-500/15 px-1.5 py-px text-[9px] font-bold leading-none text-violet-300">
+        <span className="max-w-[100px] truncate text-center text-[11px] font-semibold leading-tight text-slate-700">{label}</span>
+        <span className="rounded-sm border border-violet-300/60 bg-violet-100 px-1.5 py-px text-[9px] font-bold leading-none text-violet-700">
           {cardinality}
         </span>
       </div>

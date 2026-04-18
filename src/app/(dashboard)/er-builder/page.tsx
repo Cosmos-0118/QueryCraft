@@ -140,7 +140,7 @@ export default function ERBuilderPage() {
     const el = document.querySelector('.er-canvas-wrapper .react-flow') as HTMLElement | null;
     if (!el) return;
     toPng(el, {
-      backgroundColor: '#0c0c0f',
+      backgroundColor: '#f8fafc',
       pixelRatio: 2,
       filter: (node) => {
         if (node?.classList?.contains('react-flow__minimap')) return false;
@@ -292,10 +292,7 @@ export default function ERBuilderPage() {
 
           {/* Properties panel */}
           {showPanel && (
-            <div
-              className="w-72 shrink-0 overflow-hidden rounded-xl border border-zinc-800/60"
-              style={{ background: 'linear-gradient(180deg, rgba(24,24,27,0.95) 0%, rgba(18,18,21,0.98) 100%)' }}
-            >
+            <div className="w-72 shrink-0 overflow-hidden rounded-xl border border-slate-300 bg-white">
               <PropertiesPanel />
             </div>
           )}
@@ -303,39 +300,39 @@ export default function ERBuilderPage() {
 
         {/* Generated Schema */}
         {store.generatedTables.length > 0 && (
-          <div ref={schemaSectionRef} className="rounded-xl border border-zinc-800/60 bg-zinc-900/80 backdrop-blur-sm">
+          <div ref={schemaSectionRef} className="rounded-xl border border-slate-300 bg-white backdrop-blur-sm">
             <button
               onClick={() => setShowSchema(!showSchema)}
-              className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-zinc-800/30"
+              className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-slate-50"
             >
               <div className="flex items-center gap-2.5">
-                <Database className="h-4 w-4 text-violet-400" />
-                <h2 className="text-sm font-semibold text-zinc-200">
+                <Database className="h-4 w-4 text-violet-500" />
+                <h2 className="text-sm font-semibold text-slate-900">
                   Generated Schema
                 </h2>
-                <span className="rounded-md bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-400">
+                <span className="rounded-md bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
                   {store.generatedTables.length} tables
                 </span>
               </div>
               {showSchema ? (
-                <ChevronUp className="h-4 w-4 text-zinc-500" />
+                <ChevronUp className="h-4 w-4 text-slate-500" />
               ) : (
-                <ChevronDown className="h-4 w-4 text-zinc-500" />
+                <ChevronDown className="h-4 w-4 text-slate-500" />
               )}
             </button>
 
             {showSchema && (
-              <div className="space-y-4 border-t border-zinc-800/60 p-5">
+              <div className="space-y-4 border-t border-slate-200 p-5">
                 {/* SQL */}
                 <div className="relative">
                   <button
                     onClick={handleCopySQL}
-                    className="absolute right-3 top-3 rounded-lg border border-zinc-800/60 bg-zinc-900/90 p-2 text-zinc-500 transition-all duration-150 hover:bg-zinc-800 hover:text-zinc-300"
+                    className="absolute right-3 top-3 rounded-lg border border-slate-300 bg-white p-2 text-slate-500 transition-all duration-150 hover:bg-slate-100 hover:text-slate-700"
                     title="Copy SQL"
                   >
                     {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
                   </button>
-                  <pre className="overflow-auto rounded-xl border border-zinc-800/60 bg-zinc-950/50 p-5 pr-14 font-mono text-xs leading-relaxed text-zinc-400">
+                  <pre className="overflow-auto rounded-xl border border-slate-300 bg-slate-50 p-5 pr-14 font-mono text-xs leading-relaxed text-slate-700">
                     {schemasToSQL(store.generatedTables)}
                   </pre>
                 </div>

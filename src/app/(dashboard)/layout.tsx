@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRef, useState, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { useAuth } from '@/hooks/use-auth';
-import { useThemeStore, type ColorTheme } from '@/stores/theme-store';
+import { useThemeStore, type ThemeMode } from '@/stores/theme-store';
 import { useLoadingStore } from '@/stores/loading-store';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
-  Settings, Moon, Palette, Sparkles, FunctionSquare,
+  Settings, Moon, Sun, Palette, Sparkles, FunctionSquare,
   CircuitBoard, LogOut, ChevronRight,
 } from 'lucide-react';
 
@@ -36,10 +36,13 @@ const NAV_ITEMS: { label: string; href: string; icon: ReactNode; group?: string 
 
 const NAV_GROUPS = ['Main', 'Labs', 'Theory', 'Account'];
 
-const COLOR_THEME_OPTIONS: { value: ColorTheme; label: string; swatch: string; description: string }[] = [
-  { value: 'purple', label: 'Purple', swatch: '#7c3aed', description: 'Default' },
-  { value: 'ocean', label: 'Ocean', swatch: '#0369a1', description: 'Deep blue' },
-  { value: 'emerald', label: 'Emerald', swatch: '#059669', description: 'Fresh green' },
+const THEME_OPTIONS: { value: ThemeMode; label: string; icon: ReactNode }[] = [
+  { value: 'light', label: 'Light', icon: <Sun size={14} /> },
+  { value: 'dark', label: 'Dark', icon: <Moon size={14} /> },
+  { value: 'signature', label: 'Signature', icon: <Palette size={14} /> },
+  { value: 'crimson', label: 'Crimson', icon: <Palette size={14} /> },
+  { value: 'aurora', label: 'Aurora', icon: <Palette size={14} /> },
+  { value: 'electric-night', label: 'Electric Night', icon: <Palette size={14} /> },
 ];
 
 function Breadcrumbs() {
@@ -117,7 +120,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const mounted = useHydrated();
   const { user, isAuthenticated, logout } = useAuth();
-  const { colorTheme, setColorTheme } = useThemeStore();
+  const { theme, setTheme } = useThemeStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
@@ -210,31 +213,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </button>
               {themeMenuOpen && (
                 <div className="absolute right-0 top-full z-[500] mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card shadow-2xl" style={{ backgroundColor: 'var(--card)' }}>
-                  <div className="p-3 pb-2">
-                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Appearance</p>
-                    <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-2 py-2 text-[11px] font-medium text-foreground">
-                      <Moon size={13} className="text-primary" />
-                      Dark mode only
-                    </div>
-                  </div>
-                  <div className="border-t border-border p-3 pt-2">
-                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Color Theme</p>
-                    <div className="space-y-0.5">
-                      {COLOR_THEME_OPTIONS.map((opt) => (
+                  <div className="p-2">
+                    <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Theme</p>
+                    <div className="space-y-1">
+                      {THEME_OPTIONS.map((option) => (
                         <button
-                          key={opt.value}
-                          onClick={() => setColorTheme(opt.value)}
-                          className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-all ${
-                            colorTheme === opt.value
+                          key={option.value}
+                          onClick={() => setTheme(option.value)}
+                          className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                            theme === option.value
                               ? 'bg-muted font-semibold text-foreground'
                               : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                           }`}
                         >
-                          <span className="h-4 w-4 shrink-0 rounded-full shadow-sm ring-2 ring-border" style={{ backgroundColor: opt.swatch }} />
-                          <span className="flex-1 text-left">{opt.label}</span>
-                          {colorTheme === opt.value && (
-                            <span className="ml-auto text-[10px] text-muted-foreground">{opt.description}</span>
-                          )}
+                          <span className={theme === option.value ? 'text-primary' : ''}>{option.icon}</span>
+                          {option.label}
                         </button>
                       ))}
                     </div>
