@@ -102,7 +102,7 @@ export function DependencyDiagram({ columns, fds, className }: DependencyDiagram
         {/* ── FD cards ────────────────────────────────── */}
         {fds.length === 0 ? (
           <div className="rounded-lg border border-dashed border-zinc-800/50 px-4 py-6 text-center">
-            <p className="text-xs text-zinc-600">Add functional dependencies to visualize them</p>
+            <p className="text-xs text-zinc-600">Functional dependencies are inferred automatically from your current rows.</p>
           </div>
         ) : (
           <div className="space-y-2">
