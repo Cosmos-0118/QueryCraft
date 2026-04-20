@@ -1,0 +1,7 @@
+in the normalizer page 
+the idea is the user can create his own table and enter attributes and values 
+so this feature is to convert the user given unf table to 
+different normalization forms like 1nf,2,nf,3nf,bcnf,4nf,5nf
+i need the UI to match the other pages of the website
+include those three already existing databases like university,banking,credentia
+the user should be able to switch between forms of normalized table by clicking on the respective form

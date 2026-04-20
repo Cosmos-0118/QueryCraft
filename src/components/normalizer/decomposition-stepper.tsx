@@ -118,6 +118,40 @@ export function DecompositionStepper({
                     );
                   })}
                 </div>
+
+                {table.sampleData && table.sampleData.length > 0 && (
+                  <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-800/60">
+                    <table className="w-full min-w-[260px] text-[10px]">
+                      <thead>
+                        <tr className="border-b border-zinc-800/60 bg-zinc-800/40">
+                          {table.columns.map((col) => (
+                            <th
+                              key={col}
+                              className="px-2 py-1.5 text-left font-mono font-semibold text-zinc-500"
+                            >
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {table.sampleData.map((row, rowIndex) => (
+                          <tr key={rowIndex} className="border-b border-zinc-800/35 last:border-0">
+                            {table.columns.map((_, colIndex) => (
+                              <td
+                                key={`${rowIndex}-${colIndex}`}
+                                className="px-2 py-1.5 font-mono text-zinc-400"
+                              >
+                                {row[colIndex] ?? ''}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
                 {table.functionalDependencies.length > 0 && (
                   <div className="mt-3 border-t border-zinc-800/60 pt-2.5 text-[10px] text-zinc-600">
                     <p className="mb-1.5 font-medium uppercase tracking-wider">FDs:</p>
