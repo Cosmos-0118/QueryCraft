@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSqlEngine } from '@/hooks/use-sql-engine';
 import { useSandboxStore } from '@/stores/sandbox-store';
+import { useThemeStore } from '@/stores/theme-store';
 import { useSessionPersistence } from '@/hooks/use-session-persistence';
 import { useLoadingStore } from '@/stores/loading-store';
 import { SqlEditor } from '@/components/sandbox/sql-editor';
@@ -86,6 +87,7 @@ export default function SandboxPage() {
     seedDatasets,
   } = useSqlEngine();
   const store = useSandboxStore();
+  const { theme } = useThemeStore();
   const { start: startLoading, stop: stopLoading } = useLoadingStore();
   const [result, setResult] = useState<QueryResult | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -549,6 +551,11 @@ export default function SandboxPage() {
 
   const tableCount = tables.length;
   const historyCount = store.queryHistory.length;
+  const isLightTheme = theme === 'light';
+  const lightToolbarActionButtonClass =
+    'inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-[11px] font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 disabled:opacity-40';
+  const lightToolbarDangerButtonClass =
+    'inline-flex items-center gap-1.5 rounded-lg border border-rose-700 bg-rose-700 px-3 py-1.5 text-[11px] font-medium text-rose-50 shadow-sm transition-colors hover:border-rose-800 hover:bg-rose-800 active:scale-95';
   const statementResults: StatementQueryResult[] = result
     ? result.statementResults && result.statementResults.length > 0
       ? result.statementResults
@@ -572,27 +579,34 @@ export default function SandboxPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
             <div
-              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ring-emerald-500/25"
-              style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.04) 100%)' }}
+              className={cn(
+                'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1',
+                isLightTheme ? 'bg-slate-100 ring-slate-300/80' : 'ring-emerald-500/25',
+              )}
+              style={
+                isLightTheme
+                  ? undefined
+                  : { background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.04) 100%)' }
+              }
             >
-              <Terminal className="h-5 w-5 text-emerald-400" />
+              <Terminal className={cn('h-5 w-5', isLightTheme ? 'text-slate-700' : 'text-emerald-400')} />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-zinc-100">SQL Sandbox</h1>
-              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+              <h1 className="text-xl font-bold tracking-tight text-foreground">SQL Sandbox</h1>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
                   {tableCount} table{tableCount !== 1 ? 's' : ''}
                 </span>
-                <span className="text-zinc-700">&middot;</span>
+                <span className="text-muted-foreground/70">&middot;</span>
                 <span>{historyCount} queries run</span>
-                <span className="text-zinc-700">&middot;</span>
-                <span className="text-zinc-600">MySQL-compatible</span>
+                <span className="text-muted-foreground/70">&middot;</span>
+                <span className="text-muted-foreground">MySQL-compatible</span>
               </div>
             </div>
           </div>
 
-          <div className="w-full rounded-2xl border border-zinc-800/60 bg-zinc-950/50 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.18)] sm:w-auto">
+          <div className="w-full rounded-2xl border border-border/70 bg-card/95 p-3 shadow-[0_10px_26px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:w-auto">
             <div className="overflow-x-auto overflow-y-visible">
               <div className="flex min-w-max flex-wrap items-center gap-2 xl:min-w-0">
                 {/* Databases dropdown */}
@@ -605,14 +619,14 @@ export default function SandboxPage() {
                       setShowDatabases((v) => !v);
                     }}
                     disabled={!isReady}
-                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/60 bg-zinc-900/60 px-3 py-2 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-700 hover:bg-zinc-800/60 disabled:opacity-40"
+                    className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2 text-[11px] font-medium text-foreground transition-colors hover:border-border hover:bg-muted disabled:opacity-40"
                   >
-                    <Database className="h-3.5 w-3.5 text-sky-300" />
+                    <Database className="h-3.5 w-3.5 text-sky-500 dark:text-sky-300" />
                     Databases
-                    <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400">
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
                       {activeDatabase}
                     </span>
-                    <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                   </button>
                 </div>
 
@@ -626,24 +640,28 @@ export default function SandboxPage() {
                       setShowUsers((v) => !v);
                     }}
                     disabled={!isReady}
-                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/60 bg-zinc-900/60 px-3 py-2 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-700 hover:bg-zinc-800/60 disabled:opacity-40"
+                    className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2 text-[11px] font-medium text-foreground transition-colors hover:border-border hover:bg-muted disabled:opacity-40"
                   >
-                    <UserRound className="h-3.5 w-3.5 text-amber-300" />
+                    <UserRound className="h-3.5 w-3.5 text-amber-500 dark:text-amber-300" />
                     Users
-                    <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400">
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
                       {activeUser}
                     </span>
-                    <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                   </button>
                 </div>
 
-                <div className="mx-0.5 h-5 w-px bg-zinc-700/50" />
+                <div className="mx-0.5 h-5 w-px bg-border/80" />
 
                 {/* Create Table */}
                 <button
                   onClick={() => setCreateOpen(true)}
                   disabled={!isReady}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-300 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20 disabled:opacity-40"
+                  className={
+                    isLightTheme
+                      ? lightToolbarActionButtonClass
+                      : 'inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-300 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20 disabled:opacity-40'
+                  }
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Create Table
@@ -653,7 +671,11 @@ export default function SandboxPage() {
                 <button
                   onClick={() => setShowImport(!showImport)}
                   disabled={!isReady}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40"
+                  className={
+                    isLightTheme
+                      ? lightToolbarActionButtonClass
+                      : 'inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40'
+                  }
                 >
                   <ClipboardPaste className="h-3.5 w-3.5" />
                   Import SQL
@@ -668,12 +690,22 @@ export default function SandboxPage() {
                     setShowTriggersPanel((v) => !v);
                   }}
                   disabled={!isReady}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-[11px] font-medium text-cyan-300 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/20 disabled:opacity-40"
+                  className={
+                    isLightTheme
+                      ? lightToolbarActionButtonClass
+                      : 'inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-[11px] font-medium text-cyan-300 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/20 disabled:opacity-40'
+                  }
                 >
                   <ListTree className="h-3.5 w-3.5" />
                   Triggers
                   {triggerRows.length > 0 && (
-                    <span className="rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-200">
+                    <span
+                      className={
+                        isLightTheme
+                          ? 'rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
+                          : 'rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-200'
+                      }
+                    >
                       {triggerRows.length}
                     </span>
                   )}
@@ -688,12 +720,22 @@ export default function SandboxPage() {
                     setShowProceduresPanel((v) => !v);
                   }}
                   disabled={!isReady}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1.5 text-[11px] font-medium text-fuchsia-300 transition-all hover:border-fuchsia-500/50 hover:bg-fuchsia-500/20 disabled:opacity-40"
+                  className={
+                    isLightTheme
+                      ? lightToolbarActionButtonClass
+                      : 'inline-flex items-center gap-1.5 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1.5 text-[11px] font-medium text-fuchsia-300 transition-all hover:border-fuchsia-500/50 hover:bg-fuchsia-500/20 disabled:opacity-40'
+                  }
                 >
                   <ScrollText className="h-3.5 w-3.5" />
                   Procedures
                   {procedureRows.length > 0 && (
-                    <span className="rounded-full bg-fuchsia-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-200">
+                    <span
+                      className={
+                        isLightTheme
+                          ? 'rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
+                          : 'rounded-full bg-fuchsia-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-200'
+                      }
+                    >
                       {procedureRows.length}
                     </span>
                   )}
@@ -708,12 +750,22 @@ export default function SandboxPage() {
                     setShowCursorsPanel((v) => !v);
                   }}
                   disabled={!isReady}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-[11px] font-medium text-sky-300 transition-all hover:border-sky-500/50 hover:bg-sky-500/20 disabled:opacity-40"
+                  className={
+                    isLightTheme
+                      ? lightToolbarActionButtonClass
+                      : 'inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-[11px] font-medium text-sky-300 transition-all hover:border-sky-500/50 hover:bg-sky-500/20 disabled:opacity-40'
+                  }
                 >
                   <Terminal className="h-3.5 w-3.5" />
                   Cursors
                   {cursorRows.length > 0 && (
-                    <span className="rounded-full bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-sky-200">
+                    <span
+                      className={
+                        isLightTheme
+                          ? 'rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
+                          : 'rounded-full bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-sky-200'
+                      }
+                    >
                       {cursorRows.length}
                     </span>
                   )}
@@ -730,7 +782,11 @@ export default function SandboxPage() {
                     setShowSecurityPanel((v) => !v);
                   }}
                   disabled={!isReady}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-medium text-amber-300 transition-all hover:border-amber-500/50 hover:bg-amber-500/20 disabled:opacity-40"
+                  className={
+                    isLightTheme
+                      ? lightToolbarActionButtonClass
+                      : 'inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-medium text-amber-300 transition-all hover:border-amber-500/50 hover:bg-amber-500/20 disabled:opacity-40'
+                  }
                 >
                   <Shield className="h-3.5 w-3.5" />
                   Security
@@ -739,7 +795,11 @@ export default function SandboxPage() {
                 {/* Clear */}
                 <button
                   onClick={handleClearInputOutput}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
+                  className={
+                    isLightTheme
+                      ? lightToolbarDangerButtonClass
+                      : 'inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95'
+                  }
                 >
                   Clear
                 </button>
@@ -747,7 +807,11 @@ export default function SandboxPage() {
                 {/* Reset */}
                 <button
                   onClick={handleResetWorkspace}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
+                  className={
+                    isLightTheme
+                      ? lightToolbarDangerButtonClass
+                      : 'inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95'
+                  }
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Reset
@@ -922,16 +986,30 @@ export default function SandboxPage() {
             <SchemaBrowser tables={tables} />
             <Link
               href="/sandbox/history"
-              className="flex items-center gap-2.5 rounded-xl border border-zinc-700/50 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-violet-500/30 hover:bg-zinc-800/40"
+              className={cn(
+                'flex items-center gap-2.5 rounded-xl px-4 py-3 transition-colors',
+                isLightTheme
+                  ? 'border border-border/85 bg-card shadow-sm hover:border-slate-300 hover:bg-slate-50'
+                  : 'border border-zinc-700/50 bg-zinc-900/60 hover:border-violet-500/30 hover:bg-zinc-800/40',
+              )}
             >
-              <History className="h-4 w-4 text-violet-400" />
+              <History className={cn('h-4 w-4', isLightTheme ? 'text-slate-700' : 'text-violet-400')} />
               <div className="min-w-0 flex-1">
-                <span className="text-sm font-medium text-zinc-200">Query History</span>
+                <span className={cn('text-sm font-medium', isLightTheme ? 'text-slate-900' : 'text-zinc-200')}>
+                  Query History
+                </span>
                 {historyCount > 0 && (
-                  <p className="text-[11px] text-zinc-500">{historyCount} quer{historyCount === 1 ? 'y' : 'ies'} recorded</p>
+                  <p className={cn('text-[11px]', isLightTheme ? 'text-slate-500' : 'text-zinc-500')}>
+                    {historyCount} quer{historyCount === 1 ? 'y' : 'ies'} recorded
+                  </p>
                 )}
               </div>
-              <span className="rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-bold text-violet-400">
+              <span
+                className={cn(
+                  'rounded-md px-1.5 py-0.5 text-[10px] font-bold',
+                  isLightTheme ? 'bg-slate-700 text-white' : 'bg-violet-500/10 text-violet-400',
+                )}
+              >
                 {historyCount}
               </span>
             </Link>

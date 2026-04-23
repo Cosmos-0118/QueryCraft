@@ -170,11 +170,11 @@ function computeRelationshipPosition(
 /* ── Kind / Cardinality Configs ──────────────────────────── */
 
 const ATTR_KINDS: { value: AttributeKind; label: string; icon: typeof Key; color: string; bg: string }[] = [
-  { value: 'regular', label: 'Regular', icon: Circle, color: 'text-zinc-400', bg: 'bg-zinc-800/60 border-zinc-700/50' },
-  { value: 'key', label: 'Key (PK)', icon: Key, color: 'text-yellow-400', bg: 'bg-yellow-500/10 border-yellow-500/30' },
-  { value: 'multivalued', label: 'Multi', icon: Layers, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30' },
-  { value: 'derived', label: 'Derived', icon: CopySlash, color: 'text-zinc-500', bg: 'bg-zinc-800/40 border-zinc-600/40 border-dashed' },
-  { value: 'composite', label: 'Composite', icon: GitFork, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30' },
+  { value: 'regular', label: 'Regular', icon: Circle, color: 'text-slate-600', bg: 'bg-slate-100 border-slate-300' },
+  { value: 'key', label: 'Key (PK)', icon: Key, color: 'text-yellow-700', bg: 'bg-yellow-100 border-yellow-300' },
+  { value: 'multivalued', label: 'Multi', icon: Layers, color: 'text-blue-700', bg: 'bg-blue-100 border-blue-300' },
+  { value: 'derived', label: 'Derived', icon: CopySlash, color: 'text-slate-500', bg: 'bg-slate-100 border-slate-300 border-dashed' },
+  { value: 'composite', label: 'Composite', icon: GitFork, color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-300' },
 ];
 
 const CARDINALITIES: { value: Cardinality; label: string; desc: string }[] = [
@@ -253,17 +253,17 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
   };
 
   const iconBtn =
-    'inline-flex items-center justify-center rounded-lg p-2 text-zinc-500 transition-all duration-150 hover:bg-zinc-800/60 hover:text-zinc-300 disabled:pointer-events-none disabled:opacity-25';
+    'inline-flex items-center justify-center rounded-lg p-2 text-slate-500 transition-all duration-150 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-25';
 
   return (
     <div className="space-y-2">
       {/* Main bar */}
       <div
-        className="flex items-center gap-1 rounded-xl border border-zinc-800/60 px-2 py-1.5"
-        style={{ background: 'linear-gradient(180deg, rgba(24,24,27,0.8) 0%, rgba(24,24,27,0.95) 100%)', backdropFilter: 'blur(12px)' }}
+        className="flex items-center gap-1 rounded-xl border border-slate-300 bg-white px-2 py-1.5 shadow-sm"
+        style={{ backdropFilter: 'blur(12px)' }}
       >
         {/* Add buttons */}
-        <div className="flex items-center gap-0.5 rounded-lg bg-zinc-800/40 p-0.5">
+        <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
           {(['entity', 'attribute', 'relationship'] as const).map((m) => {
             const Icon = m === 'entity' ? Box : m === 'attribute' ? Circle : Diamond;
             const isActive = mode === m;
@@ -273,8 +273,8 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
                 onClick={() => openMode(m)}
                 className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150 ${
                   isActive
-                    ? 'bg-violet-500/15 text-violet-300 shadow-sm shadow-violet-500/10'
-                    : 'text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-200'
+                    ? 'bg-slate-800 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-200 hover:text-slate-900'
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
@@ -284,7 +284,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
           })}
         </div>
 
-        <div className="mx-1 h-5 w-px bg-zinc-800" />
+        <div className="mx-1 h-5 w-px bg-slate-300" />
 
         <button onClick={store.undo} disabled={!store.canUndo} className={iconBtn} title="Undo (⌘Z)">
           <Undo2 className="h-3.5 w-3.5" />
@@ -293,7 +293,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
           <Redo2 className="h-3.5 w-3.5" />
         </button>
 
-        <div className="mx-1 h-5 w-px bg-zinc-800" />
+        <div className="mx-1 h-5 w-px bg-slate-300" />
 
         <button
           onClick={onExport}
@@ -301,7 +301,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
           className={`${iconBtn} gap-1.5 px-2.5 text-[11px] font-medium`}
         >
           <Download className="h-3.5 w-3.5" />
-          <span className="text-zinc-400">Export</span>
+          <span className="text-slate-600">Export</span>
         </button>
 
         <div className="flex-1" />
@@ -309,7 +309,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
         {store.selectedId && (
           <button
             onClick={() => { store.removeNode(store.selectedId!); store.setSelectedId(null); }}
-            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-red-400/80 transition-all duration-150 hover:bg-red-500/10 hover:text-red-400"
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-rose-700 transition-all duration-150 hover:bg-rose-100 hover:text-rose-800"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Delete
@@ -318,7 +318,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
         <button
           onClick={store.clear}
           disabled={store.entities.length === 0 && store.attributes.length === 0 && store.relationships.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-red-400/60 transition-all duration-150 hover:bg-red-500/10 hover:text-red-400 disabled:pointer-events-none disabled:opacity-25"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-rose-700/80 transition-all duration-150 hover:bg-rose-100 hover:text-rose-800 disabled:pointer-events-none disabled:opacity-25"
         >
           Clear All
         </button>
@@ -327,8 +327,8 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
       {/* ── Compact Inline Add Form ─────────────────────── */}
       {mode && (
         <div
-          className="flex items-center gap-2 rounded-xl border border-zinc-800/60 px-3 py-2"
-          style={{ background: 'linear-gradient(180deg, rgba(24,24,27,0.9) 0%, rgba(18,18,21,0.95) 100%)', backdropFilter: 'blur(12px)' }}
+          className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm"
+          style={{ backdropFilter: 'blur(12px)' }}
         >
           {/* Mode indicator dot */}
           <div
@@ -347,7 +347,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                className="min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/40"
+                className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500"
                 placeholder="Entity name…"
               />
               <button
@@ -355,13 +355,13 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
                 onClick={() => setIsWeak(!isWeak)}
                 className={`flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[10px] font-medium transition-all ${
                   isWeak
-                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
-                    : 'border-zinc-800 text-zinc-500 hover:text-zinc-400'
+                    ? 'border-amber-300 bg-amber-100 text-amber-700'
+                    : 'border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-slate-800'
                 }`}
               >
                 <div
                   className={`h-2.5 w-2.5 rounded-sm border transition-all ${
-                    isWeak ? 'border-amber-400 bg-amber-400' : 'border-zinc-600'
+                    isWeak ? 'border-amber-500 bg-amber-500' : 'border-slate-400'
                   }`}
                 />
                 Weak
@@ -371,7 +371,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
 
           {/* ── Attribute Form ───────────────────── */}
           {mode === 'attribute' && store.entities.length === 0 && (
-            <p className="flex-1 text-[11px] text-zinc-500">Add an entity first</p>
+            <p className="flex-1 text-[11px] text-slate-500">Add an entity first</p>
           )}
           {mode === 'attribute' && store.entities.length > 0 && (
             <>
@@ -381,13 +381,13 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                className="min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/40"
+                className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500"
                 placeholder="Attribute name…"
               />
               <select
                 value={attrEntity}
                 onChange={(e) => setAttrEntity(e.target.value)}
-                className="shrink-0 rounded-md border border-zinc-800 bg-zinc-900/80 px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500/40"
+                className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-slate-500"
               >
                 {store.entities.map((e) => (
                   <option key={e.id} value={e.id}>{e.name}</option>
@@ -405,7 +405,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
                       className={`rounded-md border p-1.5 transition-all ${
                         active
                           ? `${k.bg} ${k.color}`
-                          : 'border-zinc-800/60 text-zinc-600 hover:text-zinc-400'
+                          : 'border-slate-300 text-slate-500 hover:bg-slate-100 hover:text-slate-700'
                       }`}
                     >
                       <Icon className="h-3 w-3" />
@@ -418,7 +418,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
 
           {/* ── Relationship Form ────────────────── */}
           {mode === 'relationship' && store.entities.length < 2 && (
-            <p className="flex-1 text-[11px] text-zinc-500">Need at least 2 entities</p>
+            <p className="flex-1 text-[11px] text-slate-500">Need at least 2 entities</p>
           )}
           {mode === 'relationship' && store.entities.length >= 2 && (
             <>
@@ -428,13 +428,13 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                className="min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/40"
+                className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500"
                 placeholder="Relationship name…"
               />
               <select
                 value={relEntity1}
                 onChange={(e) => setRelEntity1(e.target.value)}
-                className="shrink-0 rounded-md border border-zinc-800 bg-zinc-900/80 px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500/40"
+                className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-slate-500"
               >
                 {store.entities.map((e) => (
                   <option key={e.id} value={e.id}>{e.name}</option>
@@ -449,7 +449,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
                     className={`rounded-md border px-2 py-1 text-[10px] font-bold tabular-nums transition-all ${
                       cardinality === c.value
                         ? 'border-violet-500/40 bg-violet-500/15 text-violet-300'
-                        : 'border-zinc-800 text-zinc-500 hover:text-zinc-400'
+                        : 'border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-slate-800'
                     }`}
                   >
                     {c.label}
@@ -459,14 +459,14 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
               <select
                 value={relEntity2}
                 onChange={(e) => setRelEntity2(e.target.value)}
-                className="shrink-0 rounded-md border border-zinc-800 bg-zinc-900/80 px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500/40"
+                className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-slate-500"
               >
                 {store.entities.map((e) => (
                   <option key={e.id} value={e.id}>{e.name}</option>
                 ))}
               </select>
               {relEntity1 === relEntity2 && (
-                <span className="shrink-0 text-[10px] text-amber-400/80">⚠ Same</span>
+                <span className="shrink-0 text-[10px] text-amber-700">⚠ Same</span>
               )}
             </>
           )}
@@ -495,7 +495,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
           </button>
           <button
             onClick={() => { setMode(null); setName(''); }}
-            className="shrink-0 rounded-md p-1 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-400"
+            className="shrink-0 rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
           >
             <X className="h-3.5 w-3.5" />
           </button>

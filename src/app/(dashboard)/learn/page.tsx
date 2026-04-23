@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useThemeStore } from '@/stores/theme-store';
+import { cn } from '@/lib/utils/helpers';
 import {
   BookOpen,
   Check,
@@ -519,7 +521,16 @@ const SECTIONS: Section[] = [
 
 /* ──────────────────── Color Map ──────────────────── */
 
-const COLOR_MAP: Record<string, { pill: string; pillBg: string; border: string; badge: string; glow: string; codeText: string }> = {
+type ColorStyles = {
+  pill: string;
+  pillBg: string;
+  border: string;
+  badge: string;
+  glow: string;
+  codeText: string;
+};
+
+const COLOR_MAP: Record<string, ColorStyles> = {
   sky: { pill: 'text-sky-400', pillBg: 'bg-sky-500/15 border-sky-500/25', border: 'border-sky-500/20', badge: 'bg-sky-500/15 text-sky-300 border-sky-500/20', glow: 'shadow-sky-500/10', codeText: 'text-sky-300' },
   violet: { pill: 'text-violet-400', pillBg: 'bg-violet-500/15 border-violet-500/25', border: 'border-violet-500/20', badge: 'bg-violet-500/15 text-violet-300 border-violet-500/20', glow: 'shadow-violet-500/10', codeText: 'text-violet-300' },
   emerald: { pill: 'text-emerald-400', pillBg: 'bg-emerald-500/15 border-emerald-500/25', border: 'border-emerald-500/20', badge: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20', glow: 'shadow-emerald-500/10', codeText: 'text-emerald-300' },
@@ -530,6 +541,18 @@ const COLOR_MAP: Record<string, { pill: string; pillBg: string; border: string; 
   orange: { pill: 'text-orange-400', pillBg: 'bg-orange-500/15 border-orange-500/25', border: 'border-orange-500/20', badge: 'bg-orange-500/15 text-orange-300 border-orange-500/20', glow: 'shadow-orange-500/10', codeText: 'text-orange-300' },
   lime: { pill: 'text-lime-400', pillBg: 'bg-lime-500/15 border-lime-500/25', border: 'border-lime-500/20', badge: 'bg-lime-500/15 text-lime-300 border-lime-500/20', glow: 'shadow-lime-500/10', codeText: 'text-lime-300' },
 };
+
+const LIGHT_COLOR_STYLE: ColorStyles = {
+  pill: 'text-slate-700',
+  pillBg: 'bg-slate-200 border-slate-300',
+  border: 'border-slate-200',
+  badge: 'bg-slate-700 text-white border-slate-700',
+  glow: 'shadow-slate-900/5',
+  codeText: 'text-slate-200',
+};
+
+const resolveColorStyles = (color: string, isLightTheme: boolean) =>
+  isLightTheme ? LIGHT_COLOR_STYLE : (COLOR_MAP[color] ?? COLOR_MAP.sky);
 
 const TOTAL_COMMANDS = SECTIONS.reduce((sum, s) => sum + s.commands.length, 0);
 const ALL_COMMANDS: IndexedCommand[] = SECTIONS.flatMap((section) =>
@@ -615,7 +638,7 @@ const scoreCommand = (queryText: string, command: CommandEntry, section: Section
 
 /* ──────────────────── Copy Button ──────────────────── */
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, isLightTheme }: { text: string; isLightTheme: boolean }) {
   const [copied, setCopied] = useState(false);
 
   return (
@@ -625,12 +648,17 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="absolute right-2.5 top-2.5 rounded-md border border-white/[0.08] bg-white/[0.06] p-1.5 opacity-0 backdrop-blur transition-all hover:bg-white/[0.12] group-hover/code:opacity-100"
+      className={cn(
+        'absolute right-2.5 top-2.5 rounded-md p-1.5 opacity-0 backdrop-blur transition-all group-hover/code:opacity-100',
+        isLightTheme
+          ? 'border border-slate-300 bg-white/90 hover:bg-slate-100'
+          : 'border border-white/[0.08] bg-white/[0.06] hover:bg-white/[0.12]',
+      )}
       title="Copy"
     >
       {copied
-        ? <Check size={11} className="text-emerald-400" />
-        : <Copy size={11} className="text-white/50" />
+        ? <Check size={11} className={isLightTheme ? 'text-emerald-600' : 'text-emerald-400'} />
+        : <Copy size={11} className={isLightTheme ? 'text-slate-500' : 'text-white/50'} />
       }
     </button>
   );
@@ -638,8 +666,8 @@ function CopyButton({ text }: { text: string }) {
 
 /* ──────────────────── Command Card ──────────────────── */
 
-function CommandCard({ cmd, section }: { cmd: CommandEntry; section: Section }) {
-  const colors = COLOR_MAP[section.color] ?? COLOR_MAP.sky;
+function CommandCard({ cmd, section, isLightTheme }: { cmd: CommandEntry; section: Section; isLightTheme: boolean }) {
+  const colors = resolveColorStyles(section.color, isLightTheme);
 
   return (
     <motion.div
@@ -649,7 +677,7 @@ function CommandCard({ cmd, section }: { cmd: CommandEntry; section: Section }) 
       className={`group relative overflow-hidden rounded-xl border border-border/60 bg-card transition-all duration-200 hover:-translate-y-0.5 hover:border-border hover:shadow-lg ${colors.glow}`}
     >
       {/* Gradient top line */}
-      <div className={`h-[2px] w-full bg-gradient-to-r ${section.gradient} opacity-70`} />
+      <div className={`h-[2px] w-full bg-gradient-to-r ${isLightTheme ? 'from-slate-500 to-slate-600' : section.gradient} opacity-70`} />
 
       <div className="p-4">
         {/* Command badge + description */}
@@ -662,10 +690,13 @@ function CommandCard({ cmd, section }: { cmd: CommandEntry; section: Section }) 
 
         {/* Code block */}
         <div className="group/code relative">
-          <pre className="overflow-x-auto rounded-lg border border-white/[0.07] bg-[#0d0f1a] px-4 py-3 font-mono text-xs leading-relaxed">
+          <pre className={cn(
+            'overflow-x-auto rounded-lg border px-4 py-3 font-mono text-xs leading-relaxed',
+            isLightTheme ? 'border-slate-200 bg-slate-950' : 'border-white/[0.07] bg-[#0d0f1a]',
+          )}>
             <code className={`${colors.codeText}`}>{cmd.example}</code>
           </pre>
-          <CopyButton text={cmd.example} />
+          <CopyButton text={cmd.example} isLightTheme={isLightTheme} />
         </div>
       </div>
     </motion.div>
@@ -675,12 +706,14 @@ function CommandCard({ cmd, section }: { cmd: CommandEntry; section: Section }) 
 /* ──────────────────── Page ──────────────────── */
 
 export default function LearnPage() {
+  const { theme } = useThemeStore();
   const [activeTab, setActiveTab] = useState(SECTIONS[0].id);
   const [search, setSearch] = useState('');
+  const isLightTheme = theme === 'light';
 
   const query = normalize(search);
   const activeSection = SECTIONS.find((s) => s.id === activeTab) ?? SECTIONS[0];
-  const colors = COLOR_MAP[activeSection.color] ?? COLOR_MAP.sky;
+  const colors = resolveColorStyles(activeSection.color, isLightTheme);
 
   const searchHits = useMemo(() => {
     if (!query) return [] as SearchHit[];
@@ -724,23 +757,47 @@ export default function LearnPage() {
   return (
     <div className="relative flex min-h-full flex-col overflow-hidden">
       {/* Subtle background */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.05),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(99,102,241,0.06),transparent_45%)]" />
+      <div
+        className={cn(
+          'pointer-events-none absolute inset-0',
+          isLightTheme
+            ? 'bg-[radial-gradient(ellipse_at_top_left,rgba(71,85,105,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(100,116,139,0.07),transparent_45%)]'
+            : 'bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.05),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(99,102,241,0.06),transparent_45%)]',
+        )}
+      />
 
       {/* Top panel */}
-      <div className="relative shrink-0 border-b border-border/50 bg-card/60 backdrop-blur-xl">
+      <div
+        className={cn(
+          'relative shrink-0 border-b backdrop-blur-xl',
+          isLightTheme ? 'border-slate-200 bg-white/80' : 'border-border/50 bg-card/60',
+        )}
+      >
         <div className="mx-auto max-w-6xl px-4 pb-0 pt-5 sm:px-6">
 
           {/* Header row */}
           <div className="mb-5 grid gap-5 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
             <div>
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-primary">
+              <div
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-widest',
+                  isLightTheme ? 'border-slate-300 bg-slate-100 text-slate-700' : 'border-primary/20 bg-primary/10 text-primary',
+                )}
+              >
                 <Sparkles size={11} />
                 SQL Reference Atlas
               </div>
 
               <h1 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">
                 Commands & Syntax
-                <span className="block bg-gradient-to-r from-teal-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent">
+                <span
+                  className={cn(
+                    'block bg-clip-text text-transparent',
+                    isLightTheme
+                      ? 'bg-gradient-to-r from-slate-700 via-slate-600 to-slate-500'
+                      : 'bg-gradient-to-r from-teal-400 via-cyan-400 to-blue-400',
+                  )}
+                >
                   beautifully organized
                 </span>
               </h1>
@@ -759,12 +816,24 @@ export default function LearnPage() {
             </div>
 
             {/* Search */}
-            <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-background via-background to-muted/40 p-2 shadow-[0_14px_35px_-22px_rgba(2,6,23,0.55)]">
+            <div
+              className={cn(
+                'rounded-2xl border p-2',
+                isLightTheme
+                  ? 'border-slate-200 bg-white shadow-sm'
+                  : 'border-border/60 bg-gradient-to-br from-background via-background to-muted/40 shadow-[0_14px_35px_-22px_rgba(2,6,23,0.55)]',
+              )}
+            >
               <div className="mb-2 flex items-center justify-between px-1">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
                   Smart Search
                 </span>
-                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                <span
+                  className={cn(
+                    'rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                    isLightTheme ? 'border-slate-300 bg-slate-100 text-slate-700' : 'border-primary/20 bg-primary/10 text-primary',
+                  )}
+                >
                   All Categories
                 </span>
               </div>
@@ -775,7 +844,12 @@ export default function LearnPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Try: left join null values, normalize 3nf, create trigger..."
-                  className="h-12 w-full rounded-xl border border-border/70 bg-background/95 py-2 pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground/55 outline-none transition-all focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
+                  className={cn(
+                    'h-12 w-full rounded-xl border py-2 pl-9 pr-9 text-sm outline-none transition-all',
+                    isLightTheme
+                      ? 'border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:border-slate-500 focus:ring-4 focus:ring-slate-200'
+                      : 'border-border/70 bg-background/95 text-foreground placeholder:text-muted-foreground/55 focus:border-primary/50 focus:ring-4 focus:ring-primary/10',
+                  )}
                 />
                 {search && (
                   <button
@@ -792,7 +866,7 @@ export default function LearnPage() {
           {/* Category tabs */}
           <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-3 scrollbar-hide">
             {SECTIONS.map((section) => {
-              const c = COLOR_MAP[section.color] ?? COLOR_MAP.sky;
+              const c = resolveColorStyles(section.color, isLightTheme);
               const isActive = section.id === activeTab;
               const hasMatch = matchingTabIds === null || matchingTabIds.has(section.id);
 
@@ -813,7 +887,12 @@ export default function LearnPage() {
                     </span>
                   )}
                   {query && hasMatch && (
-                    <span className="ml-0.5 rounded-full border border-white/10 bg-white/10 px-1.5 py-0.5 text-[9px] font-bold text-zinc-200">
+                    <span
+                      className={cn(
+                        'ml-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-bold',
+                        isLightTheme ? 'border-slate-300 bg-slate-100 text-slate-600' : 'border-white/10 bg-white/10 text-zinc-200',
+                      )}
+                    >
                       {searchHits.filter((hit) => hit.section.id === section.id).length}
                     </span>
                   )}
@@ -831,7 +910,12 @@ export default function LearnPage() {
           {/* Section header */}
           <div className={`mb-5 flex items-center justify-between rounded-xl border ${colors.border} bg-card/80 px-4 py-3 backdrop-blur`}>
             <div className="flex items-center gap-3">
-              <div className={`rounded-lg bg-gradient-to-br ${activeSection.gradient} p-2 text-black shadow-md`}>
+              <div
+                className={cn(
+                  'rounded-lg p-2 shadow-md',
+                  isLightTheme ? 'bg-gradient-to-br from-slate-700 to-slate-600 text-white shadow-slate-900/10' : `bg-gradient-to-br ${activeSection.gradient} text-black`,
+                )}
+              >
                 {activeSection.icon}
               </div>
               <div>
@@ -842,7 +926,13 @@ export default function LearnPage() {
                 </p>
               </div>
             </div>
-            <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${query ? 'border-primary/25 bg-primary/10 text-primary' : colors.badge}`}>
+            <span
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${query
+                ? isLightTheme
+                  ? 'border-slate-700 bg-slate-700 text-white'
+                  : 'border-primary/25 bg-primary/10 text-primary'
+                : colors.badge}`}
+            >
               {query ? 'Ranked' : activeSection.shortTitle}
             </span>
           </div>
@@ -881,6 +971,7 @@ export default function LearnPage() {
                     key={`${(commandSectionMap.get(cmd) ?? activeSection).id}-${cmd.command}`}
                     cmd={cmd}
                     section={commandSectionMap.get(cmd) ?? activeSection}
+                    isLightTheme={isLightTheme}
                   />
                 ))}
               </motion.div>
