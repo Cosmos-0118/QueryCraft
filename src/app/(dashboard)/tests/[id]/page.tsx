@@ -17,6 +17,7 @@ import {
   Save,
   ShieldCheck,
   Sparkles,
+  Trophy,
   Trash2,
   UserCircle2,
 } from 'lucide-react';
@@ -41,10 +42,19 @@ interface Test {
   question_mode: 'mcq_only' | 'sql_only' | 'mixed';
   mix_mcq_percent: number | null;
   mix_sql_fill_percent: number | null;
+  module_type?: 'classic' | 'interactive_quiz';
+  interactive_settings?: {
+    question_timer_seconds: number;
+    max_points_per_question: number;
+    randomize_questions: boolean;
+    randomize_options: boolean;
+    difficulty_profile: 'basic' | 'medium' | 'hard' | 'mixed';
+  };
   test_code?: string | null;
 }
 
 type RandomQuestionType = 'mcq' | 'sql_fill' | 'mixed';
+type DifficultyProfile = 'basic' | 'medium' | 'hard' | 'mixed';
 
 const MIN_MIX_MCQ_COUNT = 1;
 
@@ -119,6 +129,7 @@ export default function TestDetailPage() {
   const [newMcqCorrectKey, setNewMcqCorrectKey] = useState('A');
   const [randomCount, setRandomCount] = useState('5');
   const [randomQuestionType, setRandomQuestionType] = useState<RandomQuestionType>('mixed');
+  const [randomDifficulty, setRandomDifficulty] = useState<DifficultyProfile>('mixed');
   const [mixMcqCountInput, setMixMcqCountInput] = useState('3');
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
 
@@ -126,6 +137,8 @@ export default function TestDetailPage() {
   const [randomizingQuestions, setRandomizingQuestions] = useState(false);
   const [removingQuestionId, setRemovingQuestionId] = useState<string | null>(null);
   const [savingAnswerId, setSavingAnswerId] = useState<string | null>(null);
+
+  const isInteractiveQuiz = test?.module_type === 'interactive_quiz';
 
   const normalizedRandomCountPreview = useMemo(() => {
     const parsed = Number(randomCount);
@@ -176,6 +189,12 @@ export default function TestDetailPage() {
         setTest(loadedTest);
         setQuestions(loadedQuestions);
         setAnswerDrafts(loadedAnswerDrafts);
+
+        if (loadedTest?.module_type === 'interactive_quiz') {
+          setNewQuestionType('mcq');
+          setRandomQuestionType('mcq');
+          setRandomDifficulty(loadedTest.interactive_settings?.difficulty_profile ?? 'mixed');
+        }
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           setError('Failed to load test');
@@ -202,6 +221,11 @@ export default function TestDetailPage() {
     e.preventDefault();
     if (!isTeacher || !newQuestion.trim() || !testId) return;
 
+    if (isInteractiveQuiz && newQuestionType !== 'mcq') {
+      setActionError('Interactive Quiz supports MCQ questions only.');
+      return;
+    }
+
     if (newQuestionType === 'mcq') {
       const normalizedOptions = newMcqOptions
         .map((option) => ({ key: option.key, text: option.text.trim() }))
@@ -222,14 +246,15 @@ export default function TestDetailPage() {
     setActionError(null);
 
     try {
+      const effectiveQuestionType: 'mcq' | 'sql_fill' = isInteractiveQuiz ? 'mcq' : newQuestionType;
       const res = await fetch(`/api/tests/${testId}/questions${teacherAccessQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: newQuestion.trim(),
-          question_type: newQuestionType,
-          correct_answer: newQuestionType === 'mcq' ? newMcqCorrectKey : newQuestionAnswer.trim(),
-          options: newQuestionType === 'mcq'
+          question_type: effectiveQuestionType,
+          correct_answer: effectiveQuestionType === 'mcq' ? newMcqCorrectKey : newQuestionAnswer.trim(),
+          options: effectiveQuestionType === 'mcq'
             ? newMcqOptions.map((option) => ({ key: option.key, text: option.text.trim() }))
             : undefined,
         }),
@@ -298,14 +323,15 @@ export default function TestDetailPage() {
     }
 
     const normalizedCount = Math.max(1, Math.min(50, Math.floor(parsedCount)));
+    const effectiveQuestionType: RandomQuestionType = isInteractiveQuiz ? 'mcq' : randomQuestionType;
 
-    if (randomQuestionType === 'mixed' && normalizedCount < 2) {
+    if (effectiveQuestionType === 'mixed' && normalizedCount < 2) {
       setActionError('Mixed questions require at least 2 questions to include both types.');
       return;
     }
 
     let requestedMixMcqCount: number | undefined;
-    if (randomQuestionType === 'mixed') {
+    if (effectiveQuestionType === 'mixed') {
       const parsedMcqCount = Number(mixMcqCountInput);
       if (!Number.isFinite(parsedMcqCount)) {
         setActionError('Set a valid MCQ question count for mixed mode.');
@@ -328,8 +354,9 @@ export default function TestDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           count: normalizedCount,
-          question_type: randomQuestionType,
+          question_type: effectiveQuestionType,
           mix_mcq_count: requestedMixMcqCount,
+          difficulty: randomDifficulty,
         }),
       });
       const data = await res.json();
@@ -497,7 +524,7 @@ export default function TestDetailPage() {
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <Link
-          href={`/tests/${test.id}/attempt`}
+          href={test.module_type === 'interactive_quiz' ? `/interactive-quiz/${test.id}/attempt` : `/tests/${test.id}/attempt`}
           className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
         >
           <Play size={14} />
@@ -510,6 +537,15 @@ export default function TestDetailPage() {
           <BarChart3 size={14} />
           View Result
         </Link>
+        {isInteractiveQuiz && (
+          <Link
+            href={`/interactive-quiz/${test.id}/leaderboard`}
+            className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/12 px-3 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+          >
+            <Trophy size={14} />
+            View Leaderboard
+          </Link>
+        )}
         {isTeacher && (
           <Link
             href={`/tests/${test.id}/review`}
@@ -526,6 +562,18 @@ export default function TestDetailPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Student Access Code</p>
           <p className="mt-1 text-sm font-semibold text-teal-300">
             {test.test_code ?? 'Publish this test to generate a code.'}
+          </p>
+        </div>
+      )}
+
+      {isInteractiveQuiz && (
+        <div className="mb-4 rounded-xl border border-orange-400/20 bg-orange-400/[0.06] p-3 text-xs text-orange-100">
+          <p className="font-semibold uppercase tracking-[0.12em]">Interactive Quiz Rules</p>
+          <p className="mt-1">
+            Timer: {test.interactive_settings?.question_timer_seconds ?? 40}s per question, Max points: {test.interactive_settings?.max_points_per_question ?? 500},
+            Difficulty: {test.interactive_settings?.difficulty_profile ?? 'mixed'},
+            Randomize questions: {test.interactive_settings?.randomize_questions ? 'Yes' : 'No'},
+            Randomize options: {test.interactive_settings?.randomize_options ? 'Yes' : 'No'}.
           </p>
         </div>
       )}
@@ -583,11 +631,12 @@ export default function TestDetailPage() {
                   className="h-11 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                   value={newQuestionType}
                   onChange={(e) => setNewQuestionType(e.target.value as 'mcq' | 'sql_fill')}
+                  disabled={isInteractiveQuiz}
                 >
                   <option value="mcq">MCQ (multiple choice)</option>
-                  <option value="sql_fill">SQL / text answer</option>
+                  {!isInteractiveQuiz && <option value="sql_fill">SQL / text answer</option>}
                 </select>
-                {newQuestionType === 'mcq' ? (
+                {newQuestionType === 'mcq' || isInteractiveQuiz ? (
                   <select
                     className="h-11 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                     value={newMcqCorrectKey}
@@ -610,7 +659,7 @@ export default function TestDetailPage() {
                 )}
               </div>
 
-              {newQuestionType === 'mcq' && (
+              {(newQuestionType === 'mcq' || isInteractiveQuiz) && (
                 <div className="space-y-2 rounded-xl border border-border/70 bg-background/40 p-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     MCQ Options
@@ -651,7 +700,7 @@ export default function TestDetailPage() {
                   Add Random Questions From Database
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Pull approved sample questions from the question bank and choose which type to add.
+                  Pull approved sample questions from the question bank.
                 </p>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                   <input
@@ -665,17 +714,32 @@ export default function TestDetailPage() {
                   <select
                     value={randomQuestionType}
                     onChange={(e) => setRandomQuestionType(e.target.value as RandomQuestionType)}
+                    disabled={isInteractiveQuiz}
                     className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                   >
-                    <option value="mixed">
-                      Mixed Questions (MCQ + SQL/TEXT)
-                    </option>
+                    {!isInteractiveQuiz && (
+                      <option value="mixed">
+                        Mixed Questions (MCQ + SQL/TEXT)
+                      </option>
+                    )}
                     <option value="mcq">
                       MCQ only
                     </option>
-                    <option value="sql_fill">
-                      Test-based (SQL/TEXT) only
-                    </option>
+                    {!isInteractiveQuiz && (
+                      <option value="sql_fill">
+                        Test-based (SQL/TEXT) only
+                      </option>
+                    )}
+                  </select>
+                  <select
+                    value={randomDifficulty}
+                    onChange={(e) => setRandomDifficulty(e.target.value as DifficultyProfile)}
+                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="mixed">Difficulty: Mixed</option>
+                    <option value="basic">Difficulty: Basic (easy)</option>
+                    <option value="medium">Difficulty: Medium</option>
+                    <option value="hard">Difficulty: Hard</option>
                   </select>
                   <button
                     type="button"
@@ -688,7 +752,7 @@ export default function TestDetailPage() {
                   </button>
                 </div>
 
-                {randomQuestionType === 'mixed' && (
+                {!isInteractiveQuiz && randomQuestionType === 'mixed' && (
                   <div className="mt-3 space-y-3 rounded-xl border border-teal-500/20 bg-teal-500/[0.05] p-3">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-teal-200">

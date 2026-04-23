@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { addRandomQuestionsFromBankToTest, getTestById } from '@/lib/test/test-module-db';
 
 type RandomQuestionType = 'mcq' | 'sql_fill' | 'mixed';
+type DifficultyProfile = 'basic' | 'medium' | 'hard' | 'mixed';
 
 async function resolveTestId(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
@@ -41,11 +42,13 @@ export async function POST(
       question_type?: unknown;
       mix_mcq_percent?: unknown;
       mix_mcq_count?: unknown;
+      difficulty?: unknown;
     }));
     const countValue = body?.count;
     const requestedType = body?.question_type;
     const requestedMixMcqPercent = body?.mix_mcq_percent;
     const requestedMixMcqCount = body?.mix_mcq_count;
+    const requestedDifficulty = body?.difficulty;
 
     if (typeof countValue !== 'number' || !Number.isFinite(countValue) || countValue <= 0) {
       return NextResponse.json({ error: 'count must be a positive number.' }, { status: 400 });
@@ -64,6 +67,26 @@ export async function POST(
     }
 
     const questionType = requestedType as RandomQuestionType | undefined;
+
+    if (
+      requestedDifficulty !== undefined
+      && requestedDifficulty !== 'basic'
+      && requestedDifficulty !== 'medium'
+      && requestedDifficulty !== 'hard'
+      && requestedDifficulty !== 'mixed'
+    ) {
+      return NextResponse.json(
+        { error: 'difficulty must be one of basic, medium, hard, or mixed.' },
+        { status: 400 },
+      );
+    }
+
+    if (test.module_type === 'interactive_quiz' && questionType && questionType !== 'mcq') {
+      return NextResponse.json(
+        { error: 'Interactive quiz supports MCQ randomization only.' },
+        { status: 400 },
+      );
+    }
 
     if (requestedMixMcqCount !== undefined && requestedMixMcqCount !== null) {
       if (typeof requestedMixMcqCount !== 'number' || !Number.isFinite(requestedMixMcqCount)) {
@@ -101,6 +124,7 @@ export async function POST(
       mixMcqCount: typeof requestedMixMcqCount === 'number'
         ? Math.round(requestedMixMcqCount)
         : undefined,
+      difficulty: requestedDifficulty as DifficultyProfile | undefined,
     });
 
     if (questions === null) {

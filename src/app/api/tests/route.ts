@@ -1,7 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createDraftTest, listTests, type TestRole } from '@/lib/test/test-module-db';
+import type { InteractiveQuizSettings, TestModuleType } from '@/lib/test/interactive-quiz';
 
 type QuestionMode = 'mcq_only' | 'sql_only' | 'mixed';
+
+function parseInteractiveSettings(value: unknown): Partial<InteractiveQuizSettings> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('interactive_settings must be an object.');
+  }
+
+  const source = value as Record<string, unknown>;
+  const parsed: Partial<InteractiveQuizSettings> = {};
+
+  if (source.question_timer_seconds !== undefined) {
+    if (typeof source.question_timer_seconds !== 'number' || !Number.isFinite(source.question_timer_seconds)) {
+      throw new Error('interactive_settings.question_timer_seconds must be a number.');
+    }
+    parsed.question_timer_seconds = Math.round(source.question_timer_seconds);
+  }
+
+  if (source.max_points_per_question !== undefined) {
+    if (typeof source.max_points_per_question !== 'number' || !Number.isFinite(source.max_points_per_question)) {
+      throw new Error('interactive_settings.max_points_per_question must be a number.');
+    }
+    parsed.max_points_per_question = Math.round(source.max_points_per_question);
+  }
+
+  if (source.randomize_questions !== undefined) {
+    if (typeof source.randomize_questions !== 'boolean') {
+      throw new Error('interactive_settings.randomize_questions must be a boolean.');
+    }
+    parsed.randomize_questions = source.randomize_questions;
+  }
+
+  if (source.randomize_options !== undefined) {
+    if (typeof source.randomize_options !== 'boolean') {
+      throw new Error('interactive_settings.randomize_options must be a boolean.');
+    }
+    parsed.randomize_options = source.randomize_options;
+  }
+
+  if (source.difficulty_profile !== undefined) {
+    if (
+      source.difficulty_profile !== 'basic'
+      && source.difficulty_profile !== 'medium'
+      && source.difficulty_profile !== 'hard'
+      && source.difficulty_profile !== 'mixed'
+    ) {
+      throw new Error('interactive_settings.difficulty_profile must be one of basic, medium, hard, or mixed.');
+    }
+
+    parsed.difficulty_profile = source.difficulty_profile;
+  }
+
+  return parsed;
+}
 
 function parseOptionalPercent(value: unknown, fieldName: 'mix_mcq_percent' | 'mix_sql_fill_percent') {
   if (value === undefined || value === null) {
@@ -57,6 +114,20 @@ export async function POST(req: NextRequest) {
 
     const mixMcqPercent = parseOptionalPercent(body.mix_mcq_percent, 'mix_mcq_percent');
     const mixSqlFillPercent = parseOptionalPercent(body.mix_sql_fill_percent, 'mix_sql_fill_percent');
+    const moduleType = body.module_type;
+
+    if (
+      moduleType !== undefined
+      && moduleType !== 'classic'
+      && moduleType !== 'interactive_quiz'
+    ) {
+      return NextResponse.json(
+        { error: 'module_type must be one of classic or interactive_quiz.' },
+        { status: 400 },
+      );
+    }
+
+    const interactiveSettings = parseInteractiveSettings(body.interactive_settings);
 
     const test = await createDraftTest({
       title: body.title,
@@ -66,6 +137,8 @@ export async function POST(req: NextRequest) {
       mix_mcq_percent: mixMcqPercent,
       mix_sql_fill_percent: mixSqlFillPercent,
       duration_minutes: body.duration_minutes,
+      module_type: moduleType as TestModuleType | undefined,
+      interactive_settings: interactiveSettings,
     });
 
     return NextResponse.json({ test }, { status: 201 });
