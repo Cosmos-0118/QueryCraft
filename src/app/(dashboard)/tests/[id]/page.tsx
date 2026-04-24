@@ -12,6 +12,7 @@ import {
   ClipboardList,
   Clock3,
   Loader2,
+  Play,
   Plus,
   Save,
   Sparkles,
@@ -53,8 +54,6 @@ interface Test {
 
 type RandomQuestionType = 'mcq' | 'sql_fill' | 'mixed';
 type DifficultyProfile = 'basic' | 'medium' | 'hard' | 'mixed';
-
-const MIN_MIX_MCQ_COUNT = 1;
 
 const MIN_MIX_MCQ_COUNT = 1;
 

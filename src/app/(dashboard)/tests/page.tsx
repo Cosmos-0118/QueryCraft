@@ -18,7 +18,7 @@ import {
   Pencil,
   Plus,
   Send,
-  ShieldCheck,
+  Sparkles,
   UserCheck,
   Users,
 } from 'lucide-react';

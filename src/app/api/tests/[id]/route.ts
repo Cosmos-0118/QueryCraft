@@ -75,24 +75,6 @@ function parseOptionalPercent(value: unknown, fieldName: 'mix_mcq_percent' | 'mi
   return Math.round(value);
 }
 
-type QuestionMode = 'mcq_only' | 'sql_only' | 'mixed';
-
-function parseOptionalPercent(value: unknown, fieldName: 'mix_mcq_percent' | 'mix_sql_fill_percent') {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (value === null) {
-    return null;
-  }
-
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`${fieldName} must be a number.`);
-  }
-
-  return Math.round(value);
-}
-
 function resolveViewer(req: NextRequest): { role?: 'teacher' | 'student'; userId?: string } {
   const roleParam = req.nextUrl.searchParams.get('role');
   const role = roleParam === 'teacher' || roleParam === 'student'
