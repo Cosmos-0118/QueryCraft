@@ -1,0 +1,6 @@
+so these are the stuff to be changed now:
+1) so if the faculty chooses a test tyep and goes inside
+it should show only the option to create a test of that type and not show the options to create other types of tests.
+2) there should be a common test history page for all types of tests and it should show the type of test in the history list.
+3)dont mix up both the test types in the dashboard, there should be a separate section for each type of test and the faculty should be able to easily navigate between them.
+4) when the faculty clicks on a test in the history page, it should show the details of that test and not mix up the details of different types of tests.

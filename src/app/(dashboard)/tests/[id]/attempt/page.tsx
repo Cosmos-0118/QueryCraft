@@ -26,6 +26,7 @@ interface Test {
   created_by: string;
   updated_at: string;
   duration_minutes?: number;
+  module_type?: 'classic' | 'interactive_quiz';
 }
 
 interface Question {
@@ -203,6 +204,11 @@ export default function TestAttemptPage() {
           return;
         }
 
+        if ((testData.test as Test).module_type === 'interactive_quiz') {
+          router.replace(`/interactive-quiz/${testId}/attempt`);
+          return;
+        }
+
         const attemptRes = await fetch(`/api/tests/${testId}/attempts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -256,7 +262,7 @@ export default function TestAttemptPage() {
     loadAttemptContext();
 
     return () => controller.abort();
-  }, [isStudent, testId, user]);
+  }, [isStudent, router, testId, user]);
 
   useEffect(() => {
     if (!test?.duration_minutes) return;

@@ -16,13 +16,13 @@ import {
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 const tools: { title: string; description: string; href: string; icon: ReactNode }[] = [
-  { title: 'Guided Learn', description: 'Structured DBMS lessons with visual walkthroughs and 86+ copyable references.', href: '/learn', icon: <BookOpen size={16} /> },
-  { title: 'SQL Sandbox', description: 'Run SQL live with autocomplete, result tables, and query history.', href: '/sandbox', icon: <Terminal size={16} /> },
-  { title: 'Table Generator', description: 'Generate realistic datasets and SQL INSERT statements instantly.', href: '/generator', icon: <Sparkles size={16} /> },
-  { title: 'Relational Algebra', description: 'Compose expressions, inspect evaluations, and map to SQL.', href: '/algebra', icon: <Sigma size={16} /> },
-  { title: 'Tuple Calculus', description: 'Use TRC notation with quantifiers and convert it to SQL.', href: '/tuple-calculus', icon: <FunctionSquare size={16} /> },
-  { title: 'ER Builder', description: 'Design models visually and convert diagrams to relational schema.', href: '/er-builder', icon: <PenTool size={16} /> },
-  { title: 'Normalization', description: 'Walk through normal forms with decomposition visualizations.', href: '/normalizer', icon: <RefreshCw size={16} /> },
+  { title: 'Guided Learn', description: 'Structured DBMS lessons with visual walkthroughs and 86+ copyable references.', href: '/learn', icon: <BookOpen size={16} suppressHydrationWarning /> },
+  { title: 'SQL Sandbox', description: 'Run SQL live with autocomplete, result tables, and query history.', href: '/sandbox', icon: <Terminal size={16} suppressHydrationWarning /> },
+  { title: 'Table Generator', description: 'Generate realistic datasets and SQL INSERT statements instantly.', href: '/generator', icon: <Sparkles size={16} suppressHydrationWarning /> },
+  { title: 'Relational Algebra', description: 'Compose expressions, inspect evaluations, and map to SQL.', href: '/algebra', icon: <Sigma size={16} suppressHydrationWarning /> },
+  { title: 'Tuple Calculus', description: 'Use TRC notation with quantifiers and convert it to SQL.', href: '/tuple-calculus', icon: <FunctionSquare size={16} suppressHydrationWarning /> },
+  { title: 'ER Builder', description: 'Design models visually and convert diagrams to relational schema.', href: '/er-builder', icon: <PenTool size={16} suppressHydrationWarning /> },
+  { title: 'Normalization', description: 'Walk through normal forms with decomposition visualizations.', href: '/normalizer', icon: <RefreshCw size={16} suppressHydrationWarning /> },
 ];
 
 const fadeUp = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
@@ -288,7 +288,7 @@ export default function Home() {
           <div className="mx-auto flex h-14 w-full max-w-[1400px] items-center justify-between px-6 lg:px-10">
             <div className="flex items-center gap-2">
               <div className="flex h-6 w-6 items-center justify-center rounded-md bg-teal-400">
-                <CircuitBoard size={12} className="text-black" />
+                <CircuitBoard size={12} className="text-black" suppressHydrationWarning />
               </div>
               <span className="text-sm font-bold tracking-tight text-white">
                 Query<span className="text-teal-400">Craft</span>
@@ -298,7 +298,7 @@ export default function Home() {
               href="/login"
               className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-white/[0.13]"
             >
-              Launch App <ArrowRight size={11} />
+              Launch App <ArrowRight size={11} suppressHydrationWarning />
             </Link>
           </div>
         </header>
@@ -325,7 +325,7 @@ export default function Home() {
                   href="/login"
                   className="inline-flex items-center gap-2 rounded-full bg-teal-400 px-6 py-2.5 text-sm font-bold text-black transition hover:bg-teal-300"
                 >
-                  Get Started <ArrowRight size={13} />
+                  Get Started <ArrowRight size={13} suppressHydrationWarning />
                 </Link>
                 <Link
                   href="/login?next=%2Flearn"
@@ -369,7 +369,7 @@ export default function Home() {
                         <div className="rounded-xl border border-white/[0.12] bg-white/[0.03] p-2.5 text-zinc-300 transition-colors group-hover:border-teal-300/40 group-hover:text-teal-300">
                           {tool.icon}
                         </div>
-                        <ArrowRight size={13} className="mt-1 text-zinc-600 transition-all group-hover:translate-x-0.5 group-hover:text-teal-300" />
+                        <ArrowRight size={13} className="mt-1 text-zinc-600 transition-all group-hover:translate-x-0.5 group-hover:text-teal-300" suppressHydrationWarning />
                       </div>
                       <div className="mt-4 flex-1">
                         <h3 className="text-base font-semibold text-zinc-100 group-hover:text-white">{tool.title}</h3>
@@ -397,7 +397,7 @@ export default function Home() {
                 href="/login"
                 className="mt-6 inline-flex items-center gap-2 rounded-full bg-teal-400 px-7 py-2.5 text-sm font-bold text-black transition hover:bg-teal-300"
               >
-                Start Learning <ArrowRight size={13} />
+                Start Learning <ArrowRight size={13} suppressHydrationWarning />
               </Link>
             </motion.div>
           </section>

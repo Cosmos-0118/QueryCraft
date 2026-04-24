@@ -18,7 +18,7 @@ import {
   Pencil,
   Plus,
   Send,
-  ShieldCheck,
+  Sparkles,
   UserCheck,
   Users,
 } from 'lucide-react';
@@ -30,6 +30,15 @@ interface Test {
   created_by: string;
   updated_at: string;
   test_code?: string | null;
+  module_type?: 'classic' | 'interactive_quiz';
+}
+
+function getAttemptPath(test: Test) {
+  if (test.module_type === 'interactive_quiz') {
+    return `/interactive-quiz/${test.id}/attempt`;
+  }
+
+  return `/tests/${test.id}/attempt`;
 }
 
 function formatStatus(status: string) {
@@ -280,6 +289,38 @@ function StatCard({
   );
 }
 
+function ChoiceCard({
+  title,
+  description,
+  icon,
+  actionLabel,
+  accentClass,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  actionLabel: string;
+  accentClass: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group rounded-2xl border border-border/70 bg-card/85 p-5 text-left shadow-xl shadow-black/10 transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-card"
+    >
+      <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border ${accentClass}`}>
+        {icon}
+      </div>
+      <h2 className="mt-4 text-lg font-semibold tracking-tight text-foreground">{title}</h2>
+      <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>
+      <span className="mt-4 inline-flex items-center rounded-lg border border-border/70 bg-background/60 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground transition group-hover:border-primary/30 group-hover:text-foreground">
+        {actionLabel}
+      </span>
+    </button>
+  );
+}
+
 export default function TestsPage() {
   const router = useRouter();
   const [tests, setTests] = useState<Test[]>([]);
@@ -293,6 +334,7 @@ export default function TestsPage() {
   const [joinCode, setJoinCode] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [showTeacherModuleChooser, setShowTeacherModuleChooser] = useState(false);
 
   const { user, setRole, clearRole } = useAuth();
   const isTeacher = user?.role === 'teacher';
@@ -305,6 +347,7 @@ export default function TestsPage() {
     clearRole();
     setJoinError(null);
     setError(null);
+    setShowTeacherModuleChooser(false);
   };
 
   useEffect(() => {
@@ -430,7 +473,8 @@ export default function TestsPage() {
       }
 
       setJoinCode('');
-      router.push(`/tests/${data.test.id}/attempt`);
+      const joinPath = getAttemptPath(data.test as Test);
+      router.push(joinPath);
     } catch {
       setJoinError('Unable to join test with this code.');
     } finally {
@@ -447,21 +491,76 @@ export default function TestsPage() {
           <p className="mx-auto mt-1.5 max-w-2xl text-center text-sm text-muted-foreground">
             Continue as a teacher to create and publish tests, or as a student to join via test code.
           </p>
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
-            <button
-              onClick={() => setRole('teacher')}
-              className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-teal-300/60 hover:bg-gradient-to-r hover:from-teal-400 hover:to-cyan-500 hover:text-zinc-950 hover:shadow-lg hover:shadow-teal-500/20"
-            >
-              <UserCheck size={15} />
-              Continue as Teacher
-            </button>
-            <button
-              onClick={() => setRole('student')}
-              className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-teal-300/60 hover:bg-gradient-to-r hover:from-teal-400 hover:to-cyan-500 hover:text-zinc-950 hover:shadow-lg hover:shadow-teal-500/20"
-            >
-              <Users size={15} />
-              Continue as Student
-            </button>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <ChoiceCard
+              title="Continue as Teacher"
+              description="Create, publish, and monitor assessments as faculty."
+              icon={<UserCheck size={17} className="text-teal-200" />}
+              actionLabel="Teacher"
+              accentClass="border-teal-400/30 bg-teal-500/10"
+              onClick={() => {
+                setRole('teacher');
+                setShowTeacherModuleChooser(true);
+              }}
+            />
+            <ChoiceCard
+              title="Continue as Student"
+              description="Join with a test code and attempt available assessments."
+              icon={<Users size={17} className="text-cyan-200" />}
+              actionLabel="Student"
+              accentClass="border-cyan-400/30 bg-cyan-500/10"
+              onClick={() => {
+                setRole('student');
+                setShowTeacherModuleChooser(false);
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isTeacher && showTeacherModuleChooser) {
+    return (
+      <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
+        <div className="rounded-2xl border border-border/70 bg-card/85 p-8 shadow-xl shadow-black/10">
+          <button
+            onClick={handleBackToRoleChooser}
+            className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+          >
+            <ArrowLeft size={13} />
+            Back to Choose Role
+          </button>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
+            <Sparkles size={11} />
+            Teacher Module Selection
+          </div>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Choose Your Teaching Module</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Select the module type you want to work with right now.
+          </p>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <ChoiceCard
+              title="Normal Test"
+              description="Use the classic test workflow with draft/publish and test-code-based attempts."
+              icon={<ClipboardList size={17} className="text-teal-200" />}
+              actionLabel="Open"
+              accentClass="border-teal-400/30 bg-teal-500/10"
+              onClick={() => setShowTeacherModuleChooser(false)}
+            />
+            <ChoiceCard
+              title="Interactive Quiz"
+              description="Create speed-based MCQ quizzes with per-question timer and leaderboard scoring."
+              icon={<Sparkles size={17} className="text-orange-200" />}
+              actionLabel="Open"
+              accentClass="border-orange-400/30 bg-orange-500/10"
+              onClick={() => {
+                setShowTeacherModuleChooser(false);
+                router.push('/interactive-quiz');
+              }}
+            />
           </div>
         </div>
       </div>
@@ -488,6 +587,15 @@ export default function TestsPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {isTeacher && (
+            <Link
+              href="/interactive-quiz"
+              className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/12 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+            >
+              <Sparkles size={15} />
+              Interactive Quiz Module
+            </Link>
+          )}
           {isTeacher && (
             <button
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
@@ -664,6 +772,22 @@ export default function TestsPage() {
                       {test.title}
                       <Eye size={14} className="opacity-0 transition group-hover:opacity-100" />
                     </Link>
+                    {test.module_type === 'interactive_quiz' && (
+                      <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-cyan-200">
+                        Interactive Quiz
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs text-muted-foreground md:hidden">
+                      Updated {new Date(test.updated_at).toLocaleString()}
+                    </p>
+                  </div>
+
+                  <div>
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(test.status)}`}
+                    >
+                      {formatStatus(test.status)}
+                    </span>
                     {isTeacher && isPublished && test.test_code && (
                       <p className="mt-1 text-[11px] font-semibold tracking-[0.08em] text-teal-700 dark:text-teal-300">
                         Code: {test.test_code}
@@ -674,8 +798,8 @@ export default function TestsPage() {
 
                   <div className="flex flex-wrap items-center gap-2 md:justify-start">
                     <Link
-                      href={isTeacher ? `/tests/${test.id}` : `/tests/${test.id}/attempt`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50 dark:border-border/80 dark:bg-background/70 dark:text-muted-foreground dark:hover:border-border dark:hover:text-foreground"
+                      href={isTeacher ? `/tests/${test.id}` : getAttemptPath(test)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
                     >
                       <Eye size={13} />
                       {isTeacher ? 'Open' : 'Attempt'}

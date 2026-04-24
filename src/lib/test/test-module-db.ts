@@ -1,4 +1,11 @@
 import { sql } from '@/lib/test-db';
+import {
+  buildTestModulePolicy,
+  parseInteractiveQuizSettingsFromPolicy,
+  parseModuleTypeFromPolicy,
+  type InteractiveQuizSettings,
+  type TestModuleType,
+} from '@/lib/test/interactive-quiz';
 
 type TestStatus = 'draft' | 'published' | 'closed' | 'archived';
 type AttemptStatus = 'in_progress' | 'submitted';
@@ -28,6 +35,8 @@ export interface TestRecord {
   question_mode: QuestionMode;
   mix_mcq_percent: number | null;
   mix_sql_fill_percent: number | null;
+  module_type: TestModuleType;
+  interactive_settings: InteractiveQuizSettings;
 }
 
 export interface QuestionRecord {
@@ -100,6 +109,8 @@ interface CreateDraftTestInput {
   mix_mcq_percent?: number | null;
   mix_sql_fill_percent?: number | null;
   duration_minutes?: number;
+  module_type?: TestModuleType;
+  interactive_settings?: Partial<InteractiveQuizSettings> | null;
 }
 
 interface CreateQuestionInput {
@@ -119,6 +130,8 @@ interface UpdateDraftTestInput {
   question_mode?: QuestionMode;
   mix_mcq_percent?: number | null;
   mix_sql_fill_percent?: number | null;
+  module_type?: TestModuleType;
+  interactive_settings?: Partial<InteractiveQuizSettings> | null;
 }
 
 interface StartAttemptInput {
@@ -147,6 +160,7 @@ interface RawTestRow {
   question_mode: QuestionMode;
   mix_mcq_percent: number | string | null;
   mix_sql_fill_percent: number | string | null;
+  anti_cheat_policy: unknown;
 }
 
 interface UserProfileRow {
@@ -405,6 +419,9 @@ function matchesExpectedAnswer(answer: string, expected: string) {
 }
 
 function mapTestRecord(row: RawTestRow): TestRecord {
+  const moduleType = parseModuleTypeFromPolicy(row.anti_cheat_policy);
+  const interactiveSettings = parseInteractiveQuizSettingsFromPolicy(row.anti_cheat_policy);
+
   return {
     id: row.id,
     title: row.title,
@@ -418,6 +435,8 @@ function mapTestRecord(row: RawTestRow): TestRecord {
     question_mode: row.question_mode,
     mix_mcq_percent: row.mix_mcq_percent === null ? null : toNumber(row.mix_mcq_percent),
     mix_sql_fill_percent: row.mix_sql_fill_percent === null ? null : toNumber(row.mix_sql_fill_percent),
+    module_type: moduleType,
+    interactive_settings: interactiveSettings,
   };
 }
 
@@ -979,7 +998,8 @@ async function getTestRowById(testId: string): Promise<TestRecord | null> {
       t.duration_minutes,
       t.question_mode,
       t.mix_mcq_percent,
-      t.mix_sql_fill_percent
+      t.mix_sql_fill_percent,
+      t.anti_cheat_policy
     FROM tests t
     LEFT JOIN users_test_profile creator ON creator.id = t.created_by
     LEFT JOIN LATERAL (
@@ -1139,7 +1159,8 @@ export async function listTests(options?: { role?: TestRole; userId?: string }) 
         t.duration_minutes,
         t.question_mode,
         t.mix_mcq_percent,
-        t.mix_sql_fill_percent
+        t.mix_sql_fill_percent,
+        t.anti_cheat_policy
       FROM tests t
       LEFT JOIN users_test_profile creator ON creator.id = t.created_by
       LEFT JOIN LATERAL (
@@ -1187,7 +1208,8 @@ export async function listTests(options?: { role?: TestRole; userId?: string }) 
         t.duration_minutes,
         t.question_mode,
         t.mix_mcq_percent,
-        t.mix_sql_fill_percent
+        t.mix_sql_fill_percent,
+        t.anti_cheat_policy
       FROM tests t
       LEFT JOIN users_test_profile creator ON creator.id = t.created_by
       LEFT JOIN LATERAL (
@@ -1228,7 +1250,8 @@ export async function listTests(options?: { role?: TestRole; userId?: string }) 
       t.duration_minutes,
       t.question_mode,
       t.mix_mcq_percent,
-      t.mix_sql_fill_percent
+      t.mix_sql_fill_percent,
+      t.anti_cheat_policy
     FROM tests t
     LEFT JOIN users_test_profile creator ON creator.id = t.created_by
     LEFT JOIN LATERAL (
@@ -1253,10 +1276,15 @@ export async function getTestById(testId: string) {
 
 export async function createDraftTest(input: CreateDraftTestInput): Promise<TestRecord> {
   const questionMode = input.question_mode ?? 'mcq_only';
+  const moduleType = input.module_type ?? 'classic';
   const resolvedRatio = resolveMixedModeRatio({
     questionMode,
     mixMcqPercent: input.mix_mcq_percent,
     mixSqlFillPercent: input.mix_sql_fill_percent,
+  });
+  const antiCheatPolicy = buildTestModulePolicy({
+    moduleType,
+    interactiveSettings: input.interactive_settings,
   });
 
   const profile = await ensureUserProfile({
@@ -1290,7 +1318,7 @@ export async function createDraftTest(input: CreateDraftTestInput): Promise<Test
       $5,
       $6,
       $7,
-      '{}'::jsonb,
+      $8::jsonb,
       'draft',
       NULL,
       NULL,
@@ -1307,6 +1335,7 @@ export async function createDraftTest(input: CreateDraftTestInput): Promise<Test
       resolvedRatio.mixMcqPercent,
       resolvedRatio.mixSqlFillPercent,
       input.duration_minutes ?? 30,
+      JSON.stringify(antiCheatPolicy),
     ],
   );
 
@@ -1365,6 +1394,32 @@ export async function updateDraftTest(testId: string, input: UpdateDraftTestInpu
 
     values.push(resolvedRatio.mixSqlFillPercent);
     fields.push(`mix_sql_fill_percent = $${values.length}`);
+  }
+
+  if (input.module_type !== undefined || input.interactive_settings !== undefined) {
+    const policyRes = await sql.raw(
+      `
+      SELECT anti_cheat_policy
+      FROM tests
+      WHERE id = $1
+      LIMIT 1;
+      `,
+      [testId],
+    );
+
+    const existingPolicy = (policyRes.rows[0] as { anti_cheat_policy: unknown } | undefined)?.anti_cheat_policy;
+    if (existingPolicy === undefined) {
+      return null;
+    }
+
+    const nextPolicy = buildTestModulePolicy({
+      currentPolicy: existingPolicy,
+      moduleType: input.module_type,
+      interactiveSettings: input.interactive_settings,
+    });
+
+    values.push(JSON.stringify(nextPolicy));
+    fields.push(`anti_cheat_policy = $${values.length}::jsonb`);
   }
 
   if (fields.length === 0) {
@@ -1452,12 +1507,13 @@ export async function addRandomQuestionsFromBankToTest(options: {
   questionType?: RandomQuestionTypeFilter;
   mixMcqPercent?: number;
   mixMcqCount?: number;
+  difficulty?: 'easy' | 'medium' | 'hard' | 'basic' | 'mixed';
 }) {
   const normalizedCount = Math.max(1, Math.min(50, Math.floor(options.count)));
 
   const testRes = await sql.raw(
     `
-    SELECT id, question_mode, mix_mcq_percent, mix_sql_fill_percent
+    SELECT id, question_mode, mix_mcq_percent, mix_sql_fill_percent, anti_cheat_policy
     FROM tests
     WHERE id = $1
     LIMIT 1;
@@ -1470,10 +1526,28 @@ export async function addRandomQuestionsFromBankToTest(options: {
     question_mode: QuestionMode;
     mix_mcq_percent: number | string | null;
     mix_sql_fill_percent: number | string | null;
+    anti_cheat_policy: unknown;
   } | undefined;
   if (!testRow) return null;
 
-  const requestedQuestionType: RandomQuestionTypeFilter = options.questionType ?? 'mixed';
+  const moduleType = parseModuleTypeFromPolicy(testRow.anti_cheat_policy);
+  const normalizedDifficulty = options.difficulty === 'basic' ? 'easy' : options.difficulty;
+  const difficultyFilter =
+    normalizedDifficulty === 'easy' || normalizedDifficulty === 'medium' || normalizedDifficulty === 'hard'
+      ? normalizedDifficulty
+      : null;
+
+  if (
+    moduleType === 'interactive_quiz'
+    && options.questionType !== undefined
+    && options.questionType !== 'mcq'
+  ) {
+    throw new Error('Interactive quiz randomization supports only MCQ questions.');
+  }
+
+  const requestedQuestionType: RandomQuestionTypeFilter = moduleType === 'interactive_quiz'
+    ? 'mcq'
+    : (options.questionType ?? 'mixed');
 
   if (
     requestedQuestionType !== 'mcq'
@@ -1506,6 +1580,7 @@ export async function addRandomQuestionsFromBankToTest(options: {
       ) opt ON true
       WHERE qb.status = 'approved'
         AND qb.question_type = $3
+        AND ($4::text IS NULL OR qb.difficulty = $4)
         AND NOT EXISTS (
           SELECT 1
           FROM test_questions tq
@@ -1515,7 +1590,7 @@ export async function addRandomQuestionsFromBankToTest(options: {
       ORDER BY random()
       LIMIT $2;
       `,
-      [options.testId, limit, questionType],
+      [options.testId, limit, questionType, difficultyFilter],
     );
 
     return randomRowsRes.rows as RandomQuestionBankRow[];
@@ -1726,7 +1801,7 @@ export async function addQuestionToTest(testId: string, input: CreateQuestionInp
 
   const testResult = await sql.raw(
     `
-    SELECT id, created_by
+    SELECT id, created_by, anti_cheat_policy
     FROM tests
     WHERE id = $1
     LIMIT 1;
@@ -1734,8 +1809,17 @@ export async function addQuestionToTest(testId: string, input: CreateQuestionInp
     [testId],
   );
 
-  const testRow = testResult.rows[0] as { id: string; created_by: string } | undefined;
+  const testRow = testResult.rows[0] as {
+    id: string;
+    created_by: string;
+    anti_cheat_policy: unknown;
+  } | undefined;
   if (!testRow) return null;
+
+  const moduleType = parseModuleTypeFromPolicy(testRow.anti_cheat_policy);
+  if (moduleType === 'interactive_quiz' && inferredQuestionType !== 'mcq') {
+    throw new Error('Interactive Quiz supports MCQ questions only.');
+  }
 
   const topicId = await getAnyActiveTopicId();
   const tagsPayload = {
@@ -2192,7 +2276,8 @@ export async function joinPublishedTestByCode(input: JoinByCodeInput) {
       t.duration_minutes,
       t.question_mode,
       t.mix_mcq_percent,
-      t.mix_sql_fill_percent
+      t.mix_sql_fill_percent,
+      t.anti_cheat_policy
     FROM test_invites ti
     JOIN tests t ON t.id = ti.test_id
     LEFT JOIN users_test_profile creator ON creator.id = t.created_by
@@ -2726,6 +2811,77 @@ export async function submitAttempt(options: {
   }
 
   return submitted;
+}
+
+export async function overrideSubmittedAttemptScore(options: {
+  attemptId: string;
+  points: number;
+}) {
+  const normalizedPoints = Math.max(0, Math.round(options.points));
+
+  const attemptRes = await sql.raw(
+    `
+    SELECT id
+    FROM attempts
+    WHERE id = $1
+    LIMIT 1;
+    `,
+    [options.attemptId],
+  );
+
+  if ((attemptRes.rowCount ?? 0) === 0) {
+    throw new Error('Attempt not found.');
+  }
+
+  await sql.raw(
+    `
+    UPDATE attempts
+    SET
+      auto_score = $1,
+      final_score = $1,
+      updated_at = now()
+    WHERE id = $2;
+    `,
+    [normalizedPoints, options.attemptId],
+  );
+
+  await sql.raw(
+    `
+    INSERT INTO grades (
+      attempt_id,
+      auto_score,
+      manual_adjustment,
+      final_score,
+      feedback,
+      is_published,
+      published_at,
+      graded_by,
+      graded_at,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      $1,
+      $2,
+      0,
+      $2,
+      NULL,
+      false,
+      NULL,
+      NULL,
+      now(),
+      now(),
+      now()
+    )
+    ON CONFLICT (attempt_id)
+    DO UPDATE
+      SET auto_score = EXCLUDED.auto_score,
+          final_score = EXCLUDED.final_score,
+          graded_at = now(),
+          updated_at = now();
+    `,
+    [options.attemptId, normalizedPoints],
+  );
 }
 
 export async function listReviewSubmissions(testId: string) {
