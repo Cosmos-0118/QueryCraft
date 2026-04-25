@@ -55,7 +55,7 @@ interface AttemptRecord {
 
 interface ViolationEvent {
   id: string;
-  event_type: 'tab_switch' | 'blur' | 'copy' | 'paste' | 'cut' | 'context_menu';
+  event_type: 'tab_switch' | 'copy' | 'paste' | 'cut' | 'context_menu';
   action_taken: 'logged' | 'warned' | 'blocked' | 'force_submitted';
   event_payload?: Record<string, unknown> | null;
   occurred_at: string;
@@ -127,8 +127,6 @@ function formatViolationEventType(eventType: ViolationEvent['event_type']) {
   switch (eventType) {
     case 'tab_switch':
       return 'Tab switch';
-    case 'blur':
-      return 'Window blur';
     case 'copy':
       return 'Copy blocked';
     case 'paste':
@@ -617,19 +615,6 @@ export default function TestAttemptPage() {
       }
     };
 
-    const onWindowBlur = () => {
-      const now = Date.now();
-      const previous = blockedEventLastAtRef.current.blur ?? 0;
-      if (now - previous < 1200) {
-        return;
-      }
-
-      blockedEventLastAtRef.current.blur = now;
-      void recordViolation('blur', 'logged', {
-        source: 'attempt_ui',
-      });
-    };
-
     const onCopy = (event: ClipboardEvent) => {
       logBlocked('copy', event);
     };
@@ -647,7 +632,6 @@ export default function TestAttemptPage() {
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('blur', onWindowBlur);
     document.addEventListener('copy', onCopy);
     document.addEventListener('paste', onPaste);
     document.addEventListener('cut', onCut);
@@ -655,7 +639,6 @@ export default function TestAttemptPage() {
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('blur', onWindowBlur);
       document.removeEventListener('copy', onCopy);
       document.removeEventListener('paste', onPaste);
       document.removeEventListener('cut', onCut);
@@ -1028,6 +1011,28 @@ export default function TestAttemptPage() {
                     });
                     if (saveMessage) setSaveMessage(null);
                   }}
+                  onCopy={(e) => {
+                    e.preventDefault();
+                    setIntegrityNotice('Copy is disabled during an active attempt.');
+                  }}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    setIntegrityNotice('Paste is disabled during an active attempt.');
+                  }}
+                  onCut={(e) => {
+                    e.preventDefault();
+                    setIntegrityNotice('Cut is disabled during an active attempt.');
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIntegrityNotice('Drag-and-drop into the answer is disabled.');
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onContextMenu={(e) => e.preventDefault()}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   rows={8}
                   className="w-full resize-y rounded-xl border border-border bg-background/90 px-3.5 py-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                   placeholder="Write your answer here..."

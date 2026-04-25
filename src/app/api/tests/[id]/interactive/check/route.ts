@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAttemptById, getTestById, listQuestionsForTest } from '@/lib/test/test-module-db';
-import {
-  calculateInteractiveQuestionPoints,
-  normalizeInteractiveQuizSettings,
-} from '@/lib/test/interactive-quiz';
+import { getInteractiveCheckContext } from '@/lib/test/test-module-db';
+import { calculateInteractiveQuestionPoints } from '@/lib/test/interactive-quiz';
 
 interface CheckAnswerBody {
   attempt_id?: string;
@@ -47,32 +44,35 @@ export async function POST(
       return NextResponse.json({ error: 'selected_option is required.' }, { status: 400 });
     }
 
-    const test = await getTestById(testId);
-    if (!test) {
-      return NextResponse.json({ error: 'Test not found.' }, { status: 404 });
+    const checkContext = await getInteractiveCheckContext({
+      testId,
+      attemptId: body.attempt_id,
+      questionId: body.question_id,
+    });
+
+    if (!checkContext) {
+      return NextResponse.json(
+        { error: 'Attempt or question not found for this test.' },
+        { status: 404 },
+      );
     }
 
-    if (test.module_type !== 'interactive_quiz') {
-      return NextResponse.json({ error: 'This endpoint is only available for interactive quiz tests.' }, { status: 400 });
+    if (checkContext.module_type !== 'interactive_quiz') {
+      return NextResponse.json(
+        { error: 'This endpoint is only available for interactive quiz tests.' },
+        { status: 400 },
+      );
     }
 
-    const attempt = await getAttemptById(testId, body.attempt_id);
-    if (!attempt) {
-      return NextResponse.json({ error: 'Attempt not found.' }, { status: 404 });
-    }
-
-    if (attempt.status !== 'in_progress') {
+    if (checkContext.attempt_status !== 'in_progress') {
       return NextResponse.json({ error: 'Attempt is already submitted.' }, { status: 409 });
     }
 
-    const questions = await listQuestionsForTest(testId);
-    const question = questions.find((candidate) => candidate.id === body.question_id);
-    if (!question) {
-      return NextResponse.json({ error: 'Question not found.' }, { status: 404 });
-    }
-
-    if (question.question_type !== 'mcq') {
-      return NextResponse.json({ error: 'Interactive quiz supports MCQ questions only.' }, { status: 400 });
+    if (checkContext.question_type !== 'mcq') {
+      return NextResponse.json(
+        { error: 'Interactive quiz supports MCQ questions only.' },
+        { status: 400 },
+      );
     }
 
     const selectedOption = normalizeOptionKey(body.selected_option);
@@ -80,10 +80,10 @@ export async function POST(
       return NextResponse.json({ error: 'selected_option must be a valid option key.' }, { status: 400 });
     }
 
-    const correctOption = normalizeOptionKey(question.correct_answer ?? '');
+    const correctOption = normalizeOptionKey(checkContext.correct_answer ?? '');
     const isCorrect = !!correctOption && selectedOption === correctOption;
 
-    const settings = normalizeInteractiveQuizSettings(test.interactive_settings);
+    const settings = checkContext.interactive_settings;
     const elapsedSeconds = typeof body.elapsed_seconds === 'number' && Number.isFinite(body.elapsed_seconds)
       ? body.elapsed_seconds
       : settings.question_timer_seconds;

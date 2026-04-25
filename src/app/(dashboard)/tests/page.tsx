@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import {
@@ -112,7 +112,7 @@ function EditTestModal({
         onSubmit={handleSubmit}
         className="w-full max-w-md rounded-2xl border border-border/70 bg-card/95 p-6 shadow-2xl shadow-black/40"
       >
-        <h2 className="text-lg font-bold tracking-tight">Edit Test</h2>
+        <h2 className="text-lg font-bold tracking-tight">Rename Test</h2>
         <p className="mt-1 text-sm text-muted-foreground">Update the test title before publishing.</p>
 
         <div className="mt-5 space-y-2">
@@ -323,6 +323,7 @@ function ChoiceCard({
 
 export default function TestsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [tests, setTests] = useState<Test[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -349,6 +350,13 @@ export default function TestsPage() {
     setError(null);
     setShowTeacherModuleChooser(false);
   };
+
+  useEffect(() => {
+    if (!isTeacher) return;
+    if (searchParams?.get('chooser') === '1') {
+      setShowTeacherModuleChooser(true);
+    }
+  }, [isTeacher, searchParams]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -397,7 +405,16 @@ export default function TestsPage() {
   );
 
   const visibleTests = useMemo(
-    () => (isTeacher ? sortedTests : sortedTests.filter((test) => test.status.toLowerCase() === 'published')),
+    () => {
+      // Faculty-side: keep the normal Test Module list strictly classic; interactive
+      // quizzes have their own list in the Interactive Quiz Module.
+      const classicOnly = sortedTests.filter(
+        (test) => (test.module_type ?? 'classic') === 'classic',
+      );
+      return isTeacher
+        ? classicOnly
+        : classicOnly.filter((test) => test.status.toLowerCase() === 'published');
+    },
     [isTeacher, sortedTests],
   );
 
@@ -588,13 +605,14 @@ export default function TestsPage() {
 
         <div className="flex items-center gap-2">
           {isTeacher && (
-            <Link
-              href="/interactive-quiz"
-              className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/12 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+            <button
+              type="button"
+              onClick={() => setShowTeacherModuleChooser(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
             >
-              <Sparkles size={15} />
-              Interactive Quiz Module
-            </Link>
+              <ArrowLeft size={14} />
+              Switch Module
+            </button>
           )}
           {isTeacher && (
             <button
@@ -765,35 +783,30 @@ export default function TestsPage() {
                     </button>
 
                     <div className="min-w-0">
-                    <Link
-                      href={`/tests/${test.id}`}
-                      className="group inline-flex items-center gap-1.5 text-sm font-semibold text-foreground transition-colors hover:text-primary"
-                    >
-                      {test.title}
-                      <Eye size={14} className="opacity-0 transition group-hover:opacity-100" />
-                    </Link>
-                    {test.module_type === 'interactive_quiz' && (
-                      <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-cyan-200">
-                        Interactive Quiz
+                      <Link
+                        href={`/tests/${test.id}`}
+                        className="group inline-flex items-center gap-1.5 text-sm font-semibold text-foreground transition-colors hover:text-primary"
+                      >
+                        {test.title}
+                        <Eye size={14} className="opacity-0 transition group-hover:opacity-100" />
+                      </Link>
+                      <p className="mt-1 text-xs text-muted-foreground md:hidden">
+                        Updated {new Date(test.updated_at).toLocaleString()}
                       </p>
-                    )}
-                    <p className="mt-1 text-xs text-muted-foreground md:hidden">
-                      Updated {new Date(test.updated_at).toLocaleString()}
-                    </p>
-                  </div>
+                    </div>
 
-                  <div>
-                    <span
-                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(test.status)}`}
-                    >
-                      {formatStatus(test.status)}
-                    </span>
-                    {isTeacher && isPublished && test.test_code && (
-                      <p className="mt-1 text-[11px] font-semibold tracking-[0.08em] text-teal-700 dark:text-teal-300">
-                        Code: {test.test_code}
-                      </p>
-                    )}
-                  </div>
+                    <div>
+                      <span
+                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(test.status)}`}
+                      >
+                        {formatStatus(test.status)}
+                      </span>
+                      {isTeacher && isPublished && test.test_code && (
+                        <p className="mt-1 text-[11px] font-semibold tracking-[0.08em] text-teal-700 dark:text-teal-300">
+                          Code: {test.test_code}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 md:justify-start">
@@ -812,7 +825,7 @@ export default function TestsPage() {
                         disabled={isPublished}
                       >
                         <Pencil size={13} />
-                        Edit
+                        Rename Test
                       </button>
                     )}
 

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   addQuestionToTest,
-  getTestById,
+  getTestOwnerAppUserId,
   listQuestionsForTest,
   removeQuestionFromTest,
   updateQuestionAnswer,
@@ -20,12 +20,12 @@ async function ensureTeacherAccess(req: Request, testId: string) {
     return { error: NextResponse.json({ error: 'Teacher userId is required.' }, { status: 400 }) };
   }
 
-  const test = await getTestById(testId);
-  if (!test) {
+  const ownerUserId = await getTestOwnerAppUserId(testId);
+  if (!ownerUserId) {
     return { error: NextResponse.json({ error: 'Test not found.' }, { status: 404 }) };
   }
 
-  if (test.created_by !== userId) {
+  if (ownerUserId !== userId) {
     return { error: NextResponse.json({ error: 'You do not have access to this test.' }, { status: 403 }) };
   }
 

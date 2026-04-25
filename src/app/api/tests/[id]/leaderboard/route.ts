@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTestById, listReviewSubmissions } from '@/lib/test/test-module-db';
+import { getTestModuleTypeById, listLeaderboardEntries } from '@/lib/test/test-module-db';
 
 async function resolveTestId(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
@@ -19,34 +19,19 @@ export async function GET(
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
     }
 
-    const test = await getTestById(testId);
-    if (!test) {
+    const moduleType = await getTestModuleTypeById(testId);
+    if (!moduleType) {
       return NextResponse.json({ error: 'Test not found.' }, { status: 404 });
     }
 
     const attemptId = req.nextUrl.searchParams.get('attemptId') ?? undefined;
 
-    const submissions = await listReviewSubmissions(testId);
-    const leaderboard = submissions
-      .filter((attempt) => attempt.status === 'submitted')
-      .sort((left, right) => {
-        const leftScore = left.score ?? 0;
-        const rightScore = right.score ?? 0;
-
-        if (leftScore !== rightScore) {
-          return rightScore - leftScore;
-        }
-
-        const leftSubmitted = left.submitted_at ? new Date(left.submitted_at).getTime() : Number.MAX_SAFE_INTEGER;
-        const rightSubmitted = right.submitted_at ? new Date(right.submitted_at).getTime() : Number.MAX_SAFE_INTEGER;
-        return leftSubmitted - rightSubmitted;
-      })
-      .map((attempt, index) => ({
+    const leaderboard = (await listLeaderboardEntries(testId)).map((attempt, index) => ({
         rank: index + 1,
-        attempt_id: attempt.id,
+        attempt_id: attempt.attempt_id,
         student_id: attempt.student_id,
         student_name: attempt.student_name,
-        points: Math.max(0, Math.round(attempt.score ?? 0)),
+        points: attempt.points,
         submitted_at: attempt.submitted_at,
       }));
 
@@ -59,7 +44,7 @@ export async function GET(
         leaderboard,
         total_participants: leaderboard.length,
         current_entry: currentEntry,
-        module_type: test.module_type,
+        module_type: moduleType,
       },
       { status: 200 },
     );
