@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Clock3,
   Loader2,
+  ShieldAlert,
   Sparkles,
   Timer,
   Trophy,
@@ -55,6 +56,12 @@ interface FeedbackState {
   selectedOption: string;
   correctOption: string | null;
   timedOut: boolean;
+}
+
+interface TabSwitchPopupState {
+  step: 1 | 2;
+  message: string;
+  dismissible?: boolean;
 }
 
 const DEFAULT_SETTINGS: InteractiveSettings = {
@@ -147,9 +154,26 @@ export default function InteractiveQuizAttemptPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [timingByQuestion, setTimingByQuestion] = useState<Record<string, number>>({});
   const [pointsByQuestion, setPointsByQuestion] = useState<Record<string, number>>({});
+  const [pendingOptionKey, setPendingOptionKey] = useState<string | null>(null);
+
+  const [tabSwitchPopup, setTabSwitchPopup] = useState<TabSwitchPopupState | null>(null);
+  const [autoSubmitTriggered, setAutoSubmitTriggered] = useState(false);
 
   const questionStartedAtRef = useRef<number>(Date.now());
   const advancingRef = useRef(false);
+  const violationCountRef = useRef(0);
+  const lastTabSwitchAtRef = useRef(0);
+  const forceSubmitInProgressRef = useRef(false);
+  const answersRef = useRef<Record<string, string>>({});
+  const timingRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  useEffect(() => {
+    timingRef.current = timingByQuestion;
+  }, [timingByQuestion]);
 
   const currentQuestion = questions[currentIndex] ?? null;
 
@@ -208,6 +232,85 @@ export default function InteractiveQuizAttemptPage() {
     }
   }, [answers, attemptId, goToLeaderboard, submitting, testId, timingByQuestion]);
 
+  const recordViolation = useCallback(
+    async (
+      eventType: 'tab_switch',
+      actionTaken: 'warned' | 'force_submitted',
+      payload?: Record<string, unknown>,
+    ) => {
+      if (!attemptId || !testId) return;
+      try {
+        await fetch(`/api/tests/${testId}/attempts/${attemptId}/violations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event_type: eventType,
+            action_taken: actionTaken,
+            event_payload: payload ?? {},
+            occurred_at: new Date().toISOString(),
+          }),
+        });
+      } catch {
+        // Logging failures should not block the attempt UI.
+      }
+    },
+    [attemptId, testId],
+  );
+
+  const forceSubmitForViolation = useCallback(async () => {
+    if (!testId || !attemptId || forceSubmitInProgressRef.current) {
+      return;
+    }
+
+    forceSubmitInProgressRef.current = true;
+    setAutoSubmitTriggered(true);
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/tests/${testId}/attempts/${attemptId}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          answers: answersRef.current,
+          mode: 'interactive_quiz',
+          timing_by_question: timingRef.current,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data?.attempt) {
+        setError(data.error || 'Unable to auto-submit attempt after violation.');
+        setTabSwitchPopup({
+          step: 2,
+          message: 'Auto-submit failed. Please finish the quiz manually now.',
+          dismissible: true,
+        });
+        return;
+      }
+
+      setTabSwitchPopup({
+        step: 2,
+        message: 'Test auto submitted. Redirecting to your result...',
+      });
+
+      window.setTimeout(() => {
+        forceSubmitInProgressRef.current = false;
+        goToLeaderboard(attemptId);
+      }, 1300);
+    } catch {
+      setError('Unable to auto-submit attempt after violation.');
+      setTabSwitchPopup({
+        step: 2,
+        message: 'Auto-submit failed. Please finish the quiz manually now.',
+        dismissible: true,
+      });
+      forceSubmitInProgressRef.current = false;
+    } finally {
+      setSubmitting(false);
+    }
+  }, [attemptId, goToLeaderboard, testId]);
+
   const advanceAfterFeedback = useCallback(async () => {
     if (advancingRef.current) {
       return;
@@ -217,12 +320,14 @@ export default function InteractiveQuizAttemptPage() {
 
     if (currentIndex >= questions.length - 1) {
       setFeedback(null);
+      setPendingOptionKey(null);
       await submitQuiz();
       advancingRef.current = false;
       return;
     }
 
     setFeedback(null);
+    setPendingOptionKey(null);
     setCurrentIndex((previous) => Math.min(previous + 1, questions.length - 1));
     advancingRef.current = false;
   }, [currentIndex, questions.length, submitQuiz]);
@@ -232,9 +337,12 @@ export default function InteractiveQuizAttemptPage() {
       return;
     }
 
+    // Auto-close feedback and advance to the next question. Slightly longer for
+    // wrong/timed-out answers so the student can read the correct option.
+    const dwellMs = feedback.isCorrect ? 700 : 950;
     const timeoutId = window.setTimeout(() => {
       void advanceAfterFeedback();
-    }, 1200);
+    }, dwellMs);
 
     return () => window.clearTimeout(timeoutId);
   }, [advanceAfterFeedback, feedback]);
@@ -338,6 +446,7 @@ export default function InteractiveQuizAttemptPage() {
 
     setRemainingSeconds(settings.question_timer_seconds);
     questionStartedAtRef.current = Date.now();
+    setPendingOptionKey(null);
   }, [currentQuestion, settings.question_timer_seconds]);
 
   useEffect(() => {
@@ -351,6 +460,54 @@ export default function InteractiveQuizAttemptPage() {
 
     return () => window.clearInterval(intervalId);
   }, [currentQuestion, feedback, loading, submitting]);
+
+  useEffect(() => {
+    if (loading || !attemptId || !testId || autoSubmitTriggered) {
+      return;
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'hidden') return;
+
+      const now = Date.now();
+      if (now - lastTabSwitchAtRef.current < 1000) {
+        return;
+      }
+      lastTabSwitchAtRef.current = now;
+
+      const nextCount = violationCountRef.current + 1;
+      violationCountRef.current = nextCount;
+
+      if (nextCount === 1) {
+        setTabSwitchPopup({
+          step: 1,
+          message: 'Warning: tab switch detected. Another switch will auto-submit your quiz.',
+          dismissible: true,
+        });
+        void recordViolation('tab_switch', 'warned', {
+          source: 'interactive_quiz_ui',
+          visibility_state: document.visibilityState,
+          tab_switch_count: nextCount,
+        });
+      } else {
+        setTabSwitchPopup({
+          step: 2,
+          message: 'Second tab switch detected. Auto-submitting your quiz now.',
+        });
+        void recordViolation('tab_switch', 'force_submitted', {
+          source: 'interactive_quiz_ui',
+          visibility_state: document.visibilityState,
+          tab_switch_count: nextCount,
+        });
+        void forceSubmitForViolation();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [attemptId, autoSubmitTriggered, forceSubmitForViolation, loading, recordViolation, testId]);
 
   useEffect(() => {
     if (!currentQuestion || feedback || submitting || processingAnswer) {
@@ -386,7 +543,7 @@ export default function InteractiveQuizAttemptPage() {
   }, [currentQuestion, feedback, processingAnswer, remainingSeconds, settings.question_timer_seconds, submitting]);
 
   const handleOptionSelect = async (optionKey: string) => {
-    if (!currentQuestion || !attemptId || !testId || processingAnswer || feedback) {
+    if (!currentQuestion || !attemptId || !testId || processingAnswer || feedback || pendingOptionKey) {
       return;
     }
 
@@ -394,6 +551,9 @@ export default function InteractiveQuizAttemptPage() {
       return;
     }
 
+    // Highlight the chosen option immediately so the click feels instant even
+    // if the network round-trip to /interactive/check takes a beat.
+    setPendingOptionKey(optionKey);
     setProcessingAnswer(true);
     setError(null);
 
@@ -420,6 +580,7 @@ export default function InteractiveQuizAttemptPage() {
       const data = await response.json();
       if (!response.ok) {
         setError(data.error || 'Unable to evaluate this answer.');
+        setPendingOptionKey(null);
         return;
       }
 
@@ -451,6 +612,7 @@ export default function InteractiveQuizAttemptPage() {
       });
     } catch {
       setError('Unable to evaluate this answer.');
+      setPendingOptionKey(null);
     } finally {
       setProcessingAnswer(false);
     }
@@ -587,15 +749,26 @@ export default function InteractiveQuizAttemptPage() {
 
         <div className="mt-4 grid gap-2">
           {currentQuestion.options.map((option) => {
-            const disabled = processingAnswer || !!feedback || timingByQuestion[currentQuestion.id] !== undefined || submitting;
+            const disabled = processingAnswer || !!feedback || timingByQuestion[currentQuestion.id] !== undefined || submitting || !!pendingOptionKey;
+            const isPending = pendingOptionKey === option.key;
             return (
               <button
                 key={`${currentQuestion.id}_${option.key}`}
+                type="button"
                 onClick={() => void handleOptionSelect(option.key)}
                 disabled={disabled}
-                className="group rounded-xl border border-border/70 bg-background/70 px-4 py-3 text-left text-sm transition hover:border-orange-300/40 hover:bg-orange-400/[0.06] disabled:cursor-not-allowed disabled:opacity-60"
+                aria-pressed={isPending}
+                className={`group rounded-xl border px-4 py-3 text-left text-sm transition disabled:cursor-not-allowed ${
+                  isPending
+                    ? 'border-orange-400/60 bg-orange-400/15 text-foreground shadow-[0_0_0_1px_rgba(251,146,60,0.35)]'
+                    : 'border-border/70 bg-background/70 hover:border-orange-300/40 hover:bg-orange-400/[0.06]'
+                } ${disabled && !isPending ? 'opacity-60' : ''}`}
               >
-                <span className="inline-flex w-7 shrink-0 rounded-md border border-border/70 bg-background/80 px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                <span className={`inline-flex w-7 shrink-0 rounded-md border px-2 py-0.5 text-xs font-semibold ${
+                  isPending
+                    ? 'border-orange-400/60 bg-orange-400/20 text-orange-100'
+                    : 'border-border/70 bg-background/80 text-muted-foreground'
+                }`}>
                   {option.key}
                 </span>
                 <span className="ml-3 text-foreground">{option.text}</span>
@@ -617,8 +790,42 @@ export default function InteractiveQuizAttemptPage() {
         </div>
       </section>
 
+      {tabSwitchPopup && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-amber-500/35 bg-zinc-950/95 p-6 shadow-2xl shadow-black/50 backdrop-blur">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-amber-500/35 bg-amber-500/15 text-amber-200">
+              {tabSwitchPopup.step === 1 ? <ShieldAlert size={22} /> : <AlertTriangle size={22} />}
+            </div>
+
+            <h2 className="mt-4 text-center text-xl font-bold tracking-tight text-amber-100">
+              {tabSwitchPopup.step === 1 ? 'Tab Switch Warning' : 'Quiz Submitted'}
+            </h2>
+            <p className="mt-2 text-center text-sm text-amber-100/85">{tabSwitchPopup.message}</p>
+
+            {tabSwitchPopup.dismissible ? (
+              <button
+                type="button"
+                onClick={() => setTabSwitchPopup(null)}
+                className="mt-5 w-full rounded-xl bg-gradient-to-r from-amber-300 to-orange-400 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-orange-500/20 transition hover:brightness-110"
+              >
+                {tabSwitchPopup.step === 1 ? 'Continue Quiz' : 'Close'}
+              </button>
+            ) : (
+              <div className="mt-5 flex items-center justify-center gap-2 text-xs text-amber-100/80">
+                <Loader2 size={14} className="animate-spin" />
+                Redirecting...
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {feedback && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+        <div
+          className="pointer-events-none fixed inset-0 z-[130] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+        >
           <div className="w-full max-w-sm rounded-2xl border border-border/70 bg-card/95 p-6 text-center shadow-2xl shadow-black/40">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-border/70 bg-background/70">
               {feedback.isCorrect ? (
@@ -658,12 +865,9 @@ export default function InteractiveQuizAttemptPage() {
               </p>
             )}
 
-            <button
-              onClick={() => void advanceAfterFeedback()}
-              className="mt-5 inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-amber-300 to-orange-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:brightness-110"
-            >
-              Continue
-            </button>
+            <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+              Next question loading...
+            </p>
           </div>
         </div>
       )}

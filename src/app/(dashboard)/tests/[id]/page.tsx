@@ -7,14 +7,13 @@ import { useAuth } from '@/hooks/use-auth';
 import {
   AlertTriangle,
   ArrowLeft,
-  BarChart3,
   CheckCircle2,
   ClipboardList,
   Clock3,
   Loader2,
-  Play,
   Plus,
   Save,
+  Send,
   Sparkles,
   Trophy,
   Trash2,
@@ -136,8 +135,10 @@ export default function TestDetailPage() {
   const [randomizingQuestions, setRandomizingQuestions] = useState(false);
   const [removingQuestionId, setRemovingQuestionId] = useState<string | null>(null);
   const [savingAnswerId, setSavingAnswerId] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
 
   const isInteractiveQuiz = test?.module_type === 'interactive_quiz';
+  const isPublished = (test?.status ?? '').toLowerCase() === 'published';
 
   const normalizedRandomCountPreview = useMemo(() => {
     const parsed = Number(randomCount);
@@ -392,6 +393,32 @@ export default function TestDetailPage() {
     }
   };
 
+  const handlePublishTest = async () => {
+    if (!isTeacher || !testId || !test || isPublished || publishing) return;
+    if (!window.confirm('Publish this test? This action cannot be undone.')) return;
+
+    setPublishing(true);
+    setActionError(null);
+
+    try {
+      const res = await fetch(`/api/tests/${testId}/publish${teacherAccessQuery}`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data?.test) {
+        setActionError(data.error || 'Unable to publish test.');
+        return;
+      }
+
+      setTest(data.test as Test);
+    } catch {
+      setActionError('Unable to publish test.');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const handleSaveQuestionAnswer = async (questionId: string) => {
     if (!isTeacher || !testId) return;
 
@@ -513,20 +540,6 @@ export default function TestDetailPage() {
       </div>
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
-        <Link
-          href={test.module_type === 'interactive_quiz' ? `/interactive-quiz/${test.id}/attempt` : `/tests/${test.id}/attempt`}
-          className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-        >
-          <Play size={14} />
-          Open Attempt
-        </Link>
-        <Link
-          href={`/tests/${test.id}/result`}
-          className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-        >
-          <BarChart3 size={14} />
-          View Result
-        </Link>
         {isInteractiveQuiz && (
           <Link
             href={`/interactive-quiz/${test.id}/leaderboard`}
@@ -544,6 +557,17 @@ export default function TestDetailPage() {
             <CheckCircle2 size={14} />
             Review Submissions
           </Link>
+        )}
+        {isTeacher && (
+          <button
+            type="button"
+            onClick={handlePublishTest}
+            disabled={isPublished || publishing}
+            className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:border-primary/60 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {publishing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            {isPublished ? 'Published' : publishing ? 'Publishing...' : 'Publish'}
+          </button>
         )}
       </div>
 
@@ -685,19 +709,28 @@ export default function TestDetailPage() {
                 {addingQuestion ? 'Adding Question...' : 'Add Question'}
               </button>
 
-              <div className="rounded-xl border !border-zinc-700 !bg-zinc-200 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] !text-black">
-                  Add Random Questions From Database
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Pull approved sample questions from the question bank.
-                </p>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <div className="rounded-xl border border-border/70 bg-card/85 p-4 shadow-sm shadow-black/10">
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-teal-400/30 bg-teal-500/10 text-teal-200">
+                    <Sparkles size={13} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+                      Add Random Questions From Database
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Pull approved sample questions from the question bank.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_auto]">
                   <input
                     type="number"
                     min={1}
                     max={50}
-                    className="h-10 w-full rounded-xl border !border-zinc-700 !bg-white px-3 text-sm !text-black outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 sm:w-32"
+                    aria-label="Number of random questions"
+                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                     value={randomCount}
                     onChange={(e) => setRandomCount(e.target.value)}
                   />
@@ -705,7 +738,7 @@ export default function TestDetailPage() {
                     value={randomQuestionType}
                     onChange={(e) => setRandomQuestionType(e.target.value as RandomQuestionType)}
                     disabled={isInteractiveQuiz}
-                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {!isInteractiveQuiz && (
                       <option value="mixed">
@@ -724,7 +757,7 @@ export default function TestDetailPage() {
                   <select
                     value={randomDifficulty}
                     onChange={(e) => setRandomDifficulty(e.target.value as DifficultyProfile)}
-                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="mixed">Difficulty: Mixed</option>
                     <option value="basic">Difficulty: Basic (easy)</option>
@@ -735,7 +768,7 @@ export default function TestDetailPage() {
                     type="button"
                     onClick={handleAddRandomQuestions}
                     disabled={randomizingQuestions}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border !border-zinc-700 !bg-zinc-300 px-4 py-2 text-sm font-semibold !text-zinc-950 transition hover:!border-zinc-800 hover:!bg-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {randomizingQuestions ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                     {randomizingQuestions ? 'Randomizing...' : 'Add Random'}

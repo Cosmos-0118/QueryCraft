@@ -464,11 +464,11 @@ export default function InteractiveQuizPage() {
       <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Link
-            href="/tests"
+            href="/tests?chooser=1"
             className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
           >
             <ArrowLeft size={13} />
-            Back to Traditional Test Module
+            Back to Module Selection
           </Link>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-orange-400/20 bg-orange-400/[0.07] px-3 py-1 text-xs font-semibold text-orange-200">
             <Sparkles size={11} />

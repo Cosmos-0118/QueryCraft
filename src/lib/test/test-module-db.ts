@@ -101,6 +101,14 @@ export interface AttemptRecord {
   published: boolean;
 }
 
+export interface LeaderboardEntryRecord {
+  attempt_id: string;
+  student_id: string;
+  student_name: string;
+  points: number;
+  submitted_at: string | null;
+}
+
 interface CreateDraftTestInput {
   title: string;
   description?: string;
@@ -1274,6 +1282,37 @@ export async function getTestById(testId: string) {
   return getTestRowById(testId);
 }
 
+export async function getTestModuleTypeById(testId: string): Promise<TestModuleType | null> {
+  const result = await sql.raw(
+    `
+    SELECT anti_cheat_policy
+    FROM tests
+    WHERE id = $1
+    LIMIT 1;
+    `,
+    [testId],
+  );
+
+  const row = result.rows[0] as { anti_cheat_policy: unknown } | undefined;
+  return row ? parseModuleTypeFromPolicy(row.anti_cheat_policy) : null;
+}
+
+export async function getTestOwnerAppUserId(testId: string): Promise<string | null> {
+  const result = await sql.raw(
+    `
+    SELECT creator.app_user_id AS owner_user_id
+    FROM tests t
+    JOIN users_test_profile creator ON creator.id = t.created_by
+    WHERE t.id = $1
+    LIMIT 1;
+    `,
+    [testId],
+  );
+
+  const row = result.rows[0] as { owner_user_id: string | null } | undefined;
+  return row?.owner_user_id ?? null;
+}
+
 export async function createDraftTest(input: CreateDraftTestInput): Promise<TestRecord> {
   const questionMode = input.question_mode ?? 'mcq_only';
   const moduleType = input.module_type ?? 'classic';
@@ -1469,6 +1508,74 @@ export async function publishTest(testId: string) {
   }
 
   return getTestRowById(testId);
+}
+
+export interface InteractiveCheckContext {
+  attempt_status: 'in_progress' | 'submitted';
+  module_type: TestModuleType;
+  interactive_settings: InteractiveQuizSettings;
+  question_type: StoredQuestionType;
+  correct_answer: string | null;
+}
+
+/**
+ * Single-round-trip context loader for `POST /interactive/check`.
+ * Combines the attempt-status check, the test policy lookup, and the
+ * specific question's correct-answer extraction into one query so a
+ * burst of 100 simultaneous students issues 100 queries (not 300).
+ */
+export async function getInteractiveCheckContext(options: {
+  testId: string;
+  attemptId: string;
+  questionId: string;
+}): Promise<InteractiveCheckContext | null> {
+  const result = await sql.raw(
+    `
+    SELECT
+      a.status AS attempt_status,
+      t.anti_cheat_policy,
+      qb.question_type,
+      qb.answer_key,
+      tq.question_snapshot
+    FROM attempts a
+    JOIN tests t ON t.id = a.test_id
+    JOIN test_questions tq ON tq.id = $3 AND tq.test_id = t.id
+    JOIN question_bank qb ON qb.id = tq.question_bank_id
+    WHERE a.id = $2
+      AND a.test_id = $1
+    LIMIT 1;
+    `,
+    [options.testId, options.attemptId, options.questionId],
+  );
+
+  const row = result.rows[0] as
+    | {
+        attempt_status: 'in_progress' | 'submitted';
+        anti_cheat_policy: unknown;
+        question_type: StoredQuestionType;
+        answer_key: unknown;
+        question_snapshot: unknown;
+      }
+    | undefined;
+
+  if (!row) return null;
+
+  const snapshot = asObject(row.question_snapshot) ?? {};
+  const answerKey = asObject(row.answer_key) ?? {};
+  const snapshotCorrect = asString(snapshot.correct_answer);
+  const answerKeyCorrect = asString(answerKey.correctAnswer) ?? asString(answerKey.correctOptionKey);
+  const correct =
+    row.question_type === 'mcq'
+      ? normalizeOptionKey(snapshotCorrect ?? answerKeyCorrect ?? '') || null
+      : snapshotCorrect ?? answerKeyCorrect ?? null;
+
+  return {
+    attempt_status: row.attempt_status,
+    module_type: parseModuleTypeFromPolicy(row.anti_cheat_policy),
+    interactive_settings: parseInteractiveQuizSettingsFromPolicy(row.anti_cheat_policy),
+    question_type: row.question_type,
+    correct_answer: correct,
+  };
 }
 
 export async function listQuestionsForTest(testId: string) {
@@ -2882,6 +2989,39 @@ export async function overrideSubmittedAttemptScore(options: {
     `,
     [options.attemptId, normalizedPoints],
   );
+}
+
+export async function listLeaderboardEntries(testId: string): Promise<LeaderboardEntryRecord[]> {
+  const result = await sql.raw(
+    `
+    SELECT
+      a.id AS attempt_id,
+      profile.app_user_id AS student_id,
+      profile.display_name AS student_name,
+      COALESCE(a.final_score, a.auto_score, 0) AS points_raw,
+      a.submitted_at
+    FROM attempts a
+    JOIN users_test_profile profile ON profile.id = a.student_profile_id
+    WHERE a.test_id = $1
+      AND a.status = 'submitted'
+    ORDER BY COALESCE(a.final_score, a.auto_score, 0) DESC, a.submitted_at ASC NULLS LAST;
+    `,
+    [testId],
+  );
+
+  return (result.rows as Array<{
+    attempt_id: string;
+    student_id: string | null;
+    student_name: string | null;
+    points_raw: number | string | null;
+    submitted_at: string | null;
+  }>).map((row) => ({
+    attempt_id: row.attempt_id,
+    student_id: row.student_id ?? '',
+    student_name: row.student_name ?? 'Student',
+    points: Math.max(0, Math.round(toNumber(row.points_raw))),
+    submitted_at: row.submitted_at,
+  }));
 }
 
 export async function listReviewSubmissions(testId: string) {

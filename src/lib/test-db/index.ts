@@ -15,14 +15,26 @@ const TRANSIENT_NETWORK_ERROR_CODES = new Set([
 
 function resolvePoolMax() {
   const raw = process.env.TEST_DB_POOL_MAX?.trim();
-  if (!raw) return 20;
+  if (!raw) return 30;
 
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed < 1) {
-    return 20;
+    return 30;
   }
 
-  return Math.min(parsed, 40);
+  return Math.min(parsed, 80);
+}
+
+function resolveStatementTimeoutMs() {
+  const raw = process.env.TEST_DB_STATEMENT_TIMEOUT_MS?.trim();
+  if (!raw) return 10_000;
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 500) {
+    return 10_000;
+  }
+
+  return Math.min(parsed, 60_000);
 }
 
 function resolveQueryRetries() {
@@ -117,11 +129,15 @@ function getPool() {
   const config = resolveTestDbConfig();
   if (!config) throw new Error('TEST_DB_URL is not configured.');
 
+  const statementTimeoutMs = resolveStatementTimeoutMs();
+
   pool = new Pool({
     connectionString: config.connectionString,
     max: resolvePoolMax(),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
+    statement_timeout: statementTimeoutMs,
+    query_timeout: statementTimeoutMs,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10_000,
   });

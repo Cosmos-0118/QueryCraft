@@ -1,6 +1,17 @@
 const SUPPORTED_TEST_DB_PROTOCOLS = new Set(['postgres:', 'postgresql:']);
-const SSL_MODE_TRUE_VALUES = new Set(['require', 'verify-ca', 'verify-full']);
+const SSL_MODE_TRUE_VALUES = new Set(['prefer', 'require', 'verify-ca', 'verify-full']);
 const SSL_BOOL_TRUE_VALUES = new Set(['1', 'true', 'yes']);
+
+function normalizeConnectionString(rawConnectionString: string) {
+  const parsed = new URL(rawConnectionString);
+  const sslMode = parsed.searchParams.get('sslmode')?.toLowerCase().trim() ?? '';
+
+  if (sslMode === 'prefer' || sslMode === 'require' || sslMode === 'verify-ca') {
+    parsed.searchParams.set('sslmode', 'verify-full');
+  }
+
+  return parsed;
+}
 
 export interface TestDbConfig {
   connectionString: string;
@@ -19,10 +30,10 @@ export function readTestDbUrlFromEnv(): string | null {
 }
 
 export function resolveTestDbConfig(): TestDbConfig | null {
-  const connectionString = readTestDbUrlFromEnv();
-  if (!connectionString) return null;
+  const rawConnectionString = readTestDbUrlFromEnv();
+  if (!rawConnectionString) return null;
 
-  const parsed = new URL(connectionString);
+  const parsed = normalizeConnectionString(rawConnectionString);
   if (!SUPPORTED_TEST_DB_PROTOCOLS.has(parsed.protocol)) {
     throw new Error(
       `TEST_DB_URL must use a PostgreSQL protocol (${Array.from(SUPPORTED_TEST_DB_PROTOCOLS).join(', ')})`,
@@ -44,7 +55,7 @@ export function resolveTestDbConfig(): TestDbConfig | null {
   const ssl = SSL_MODE_TRUE_VALUES.has(sslMode) || SSL_BOOL_TRUE_VALUES.has(sslFlag);
 
   return {
-    connectionString,
+    connectionString: parsed.toString(),
     host: parsed.hostname,
     port,
     database,

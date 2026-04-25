@@ -1,0 +1,17 @@
+1) the normal test module and the interactive quiz module are two different modules
+make sure the test history is separate for each module in the faculty login side 
+dont merge anything between them
+leaderboard is only for the interactive quiz module
+dont make these modules overlap 
+i dont need an option to go to interactive quiz mode inside the normal test module remove that
+2) when the student is answering questions on the interactive quiz module, when answering a question and moving to next question 
+make this process smooth and faster avoid misclicks and lag
+3) a single test is to be taken by 100 users at a time 
+optimize the syaytem in such a way that it can handle this load
+4) the ui of the add ranodm questions box is so bad 
+make it go well accodring to the given themes in the webiste 
+refer to the  first image attached in chat 
+make it go well with the theme background respectively
+5)this pop up given in the second image attached in chat
+remove the continue option  and let it automatically close as it is and move to the next question in the interactive test mode test
+henece this removes the scope of misclicks.
