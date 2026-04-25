@@ -14,7 +14,6 @@ import {
   FileText,
   Filter,
   Loader2,
-  Send,
   ShieldAlert,
   Sparkles,
   Users,
@@ -125,11 +124,8 @@ export default function TestReviewPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionMsg, setActionMsg] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const [filter, setFilter] = useState<ReviewFilter>('all');
-  const [publishingAll, setPublishingAll] = useState(false);
 
   useEffect(() => {
     if (!testId) return;
@@ -252,7 +248,6 @@ export default function TestReviewPage() {
   const stats = useMemo(() => {
     const submitted = submissions.filter((row) => row.status === 'submitted').length;
     const pending = submissions.length - submitted;
-    const published = submissions.filter((row) => row.status === 'submitted' && row.published).length;
     const avgScoreRows = submissions.filter(
       (row) => row.status === 'submitted' && typeof row.score === 'number',
     ) as Array<Submission & { score: number }>;
@@ -265,102 +260,9 @@ export default function TestReviewPage() {
       total: submissions.length,
       submitted,
       pending,
-      published,
       avgScore,
     };
   }, [submissions]);
-
-  const handlePublishAllVisible = async () => {
-    if (!testId) return;
-    if (!teacherAccessQuery) {
-      setActionError('Teacher session is required to publish results.');
-      return;
-    }
-
-    const attemptIds = filteredSubmissions
-      .filter((row) => row.status === 'submitted' && !row.published && row.attemptId)
-      .map((row) => row.attemptId as string);
-
-    if (attemptIds.length === 0) return;
-
-    setPublishingAll(true);
-    setActionMsg(null);
-    setActionError(null);
-
-    try {
-      const res = await fetch(`/api/tests/${testId}/review${teacherAccessQuery}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publishAll: true, attemptIds }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setActionError(data.error || 'Unable to publish visible submissions.');
-        return;
-      }
-
-      const publishedSet = new Set(attemptIds);
-      setSubmissions((prev) =>
-        prev.map((row) =>
-          row.attemptId && publishedSet.has(row.attemptId)
-            ? { ...row, published: true }
-            : row,
-        ),
-      );
-
-      const changed = typeof data.changed === 'number' ? data.changed : attemptIds.length;
-      setActionMsg(`Published ${changed} submitted result${changed === 1 ? '' : 's'}.`);
-    } catch {
-      setActionError('Unable to publish visible submissions.');
-    } finally {
-      setPublishingAll(false);
-    }
-  };
-
-  const handleTogglePublish = async (submission: Submission) => {
-    if (!testId || !submission.attemptId || submission.status !== 'submitted') return;
-    if (!teacherAccessQuery) {
-      setActionError('Teacher session is required to publish results.');
-      return;
-    }
-
-    const nextPublished = !submission.published;
-    setActionMsg(null);
-    setActionError(null);
-
-    try {
-      const res = await fetch(`/api/tests/${testId}/review${teacherAccessQuery}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          attemptId: submission.attemptId,
-          published: nextPublished,
-        }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setActionError(data.error || 'Unable to update publish state.');
-        return;
-      }
-
-      setSubmissions((prev) =>
-        prev.map((row) =>
-          row.id === submission.id
-            ? {
-              ...row,
-              published: nextPublished,
-            }
-            : row,
-        ),
-      );
-
-      setActionMsg(nextPublished ? 'Result published for student view.' : 'Result hidden from student view.');
-    } catch {
-      setActionError('Unable to update publish state.');
-    }
-  };
 
   if (loading) {
     return (
@@ -444,10 +346,6 @@ export default function TestReviewPage() {
     );
   }
 
-  const publishableVisibleCount = filteredSubmissions.filter(
-    (row) => row.status === 'submitted' && !row.published && !!row.attemptId,
-  ).length;
-
   return (
     <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
@@ -467,21 +365,12 @@ export default function TestReviewPage() {
           </div>
           <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">{test.title}</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            Track live submissions, inspect scores, and publish student results.
+            Track live submissions and inspect student results.
           </p>
         </div>
-
-        <button
-          onClick={handlePublishAllVisible}
-          disabled={publishingAll || publishableVisibleCount === 0}
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {publishingAll ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-          {publishingAll ? 'Publishing...' : `Publish Visible (${publishableVisibleCount})`}
-        </button>
       </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total"
           value={String(stats.total)}
@@ -501,30 +390,12 @@ export default function TestReviewPage() {
           icon={<Clock3 size={16} />}
         />
         <StatCard
-          title="Published"
-          value={String(stats.published)}
-          description="Visible to students"
-          icon={<Send size={16} />}
-        />
-        <StatCard
           title="Avg Score"
           value={`${stats.avgScore}%`}
           description="Across submitted attempts"
           icon={<BarChart3 size={16} />}
         />
       </div>
-
-      {actionMsg && (
-        <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-          {actionMsg}
-        </div>
-      )}
-
-      {actionError && (
-        <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-          {actionError}
-        </div>
-      )}
 
       <div className="rounded-2xl border border-border/70 bg-card/85 p-5 shadow-xl shadow-black/10">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -588,34 +459,15 @@ export default function TestReviewPage() {
                   <span className="rounded-lg border border-border/70 bg-card/60 px-2.5 py-1 text-xs font-semibold text-foreground">
                     {typeof submission.score === 'number' ? `${submission.score}%` : 'Not graded'}
                   </span>
-                  <span
-                    className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${
-                      submission.published
-                        ? 'border-teal-400/30 bg-teal-400/12 text-teal-200'
-                        : 'border-border/70 bg-background/60 text-muted-foreground'
-                    }`}
-                  >
-                    {submission.published ? 'Published' : 'Private'}
-                  </span>
 
                   {submission.status === 'submitted' && submission.attemptId ? (
-                    <>
-                      <Link
-                        href={`/tests/${test.id}/result?attemptId=${encodeURIComponent(submission.attemptId)}`}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-                      >
-                        <Eye size={12} />
-                        View Answers
-                      </Link>
-
-                      <button
-                        onClick={() => handleTogglePublish(submission)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-teal-400/30 bg-teal-400/12 px-2.5 py-1.5 text-xs font-semibold text-teal-200 transition hover:bg-teal-400/20"
-                      >
-                        <Send size={12} />
-                        {submission.published ? 'Unpublish' : 'Publish'}
-                      </button>
-                    </>
+                    <Link
+                      href={`/tests/${test.id}/result?attemptId=${encodeURIComponent(submission.attemptId)}`}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                    >
+                      <Eye size={12} />
+                      View Answers
+                    </Link>
                   ) : (
                     <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300">
                       <XCircle size={12} />

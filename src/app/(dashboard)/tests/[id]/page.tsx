@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import {
@@ -11,12 +11,11 @@ import {
   ClipboardList,
   Clock3,
   Loader2,
-  Plus,
-  Save,
   Send,
   Sparkles,
   Trophy,
   Trash2,
+  Upload,
   UserCircle2,
 } from 'lucide-react';
 
@@ -51,6 +50,20 @@ interface Test {
   test_code?: string | null;
 }
 
+interface ImportedQuestionPayload {
+  text: string;
+  question_type: 'mcq' | 'sql_fill';
+  correct_answer: string;
+  options?: Array<{
+    key?: string;
+    text: string;
+  }>;
+}
+
+interface ImportedQuestionPreview extends ImportedQuestionPayload {
+  sourceIndex: number;
+}
+
 type RandomQuestionType = 'mcq' | 'sql_fill' | 'mixed';
 type DifficultyProfile = 'basic' | 'medium' | 'hard' | 'mixed';
 
@@ -71,12 +84,176 @@ function getStatusClasses(status: string) {
   }
 }
 
-const DEFAULT_MCQ_OPTIONS = [
-  { key: 'A', text: '' },
-  { key: 'B', text: '' },
-  { key: 'C', text: '' },
-  { key: 'D', text: '' },
-];
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function normalizeOptionKey(value: string) {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 1);
+}
+
+function buildOptionKey(index: number) {
+  return String.fromCharCode(65 + index);
+}
+
+function parseImportedQuestions(options: {
+  raw: unknown;
+  interactiveOnly: boolean;
+}): {
+  payloads: ImportedQuestionPayload[];
+  preview: ImportedQuestionPreview[];
+  errors: string[];
+} {
+  const container = asObject(options.raw);
+  const list = Array.isArray(options.raw)
+    ? options.raw
+    : Array.isArray(container?.questions)
+      ? container.questions
+      : null;
+
+  if (!list) {
+    return {
+      payloads: [],
+      preview: [],
+      errors: ['JSON must be an array of questions or an object with a questions array.'],
+    };
+  }
+
+  const payloads: ImportedQuestionPayload[] = [];
+  const preview: ImportedQuestionPreview[] = [];
+  const errors: string[] = [];
+
+  list.forEach((row, index) => {
+    const sourceIndex = index + 1;
+    const item = asObject(row);
+
+    if (!item) {
+      errors.push(`Row ${sourceIndex}: each question must be an object.`);
+      return;
+    }
+
+    const textCandidate =
+      (typeof item.text === 'string' && item.text)
+      || (typeof item.question === 'string' && item.question)
+      || (typeof item.prompt === 'string' && item.prompt)
+      || '';
+    const text = textCandidate.trim();
+
+    if (!text) {
+      errors.push(`Row ${sourceIndex}: missing question text.`);
+      return;
+    }
+
+    const requestedType =
+      item.question_type === 'mcq' || item.question_type === 'sql_fill'
+        ? item.question_type
+        : item.type === 'mcq' || item.type === 'sql_fill'
+          ? item.type
+          : undefined;
+    const isMcqFallback = Array.isArray(item.options);
+    const questionType: 'mcq' | 'sql_fill' = requestedType ?? (isMcqFallback ? 'mcq' : 'sql_fill');
+
+    if (options.interactiveOnly && questionType !== 'mcq') {
+      errors.push(`Row ${sourceIndex}: interactive quiz allows only MCQ questions.`);
+      return;
+    }
+
+    if (questionType === 'mcq') {
+      const rawOptions = Array.isArray(item.options) ? item.options : [];
+      const normalizedOptions = rawOptions
+        .map((option, optionIndex) => {
+          if (typeof option === 'string') {
+            const textValue = option.trim();
+            return textValue
+              ? { key: buildOptionKey(optionIndex), text: textValue }
+              : null;
+          }
+
+          const optionObject = asObject(option);
+          if (!optionObject || typeof optionObject.text !== 'string') {
+            return null;
+          }
+
+          const textValue = optionObject.text.trim();
+          const keyValue = normalizeOptionKey(
+            typeof optionObject.key === 'string' ? optionObject.key : buildOptionKey(optionIndex),
+          );
+
+          if (!textValue || !keyValue) {
+            return null;
+          }
+
+          return { key: keyValue, text: textValue };
+        })
+        .filter((entry): entry is { key: string; text: string } => !!entry);
+
+      const dedupedOptions: Array<{ key: string; text: string }> = [];
+      const seenKeys = new Set<string>();
+      for (const option of normalizedOptions) {
+        if (seenKeys.has(option.key)) continue;
+        seenKeys.add(option.key);
+        dedupedOptions.push(option);
+      }
+
+      if (dedupedOptions.length < 2) {
+        errors.push(`Row ${sourceIndex}: MCQ must include at least 2 options.`);
+        return;
+      }
+
+      const answerCandidate =
+        (typeof item.correct_answer === 'string' && item.correct_answer)
+        || (typeof item.answer === 'string' && item.answer)
+        || '';
+      const normalizedAnswer = normalizeOptionKey(answerCandidate);
+
+      if (!normalizedAnswer || !dedupedOptions.some((option) => option.key === normalizedAnswer)) {
+        errors.push(`Row ${sourceIndex}: MCQ correct_answer must match one option key (A/B/C/D...).`);
+        return;
+      }
+
+      const payload: ImportedQuestionPayload = {
+        text,
+        question_type: 'mcq',
+        correct_answer: normalizedAnswer,
+        options: dedupedOptions,
+      };
+
+      payloads.push(payload);
+      preview.push({ ...payload, sourceIndex });
+      return;
+    }
+
+    const answerCandidate =
+      (typeof item.correct_answer === 'string' && item.correct_answer)
+      || (typeof item.answer === 'string' && item.answer)
+      || '';
+    const answer = answerCandidate.trim();
+
+    if (!answer) {
+      errors.push(`Row ${sourceIndex}: SQL/TEXT question requires correct_answer.`);
+      return;
+    }
+
+    const payload: ImportedQuestionPayload = {
+      text,
+      question_type: 'sql_fill',
+      correct_answer: answer,
+    };
+
+    payloads.push(payload);
+    preview.push({ ...payload, sourceIndex });
+  });
+
+  return {
+    payloads,
+    preview,
+    errors,
+  };
+}
 
 function StatCard({
   title,
@@ -117,28 +294,28 @@ export default function TestDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const [questions, setQuestions] = useState<Question[]>([]);
 
-  const [newQuestion, setNewQuestion] = useState('');
-  const [newQuestionType, setNewQuestionType] = useState<'mcq' | 'sql_fill'>('mcq');
-  const [newQuestionAnswer, setNewQuestionAnswer] = useState('');
-  const [newMcqOptions, setNewMcqOptions] = useState(DEFAULT_MCQ_OPTIONS);
-  const [newMcqCorrectKey, setNewMcqCorrectKey] = useState('A');
+  const [importFileName, setImportFileName] = useState('');
+  const [importPreview, setImportPreview] = useState<ImportedQuestionPreview[]>([]);
+  const [importQueue, setImportQueue] = useState<ImportedQuestionPayload[]>([]);
+  const [parsingImport, setParsingImport] = useState(false);
+  const [importingQuestions, setImportingQuestions] = useState(false);
+  const [importInputKey, setImportInputKey] = useState(0);
   const [randomCount, setRandomCount] = useState('5');
   const [randomQuestionType, setRandomQuestionType] = useState<RandomQuestionType>('mixed');
   const [randomDifficulty, setRandomDifficulty] = useState<DifficultyProfile>('mixed');
   const [mixMcqCountInput, setMixMcqCountInput] = useState('3');
-  const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
 
-  const [addingQuestion, setAddingQuestion] = useState(false);
   const [randomizingQuestions, setRandomizingQuestions] = useState(false);
   const [removingQuestionId, setRemovingQuestionId] = useState<string | null>(null);
-  const [savingAnswerId, setSavingAnswerId] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
 
   const isInteractiveQuiz = test?.module_type === 'interactive_quiz';
   const isPublished = (test?.status ?? '').toLowerCase() === 'published';
+  const canEditQuestions = isTeacher && !isPublished;
 
   const normalizedRandomCountPreview = useMemo(() => {
     const parsed = Number(randomCount);
@@ -179,19 +356,12 @@ export default function TestDetailPage() {
         ]);
 
         const loadedQuestions = (questionsData.questions || []) as Question[];
-        const loadedAnswerDrafts = loadedQuestions.reduce<Record<string, string>>((acc, question) => {
-          acc[question.id] = question.correct_answer
-            ?? (question.question_type === 'mcq' ? question.options?.[0]?.key ?? '' : '');
-          return acc;
-        }, {});
 
         const loadedTest = (testData.test || null) as Test | null;
         setTest(loadedTest);
         setQuestions(loadedQuestions);
-        setAnswerDrafts(loadedAnswerDrafts);
 
         if (loadedTest?.module_type === 'interactive_quiz') {
-          setNewQuestionType('mcq');
           setRandomQuestionType('mcq');
           setRandomDifficulty(loadedTest.interactive_settings?.difficulty_profile ?? 'mixed');
         }
@@ -216,76 +386,120 @@ export default function TestDetailPage() {
     [questions.length],
   );
 
-  const handleAddQuestion = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isTeacher || !newQuestion.trim() || !testId) return;
+  const resetImportSelection = () => {
+    setImportQueue([]);
+    setImportPreview([]);
+    setImportFileName('');
+    setImportInputKey((previous) => previous + 1);
+  };
 
-    if (isInteractiveQuiz && newQuestionType !== 'mcq') {
-      setActionError('Interactive Quiz supports MCQ questions only.');
+  const handleImportFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
       return;
     }
 
-    if (newQuestionType === 'mcq') {
-      const normalizedOptions = newMcqOptions
-        .map((option) => ({ key: option.key, text: option.text.trim() }))
-        .filter((option) => option.text.length > 0);
-
-      if (normalizedOptions.length < 2) {
-        setActionError('Please provide at least 2 answer options for MCQ.');
-        return;
-      }
-
-      if (!normalizedOptions.some((option) => option.key === newMcqCorrectKey)) {
-        setActionError('Please select a valid correct option key for this MCQ.');
-        return;
-      }
-    }
-
-    setAddingQuestion(true);
+    setParsingImport(true);
     setActionError(null);
+    setActionNotice(null);
 
     try {
-      const effectiveQuestionType: 'mcq' | 'sql_fill' = isInteractiveQuiz ? 'mcq' : newQuestionType;
-      const res = await fetch(`/api/tests/${testId}/questions${teacherAccessQuery}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: newQuestion.trim(),
-          question_type: effectiveQuestionType,
-          correct_answer: effectiveQuestionType === 'mcq' ? newMcqCorrectKey : newQuestionAnswer.trim(),
-          options: effectiveQuestionType === 'mcq'
-            ? newMcqOptions.map((option) => ({ key: option.key, text: option.text.trim() }))
-            : undefined,
-        }),
+      const fileText = await file.text();
+      const parsedJson = JSON.parse(fileText) as unknown;
+      const parsed = parseImportedQuestions({
+        raw: parsedJson,
+        interactiveOnly: isInteractiveQuiz,
       });
-      const data = await res.json();
 
-      if (res.ok && data.question) {
-        setQuestions((prev) => [...prev, data.question]);
-        setAnswerDrafts((prev) => ({
-          ...prev,
-          [data.question.id]: data.question.correct_answer
-            ?? (data.question.question_type === 'mcq' ? data.question.options?.[0]?.key ?? '' : ''),
-        }));
-        setNewQuestion('');
-        setNewQuestionAnswer('');
-        setNewMcqOptions(DEFAULT_MCQ_OPTIONS.map((option) => ({ ...option })));
-        setNewMcqCorrectKey('A');
-      } else {
-        setActionError(data.error || 'Unable to add question');
+      if (parsed.errors.length > 0) {
+        setImportFileName(file.name);
+        setImportQueue([]);
+        setImportPreview([]);
+        setActionError(parsed.errors.slice(0, 3).join(' '));
+        return;
       }
+
+      if (parsed.payloads.length === 0) {
+        setImportFileName(file.name);
+        setImportQueue([]);
+        setImportPreview([]);
+        setActionError('No valid questions were found in the selected JSON file.');
+        return;
+      }
+
+      setImportFileName(file.name);
+      setImportQueue(parsed.payloads);
+      setImportPreview(parsed.preview);
+      setActionNotice(`Loaded ${parsed.payloads.length} question${parsed.payloads.length === 1 ? '' : 's'} for import preview.`);
     } catch {
-      setActionError('Unable to add question');
+      setImportFileName(file.name);
+      setImportQueue([]);
+      setImportPreview([]);
+      setActionError('Invalid JSON file. Please upload a valid questions JSON file.');
     } finally {
-      setAddingQuestion(false);
+      setParsingImport(false);
     }
   };
 
+  const handleImportQuestions = async () => {
+    if (!canEditQuestions || !testId) {
+      return;
+    }
+
+    if (importQueue.length === 0) {
+      setActionError('Upload a JSON file first to import questions.');
+      return;
+    }
+
+    setImportingQuestions(true);
+    setActionError(null);
+    setActionNotice(null);
+
+    const imported: Question[] = [];
+    const failures: string[] = [];
+
+    for (let index = 0; index < importQueue.length; index += 1) {
+      const payload = importQueue[index];
+
+      try {
+        const res = await fetch(`/api/tests/${testId}/questions${teacherAccessQuery}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+
+        if (res.ok && data.question) {
+          imported.push(data.question as Question);
+        } else {
+          failures.push(`Row ${index + 1}: ${data.error || 'Unable to add question.'}`);
+        }
+      } catch {
+        failures.push(`Row ${index + 1}: Network error while importing question.`);
+      }
+    }
+
+    if (imported.length > 0) {
+      setQuestions((previous) => [...previous, ...imported]);
+    }
+
+    if (failures.length > 0) {
+      setActionError(
+        `Imported ${imported.length}/${importQueue.length} question${importQueue.length === 1 ? '' : 's'}. ${failures[0]}`,
+      );
+      return;
+    }
+
+    setActionNotice(`Imported ${imported.length} question${imported.length === 1 ? '' : 's'} successfully.`);
+    resetImportSelection();
+  };
+
   const handleRemoveQuestion = async (id: string) => {
-    if (!isTeacher || !testId) return;
+    if (!canEditQuestions || !testId) return;
 
     setRemovingQuestionId(id);
     setActionError(null);
+    setActionNotice(null);
 
     try {
       const res = await fetch(`/api/tests/${testId}/questions${teacherAccessQuery}`, {
@@ -296,11 +510,7 @@ export default function TestDetailPage() {
 
       if (res.ok) {
         setQuestions((prev) => prev.filter((question) => question.id !== id));
-        setAnswerDrafts((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
+        setActionNotice('Question removed.');
       } else {
         const data = await res.json();
         setActionError(data.error || 'Unable to remove question');
@@ -313,7 +523,7 @@ export default function TestDetailPage() {
   };
 
   const handleAddRandomQuestions = async () => {
-    if (!isTeacher || !testId) return;
+    if (!canEditQuestions || !testId) return;
 
     const parsedCount = Number(randomCount);
     if (!Number.isFinite(parsedCount) || parsedCount <= 0) {
@@ -346,6 +556,7 @@ export default function TestDetailPage() {
 
     setRandomizingQuestions(true);
     setActionError(null);
+    setActionNotice(null);
 
     try {
       const res = await fetch(`/api/tests/${testId}/questions/randomize${teacherAccessQuery}`, {
@@ -377,15 +588,7 @@ export default function TestDetailPage() {
         const incoming = randomQuestions.filter((question) => !existingIds.has(question.id));
         return [...prev, ...incoming];
       });
-
-      setAnswerDrafts((prev) => {
-        const next = { ...prev };
-        for (const question of randomQuestions) {
-          next[question.id] = question.correct_answer
-            ?? (question.question_type === 'mcq' ? question.options?.[0]?.key ?? '' : '');
-        }
-        return next;
-      });
+      setActionNotice(`Added ${randomQuestions.length} random question${randomQuestions.length === 1 ? '' : 's'}.`);
     } catch {
       setActionError('Unable to randomize questions from database.');
     } finally {
@@ -412,50 +615,11 @@ export default function TestDetailPage() {
       }
 
       setTest(data.test as Test);
+      setActionNotice('Test published. Questions and answers are now read-only.');
     } catch {
       setActionError('Unable to publish test.');
     } finally {
       setPublishing(false);
-    }
-  };
-
-  const handleSaveQuestionAnswer = async (questionId: string) => {
-    if (!isTeacher || !testId) return;
-
-    const question = questions.find((row) => row.id === questionId);
-    if (!question) return;
-
-    const draftAnswer = answerDrafts[questionId] ?? '';
-    if (question.question_type === 'mcq' && !draftAnswer.trim()) {
-      setActionError('Please select a correct option before saving the MCQ answer key.');
-      return;
-    }
-
-    setSavingAnswerId(questionId);
-    setActionError(null);
-
-    try {
-      const res = await fetch(`/api/tests/${testId}/questions${teacherAccessQuery}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: questionId,
-          correct_answer: draftAnswer,
-        }),
-      });
-      const data = await res.json();
-
-      if (res.ok && data.question) {
-        setQuestions((prev) =>
-          prev.map((question) => (question.id === questionId ? data.question : question)),
-        );
-      } else {
-        setActionError(data.error || 'Unable to save answer key');
-      }
-    } catch {
-      setActionError('Unable to save answer key');
-    } finally {
-      setSavingAnswerId(null);
     }
   };
 
@@ -540,7 +704,7 @@ export default function TestDetailPage() {
       </div>
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
-        {isInteractiveQuiz && (
+        {isInteractiveQuiz && isPublished && (
           <Link
             href={`/interactive-quiz/${test.id}/leaderboard`}
             className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/12 px-3 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
@@ -549,7 +713,7 @@ export default function TestDetailPage() {
             View Leaderboard
           </Link>
         )}
-        {isTeacher && (
+        {isTeacher && isPublished && (
           <Link
             href={`/tests/${test.id}/review`}
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-3 py-2 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
@@ -619,6 +783,12 @@ export default function TestDetailPage() {
         </div>
       )}
 
+      {actionNotice && (
+        <div className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+          {actionNotice}
+        </div>
+      )}
+
       <div className="grid gap-4">
         <section className="rounded-2xl border border-border/70 bg-card/85 p-5 shadow-xl shadow-black/10">
           <div className="mb-4 flex items-start justify-between gap-3">
@@ -632,178 +802,195 @@ export default function TestDetailPage() {
           </div>
 
           {isTeacher ? (
-            <form onSubmit={handleAddQuestion} className="mb-4 space-y-2">
-              <input
-                className="h-11 w-full rounded-xl border border-border bg-background/90 px-3.5 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                placeholder="Add a question prompt..."
-                value={newQuestion}
-                onChange={(e) => setNewQuestion(e.target.value)}
-                maxLength={240}
-              />
-              <div className="grid gap-2 sm:grid-cols-2">
-                <select
-                  className="h-11 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                  value={newQuestionType}
-                  onChange={(e) => setNewQuestionType(e.target.value as 'mcq' | 'sql_fill')}
-                  disabled={isInteractiveQuiz}
-                >
-                  <option value="mcq">MCQ (multiple choice)</option>
-                  {!isInteractiveQuiz && <option value="sql_fill">SQL / text answer</option>}
-                </select>
-                {newQuestionType === 'mcq' || isInteractiveQuiz ? (
-                  <select
-                    className="h-11 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                    value={newMcqCorrectKey}
-                    onChange={(e) => setNewMcqCorrectKey(e.target.value)}
-                  >
-                    {newMcqOptions.map((option) => (
-                      <option key={option.key} value={option.key}>
-                        Correct Option: {option.key}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    className="h-11 w-full rounded-xl border border-border bg-background/90 px-3.5 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                    placeholder="Answer key (example: SELECT * FROM students)"
-                    value={newQuestionAnswer}
-                    onChange={(e) => setNewQuestionAnswer(e.target.value)}
-                    maxLength={240}
-                  />
-                )}
-              </div>
+            <div className="mb-4 space-y-3">
+              {canEditQuestions ? (
+                <>
+                  <div className="rounded-xl border border-border/70 bg-card/85 p-4 shadow-sm shadow-black/10">
+                    <div className="flex items-center gap-2">
+                      <div className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
+                        <Upload size={13} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+                          Import Questions From JSON
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Upload an array of questions (or object with questions array). A preview is shown before import.
+                        </p>
+                      </div>
+                    </div>
 
-              {(newQuestionType === 'mcq' || isInteractiveQuiz) && (
-                <div className="space-y-2 rounded-xl border border-border/70 bg-background/40 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    MCQ Options
-                  </p>
-                  {newMcqOptions.map((option, index) => (
-                    <div key={option.key} className="flex items-center gap-2">
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/80 bg-background/70 text-xs font-semibold text-muted-foreground">
-                        {option.key}
-                      </span>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
                       <input
-                        className="h-9 w-full rounded-lg border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                        placeholder={`Option ${option.key}`}
-                        value={option.text}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setNewMcqOptions((prev) => prev.map((row, rowIndex) => (
-                            rowIndex === index ? { ...row, text: value } : row
-                          )));
-                        }}
-                        maxLength={180}
+                        key={importInputKey}
+                        type="file"
+                        accept="application/json,.json"
+                        onChange={handleImportFileChange}
+                        disabled={parsingImport || importingQuestions}
+                        className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm text-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-cyan-500/20 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-cyan-100 outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
                       />
+                      <button
+                        type="button"
+                        onClick={handleImportQuestions}
+                        disabled={parsingImport || importingQuestions || importQueue.length === 0}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {importingQuestions ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                        {importingQuestions ? 'Importing...' : `Import (${importQueue.length})`}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetImportSelection}
+                        disabled={parsingImport || importingQuestions || importQueue.length === 0}
+                        className="inline-flex h-10 items-center justify-center rounded-xl border border-border/80 bg-background/70 px-4 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Clear
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
 
-              <button
-                type="submit"
-                disabled={addingQuestion || !newQuestion.trim()}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {addingQuestion ? <Loader2 size={14} className="animate-spin" /> : <Plus size={15} />}
-                {addingQuestion ? 'Adding Question...' : 'Add Question'}
-              </button>
-
-              <div className="rounded-xl border border-border/70 bg-card/85 p-4 shadow-sm shadow-black/10">
-                <div className="flex items-center gap-2">
-                  <div className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-teal-400/30 bg-teal-500/10 text-teal-200">
-                    <Sparkles size={13} />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
-                      Add Random Questions From Database
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Pull approved sample questions from the question bank.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-3 grid gap-2 sm:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_auto]">
-                  <input
-                    type="number"
-                    min={1}
-                    max={50}
-                    aria-label="Number of random questions"
-                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                    value={randomCount}
-                    onChange={(e) => setRandomCount(e.target.value)}
-                  />
-                  <select
-                    value={randomQuestionType}
-                    onChange={(e) => setRandomQuestionType(e.target.value as RandomQuestionType)}
-                    disabled={isInteractiveQuiz}
-                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {!isInteractiveQuiz && (
-                      <option value="mixed">
-                        Mixed Questions (MCQ + SQL/TEXT)
-                      </option>
-                    )}
-                    <option value="mcq">
-                      MCQ only
-                    </option>
-                    {!isInteractiveQuiz && (
-                      <option value="sql_fill">
-                        Test-based (SQL/TEXT) only
-                      </option>
-                    )}
-                  </select>
-                  <select
-                    value={randomDifficulty}
-                    onChange={(e) => setRandomDifficulty(e.target.value as DifficultyProfile)}
-                    className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="mixed">Difficulty: Mixed</option>
-                    <option value="basic">Difficulty: Basic (easy)</option>
-                    <option value="medium">Difficulty: Medium</option>
-                    <option value="hard">Difficulty: Hard</option>
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleAddRandomQuestions}
-                    disabled={randomizingQuestions}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {randomizingQuestions ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                    {randomizingQuestions ? 'Randomizing...' : 'Add Random'}
-                  </button>
-                </div>
-
-                {!isInteractiveQuiz && randomQuestionType === 'mixed' && (
-                  <div className="mt-3 space-y-3 rounded-xl border border-teal-500/20 bg-teal-500/[0.05] p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-teal-200">
-                        Mixed-Mode Split
+                    {importFileName && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        File: {importFileName}
                       </p>
-                      <span className="rounded-full border border-teal-500/30 bg-teal-500/10 px-2 py-0.5 text-[11px] font-semibold text-teal-100">
-                        {normalizedMixMcqCountPreview} MCQ + {normalizedMixSqlCountPreview} SQL/TEXT
-                      </span>
+                    )}
+
+                    {importPreview.length > 0 && (
+                      <div className="mt-3 space-y-2 rounded-xl border border-border/70 bg-background/40 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          Import Preview
+                        </p>
+                        {importPreview.slice(0, 20).map((question) => (
+                          <div
+                            key={`${question.sourceIndex}_${question.text}`}
+                            className="rounded-lg border border-border/60 bg-background/60 px-2.5 py-2"
+                          >
+                            <p className="text-xs font-medium text-foreground">
+                              #{question.sourceIndex} {question.text}
+                            </p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              Type: {question.question_type === 'mcq' ? 'MCQ' : 'SQL/TEXT'} | Correct Answer: {question.correct_answer}
+                            </p>
+                            {question.question_type === 'mcq' && question.options && (
+                              <div className="mt-1 grid gap-1">
+                                {question.options.map((option) => (
+                                  <p key={`${question.sourceIndex}_${option.key}`} className="text-[11px] text-muted-foreground">
+                                    {option.key}. {option.text}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {importPreview.length > 20 && (
+                          <p className="text-[11px] text-muted-foreground">
+                            Showing first 20 of {importPreview.length} questions.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-border/70 bg-card/85 p-4 shadow-sm shadow-black/10">
+                    <div className="flex items-center gap-2">
+                      <div className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-teal-400/30 bg-teal-500/10 text-teal-200">
+                        <Sparkles size={13} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+                          Add Random Questions From Database
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Pull approved sample questions from the question bank.
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-[140px_minmax(0,1fr)] sm:items-center">
+                    <div className="mt-3 grid gap-2 sm:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_auto]">
                       <input
                         type="number"
-                        min={MIN_MIX_MCQ_COUNT}
-                        max={Math.max(MIN_MIX_MCQ_COUNT, normalizedRandomCountPreview - 1)}
-                        step={1}
-                        value={mixMcqCountInput}
-                        onChange={(e) => setMixMcqCountInput(e.target.value)}
-                        className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                        min={1}
+                        max={50}
+                        aria-label="Number of random questions"
+                        className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                        value={randomCount}
+                        onChange={(e) => setRandomCount(e.target.value)}
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Choose how many MCQ questions to include out of {normalizedRandomCountPreview}. The remaining {normalizedMixSqlCountPreview} question(s) will be SQL/TEXT.
-                      </p>
+                      <select
+                        value={randomQuestionType}
+                        onChange={(e) => setRandomQuestionType(e.target.value as RandomQuestionType)}
+                        disabled={isInteractiveQuiz}
+                        className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {!isInteractiveQuiz && (
+                          <option value="mixed">
+                            Mixed Questions (MCQ + SQL/TEXT)
+                          </option>
+                        )}
+                        <option value="mcq">
+                          MCQ only
+                        </option>
+                        {!isInteractiveQuiz && (
+                          <option value="sql_fill">
+                            Test-based (SQL/TEXT) only
+                          </option>
+                        )}
+                      </select>
+                      <select
+                        value={randomDifficulty}
+                        onChange={(e) => setRandomDifficulty(e.target.value as DifficultyProfile)}
+                        className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="mixed">Difficulty: Mixed</option>
+                        <option value="basic">Difficulty: Basic (easy)</option>
+                        <option value="medium">Difficulty: Medium</option>
+                        <option value="hard">Difficulty: Hard</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleAddRandomQuestions}
+                        disabled={randomizingQuestions || parsingImport || importingQuestions}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {randomizingQuestions ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                        {randomizingQuestions ? 'Randomizing...' : 'Add Random'}
+                      </button>
                     </div>
+
+                    {!isInteractiveQuiz && randomQuestionType === 'mixed' && (
+                      <div className="mt-3 space-y-3 rounded-xl border border-teal-500/20 bg-teal-500/[0.05] p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-teal-200">
+                            Mixed-Mode Split
+                          </p>
+                          <span className="rounded-full border border-teal-500/30 bg-teal-500/10 px-2 py-0.5 text-[11px] font-semibold text-teal-100">
+                            {normalizedMixMcqCountPreview} MCQ + {normalizedMixSqlCountPreview} SQL/TEXT
+                          </span>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-[140px_minmax(0,1fr)] sm:items-center">
+                          <input
+                            type="number"
+                            min={MIN_MIX_MCQ_COUNT}
+                            max={Math.max(MIN_MIX_MCQ_COUNT, normalizedRandomCountPreview - 1)}
+                            step={1}
+                            value={mixMcqCountInput}
+                            onChange={(e) => setMixMcqCountInput(e.target.value)}
+                            className="h-10 w-full rounded-xl border border-border bg-background/90 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Choose how many MCQ questions to include out of {normalizedRandomCountPreview}. The remaining {normalizedMixSqlCountPreview} question(s) will be SQL/TEXT.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </form>
+                </>
+              ) : (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+                  This test is published. Questions and answer keys are now read-only.
+                </div>
+              )}
+            </div>
           ) : (
             <div className="mb-4 rounded-xl border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
               Question management is available to teachers only.
@@ -844,59 +1031,12 @@ export default function TestDetailPage() {
                     )}
 
                     {isTeacher && (
-                      <div className="mt-1 space-y-2">
-                        <p className="text-xs text-muted-foreground">
-                          Answer Key: {resolvedAnswer}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {question.question_type === 'mcq' ? (
-                            <select
-                              value={answerDrafts[question.id] ?? ''}
-                              onChange={(e) =>
-                                setAnswerDrafts((prev) => ({
-                                  ...prev,
-                                  [question.id]: e.target.value,
-                                }))
-                              }
-                              className="h-8 w-full rounded-lg border border-border bg-background/80 px-2.5 text-xs outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 sm:w-64"
-                            >
-                              <option value="">Select correct option</option>
-                              {question.options.map((option) => (
-                                <option key={`${question.id}_answer_${option.key}`} value={option.key}>
-                                  {option.key} - {option.text}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              value={answerDrafts[question.id] ?? ''}
-                              onChange={(e) =>
-                                setAnswerDrafts((prev) => ({
-                                  ...prev,
-                                  [question.id]: e.target.value,
-                                }))
-                              }
-                              placeholder="Set or update answer key"
-                              className="h-8 w-full rounded-lg border border-border bg-background/80 px-2.5 text-xs outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 sm:w-64"
-                            />
-                          )}
-                          <button
-                            onClick={() => handleSaveQuestionAnswer(question.id)}
-                            disabled={savingAnswerId === question.id}
-                            className="inline-flex items-center gap-1 rounded-lg border border-border/80 bg-background/70 px-2 py-1 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {savingAnswerId === question.id ? (
-                              <Loader2 size={11} className="animate-spin" />
-                            ) : (
-                              <Save size={11} />
-                            )}
-                            Save Answer
-                          </button>
-                        </div>
-                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Answer Key: {resolvedAnswer}
+                      </p>
                     )}
                   </div>
-                  {isTeacher && (
+                  {canEditQuestions && (
                     <button
                       onClick={() => handleRemoveQuestion(question.id)}
                       disabled={isRemoving}

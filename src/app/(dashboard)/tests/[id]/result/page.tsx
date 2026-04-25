@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   Clock3,
   Loader2,
-  RefreshCw,
   Sparkles,
   TrendingUp,
   XCircle,
@@ -275,19 +274,11 @@ export default function TestResultPage() {
             Submit the test attempt first. Once submitted, score and answer review will appear here.
           </p>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-            {user?.role === 'student' && (
-              <Link
-                href={`/tests/${test.id}/attempt`}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
-              >
-                Open Attempt
-              </Link>
-            )}
             <Link
-              href={`/tests/${test.id}`}
+              href={user?.role === 'teacher' ? `/tests/${test.id}` : '/tests'}
               className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
             >
-              Back to Test Details
+              {user?.role === 'teacher' ? 'Back to Test Details' : 'Back to Tests'}
             </Link>
             {user?.role === 'teacher' && (
               <Link
@@ -310,11 +301,11 @@ export default function TestResultPage() {
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Link
-            href={user?.role === 'teacher' ? `/tests/${test.id}/review` : `/tests/${test.id}/attempt`}
+            href={user?.role === 'teacher' ? `/tests/${test.id}/review` : '/tests'}
             className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
           >
             <ArrowLeft size={13} />
-            {user?.role === 'teacher' ? 'Back to Review' : 'Back to Attempt'}
+            {user?.role === 'teacher' ? 'Back to Review' : 'Back to Tests'}
           </Link>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
             <Sparkles size={11} />
@@ -486,20 +477,11 @@ export default function TestResultPage() {
       </section>
 
       <div className="mt-6 flex flex-wrap items-center gap-2">
-        {user?.role === 'student' && (
-          <Link
-            href={`/tests/${test.id}/attempt`}
-            className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-          >
-            <RefreshCw size={14} />
-            Retry Practice Attempt
-          </Link>
-        )}
         <Link
-          href={`/tests/${test.id}`}
+          href={user?.role === 'teacher' ? `/tests/${test.id}` : '/tests'}
           className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
         >
-          Back to Test Details
+          {user?.role === 'teacher' ? 'Back to Test Details' : 'Back to Tests'}
         </Link>
         {user?.role === 'teacher' && (
           <Link

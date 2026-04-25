@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   addQuestionToTest,
   getTestOwnerAppUserId,
+  getTestById,
   listQuestionsForTest,
   removeQuestionFromTest,
   updateQuestionAnswer,
@@ -27,6 +28,24 @@ async function ensureTeacherAccess(req: Request, testId: string) {
 
   if (ownerUserId !== userId) {
     return { error: NextResponse.json({ error: 'You do not have access to this test.' }, { status: 403 }) };
+  }
+
+  return { error: null };
+}
+
+async function ensureEditableTest(testId: string) {
+  const test = await getTestById(testId);
+  if (!test) {
+    return { error: NextResponse.json({ error: 'Test not found.' }, { status: 404 }) };
+  }
+
+  if (test.status.toLowerCase() === 'published') {
+    return {
+      error: NextResponse.json(
+        { error: 'Published tests are read-only. Question editing is disabled after publish.' },
+        { status: 409 },
+      ),
+    };
   }
 
   return { error: null };
@@ -58,6 +77,9 @@ export async function POST(req: Request, context: { params: { id: string } } | {
   const params = await Promise.resolve(context.params);
   const access = await ensureTeacherAccess(req, params.id);
   if (access.error) return access.error;
+
+  const editability = await ensureEditableTest(params.id);
+  if (editability.error) return editability.error;
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
@@ -176,6 +198,9 @@ export async function PATCH(req: Request, context: { params: { id: string } } | 
   const access = await ensureTeacherAccess(req, params.id);
   if (access.error) return access.error;
 
+  const editability = await ensureEditableTest(params.id);
+  if (editability.error) return editability.error;
+
   const body = await req.json();
 
   if (!body?.id || typeof body.id !== 'string') {
@@ -204,6 +229,9 @@ export async function DELETE(req: Request, context: { params: { id: string } } |
   const params = await Promise.resolve(context.params);
   const access = await ensureTeacherAccess(req, params.id);
   if (access.error) return access.error;
+
+  const editability = await ensureEditableTest(params.id);
+  if (editability.error) return editability.error;
 
   const body = await req.json();
 

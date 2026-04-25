@@ -351,6 +351,19 @@ export default function TestsPage() {
     setShowTeacherModuleChooser(false);
   };
 
+  const handleBackFromWorkspace = () => {
+    setJoinError(null);
+    setError(null);
+
+    if (isTeacher) {
+      setShowTeacherModuleChooser(true);
+      return;
+    }
+
+    clearRole();
+    setShowTeacherModuleChooser(false);
+  };
+
   useEffect(() => {
     if (!isTeacher) return;
     if (searchParams?.get('chooser') === '1') {
@@ -431,6 +444,7 @@ export default function TestsPage() {
 
   const handleCreate = (test: Test) => {
     setTests((prev) => [test, ...prev]);
+    router.push(`/tests/${test.id}`);
   };
 
   const handleEdit = (test: Test) => {
@@ -591,11 +605,11 @@ export default function TestsPage() {
       <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <button
-            onClick={handleBackToRoleChooser}
+            onClick={handleBackFromWorkspace}
             className="mb-3 inline-flex items-center gap-2 rounded-full border border-teal-300/60 bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
           >
             <ArrowLeft size={13} />
-            Back
+            {isTeacher ? 'Back to Test Type' : 'Back'}
           </button>
           <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Test Module - Assessment Studio</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
@@ -603,16 +617,18 @@ export default function TestsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {isTeacher && (
-            <button
-              type="button"
-              onClick={() => setShowTeacherModuleChooser(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-            >
-              <ArrowLeft size={14} />
-              Switch Module
-            </button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {isStudent && (
+            <>
+              <div className="rounded-xl border border-border/80 bg-card/80 px-3 py-2 text-right shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Total Tests</p>
+                <p className="text-sm font-semibold text-foreground">{stats.total}</p>
+              </div>
+              <div className="rounded-xl border border-border/80 bg-card/80 px-3 py-2 text-right shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Role</p>
+                <p className="text-sm font-semibold text-foreground">Student</p>
+              </div>
+            </>
           )}
           {isTeacher && (
             <button
@@ -626,32 +642,34 @@ export default function TestsPage() {
         </div>
       </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total Tests"
-          value={String(stats.total)}
-          description="All assessments in this workspace"
-          icon={<ClipboardList size={16} />}
-        />
-        <StatCard
-          title="Draft"
-          value={String(stats.drafts)}
-          description="Still editable and not visible"
-          icon={<Pencil size={16} />}
-        />
-        <StatCard
-          title="Published"
-          value={String(stats.published)}
-          description="Ready for student access"
-          icon={<CheckCircle2 size={16} />}
-        />
-        <StatCard
-          title="Role"
-          value={isTeacher ? 'Teacher' : 'Student'}
-          description={isTeacher ? 'You can create and publish tests' : 'You can view available tests'}
-          icon={<Users size={16} />}
-        />
-      </div>
+      {isTeacher && (
+        <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Total Tests"
+            value={String(stats.total)}
+            description="All assessments in this workspace"
+            icon={<ClipboardList size={16} />}
+          />
+          <StatCard
+            title="Draft"
+            value={String(stats.drafts)}
+            description="Still editable and not visible"
+            icon={<Pencil size={16} />}
+          />
+          <StatCard
+            title="Published"
+            value={String(stats.published)}
+            description="Ready for student access"
+            icon={<CheckCircle2 size={16} />}
+          />
+          <StatCard
+            title="Role"
+            value="Teacher"
+            description="You can create and publish tests"
+            icon={<Users size={16} />}
+          />
+        </div>
+      )}
 
       {isStudent && (
         <form
@@ -783,13 +801,17 @@ export default function TestsPage() {
                     </button>
 
                     <div className="min-w-0">
-                      <Link
-                        href={`/tests/${test.id}`}
-                        className="group inline-flex items-center gap-1.5 text-sm font-semibold text-foreground transition-colors hover:text-primary"
-                      >
-                        {test.title}
-                        <Eye size={14} className="opacity-0 transition group-hover:opacity-100" />
-                      </Link>
+                      {isTeacher ? (
+                        <Link
+                          href={`/tests/${test.id}`}
+                          className="group inline-flex items-center gap-1.5 text-sm font-semibold text-foreground transition-colors hover:text-primary"
+                        >
+                          {test.title}
+                          <Eye size={14} className="opacity-0 transition group-hover:opacity-100" />
+                        </Link>
+                      ) : (
+                        <p className="text-sm font-semibold text-foreground">{test.title}</p>
+                      )}
                       <p className="mt-1 text-xs text-muted-foreground md:hidden">
                         Updated {new Date(test.updated_at).toLocaleString()}
                       </p>
@@ -810,13 +832,24 @@ export default function TestsPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 md:justify-start">
-                    <Link
-                      href={isTeacher ? `/tests/${test.id}` : getAttemptPath(test)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-                    >
-                      <Eye size={13} />
-                      {isTeacher ? 'Open' : 'Attempt'}
-                    </Link>
+                    {isTeacher ? (
+                      <Link
+                        href={`/tests/${test.id}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                      >
+                        <Eye size={13} />
+                        Open
+                      </Link>
+                    ) : (
+                      <Link
+                        href={user?.id
+                          ? `/tests/${test.id}/result?studentId=${encodeURIComponent(user.id)}`
+                          : `/tests/${test.id}/result`}
+                        className="inline-flex items-center rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                      >
+                        View Result
+                      </Link>
+                    )}
 
                     {isTeacher && (
                       <button
@@ -829,7 +862,7 @@ export default function TestsPage() {
                       </button>
                     )}
 
-                    {isTeacher && (
+                    {isTeacher && isPublished && (
                       <Link
                         href={`/tests/${test.id}/review`}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 dark:border-border/80 dark:bg-background/70 dark:text-muted-foreground dark:hover:border-violet-500/30 dark:hover:bg-violet-500/10 dark:hover:text-violet-200"

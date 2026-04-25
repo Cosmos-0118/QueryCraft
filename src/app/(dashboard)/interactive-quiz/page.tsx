@@ -1,12 +1,12 @@
 "use client";
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import {
   AlertTriangle,
   ArrowLeft,
-  CheckCircle2,
   Clock3,
   Loader2,
   Plus,
@@ -331,6 +331,7 @@ function CreateInteractiveQuizModal({
 }
 
 export default function InteractiveQuizPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const isTeacher = user?.role === 'teacher';
 
@@ -492,7 +493,10 @@ export default function InteractiveQuizPage() {
       <CreateInteractiveQuizModal
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onCreate={(test) => setTests((previous) => [test, ...previous])}
+        onCreate={(test) => {
+          setTests((previous) => [test, ...previous]);
+          router.push(`/tests/${test.id}`);
+        }}
         createdBy={user.id}
         teacherAccessQuery={teacherAccessQuery}
       />
@@ -599,12 +603,6 @@ export default function InteractiveQuizPage() {
                     >
                       Manage Questions
                     </Link>
-                    <Link
-                      href={`/interactive-quiz/${test.id}/attempt`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-orange-400/30 bg-orange-500/10 px-2.5 py-1.5 text-xs font-semibold text-orange-100 transition hover:bg-orange-500/20"
-                    >
-                      Preview Quiz
-                    </Link>
                     <button
                       onClick={() => handlePublish(test.id, isPublished)}
                       disabled={isPublished || isPublishing}
@@ -613,13 +611,14 @@ export default function InteractiveQuizPage() {
                       {isPublishing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                       {isPublished ? 'Published' : isPublishing ? 'Publishing...' : 'Publish'}
                     </button>
-                    <Link
-                      href={`/interactive-quiz/${test.id}/leaderboard`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1.5 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
-                    >
-                      <CheckCircle2 size={13} />
-                      Leaderboard
-                    </Link>
+                    {isPublished && (
+                      <Link
+                        href={`/interactive-quiz/${test.id}/leaderboard`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1.5 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+                      >
+                        Leaderboard
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>
