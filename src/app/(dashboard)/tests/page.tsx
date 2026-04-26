@@ -363,19 +363,6 @@ export default function TestsPage() {
     logout();
   };
 
-  const handleBackFromWorkspace = () => {
-    setJoinError(null);
-    setError(null);
-
-    if (isTeacher) {
-      setShowTeacherModuleChooser(true);
-      return;
-    }
-
-    clearRole();
-    setShowTeacherModuleChooser(false);
-  };
-
   useEffect(() => {
     if (!hydrated) return;
     if (!isAuthenticated) {
