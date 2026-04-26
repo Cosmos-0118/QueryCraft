@@ -1,0 +1,84 @@
+{
+  "unit": 4,
+  "title": "Normalization",
+  "topics": [
+    "Functional dependencies",
+    "Need for normalization",
+    "1NF, 2NF, 3NF, BCNF",
+    "4NF (multi-valued dependencies)",
+    "5NF (join dependencies)",
+    "Decomposition rules"
+  ],
+  "questions": [
+    {
+      "id": "u4-q001",
+      "prompt": "A relation is said to be in First Normal Form (1NF) if and only if:",
+      "options": [
+        { "key": "A", "text": "Every non-key attribute is fully functionally dependent on the primary key" },
+        { "key": "B", "text": "Every attribute contains only atomic (indivisible) values, with no repeating groups or arrays" },
+        { "key": "C", "text": "There are no transitive dependencies" },
+        { "key": "D", "text": "Every determinant is a candidate key" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "easy",
+      "marks": 1,
+      "explanation": "1NF eliminates non-atomic attributes — every cell holds a single value, no repeating groups, lists, or nested records. The other options describe 2NF, 3NF and BCNF respectively."
+    },
+    {
+      "id": "u4-q002",
+      "prompt": "A relation R(A, B, C, D) has primary key (A, B) and the FD B → D holds. Which normal form is violated?",
+      "options": [
+        { "key": "A", "text": "1NF" },
+        { "key": "B", "text": "2NF (because D is partially dependent on the key)" },
+        { "key": "C", "text": "3NF only" },
+        { "key": "D", "text": "BCNF only" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "D depends only on B, which is part of the composite primary key (A, B). That is a partial dependency, which violates 2NF. The relation is in 1NF but must be decomposed to reach 2NF."
+    },
+    {
+      "id": "u4-q003",
+      "prompt": "Which of the following is the strictest condition that defines Boyce-Codd Normal Form (BCNF)?",
+      "options": [
+        { "key": "A", "text": "Every non-prime attribute must be fully dependent on every candidate key" },
+        { "key": "B", "text": "For every non-trivial functional dependency X → Y, X must be a superkey" },
+        { "key": "C", "text": "The relation must have only one candidate key" },
+        { "key": "D", "text": "There must be no multi-valued dependencies" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "BCNF requires that for every non-trivial FD X → Y, X is a superkey. This is a stronger condition than 3NF (which permits FDs whose right-hand side is a prime attribute even if X is not a superkey)."
+    },
+    {
+      "id": "u4-q004",
+      "prompt": "Fourth Normal Form (4NF) addresses anomalies caused by:",
+      "options": [
+        { "key": "A", "text": "Transitive functional dependencies" },
+        { "key": "B", "text": "Partial functional dependencies on composite keys" },
+        { "key": "C", "text": "Non-trivial multi-valued dependencies (MVDs) where the determinant is not a superkey" },
+        { "key": "D", "text": "Lossy join decompositions" }
+      ],
+      "correct_answer": "C",
+      "difficulty": "hard",
+      "marks": 1,
+      "explanation": "4NF eliminates non-trivial multi-valued dependencies (MVDs) X →→ Y where X is not a superkey. 3NF and 2NF deal with FDs; lossless-join is a separate decomposition property."
+    },
+    {
+      "id": "u4-q005",
+      "prompt": "Decomposition of a relation R into R1 and R2 is called a lossless-join decomposition if:",
+      "options": [
+        { "key": "A", "text": "R1 ∪ R2 = R" },
+        { "key": "B", "text": "R1 × R2 = R (Cartesian product reproduces R)" },
+        { "key": "C", "text": "(R1 ⋈ R2) yields exactly the original relation R, without spurious tuples" },
+        { "key": "D", "text": "R1 and R2 share no attributes" }
+      ],
+      "correct_answer": "C",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "Lossless-join means joining R1 and R2 on their common attributes yields exactly the original relation R, with no extra (spurious) tuples and no information loss. This is guaranteed when the common attribute(s) form a superkey of at least one of R1 or R2."
+    }
+  ]
+}

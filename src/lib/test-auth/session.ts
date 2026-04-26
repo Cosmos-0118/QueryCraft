@@ -28,3 +28,10 @@ export function requireAdminSession(req: NextRequest | Request): TestAuthTokenPa
   if (!session || session.role !== 'admin') return null;
   return session;
 }
+
+export function requireTeacherOrAdminSession(req: NextRequest | Request): TestAuthTokenPayload | null {
+  const session = readTestAuthSession(req);
+  if (!session) return null;
+  if (session.role !== 'teacher' && session.role !== 'admin') return null;
+  return session;
+}

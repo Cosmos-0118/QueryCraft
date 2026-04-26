@@ -1,0 +1,84 @@
+{
+  "unit": 1,
+  "title": "Introduction to DBMS",
+  "topics": [
+    "File processing system issues",
+    "Need for DBMS",
+    "Database terminology",
+    "Database system architecture",
+    "Data models",
+    "ER diagram basics & extensions"
+  ],
+  "questions": [
+    {
+      "id": "u1-q001",
+      "prompt": "Which of the following is a major drawback of traditional file processing systems that motivates the use of a DBMS?",
+      "options": [
+        { "key": "A", "text": "Strict ACID transaction support" },
+        { "key": "B", "text": "Data redundancy and inconsistency across files" },
+        { "key": "C", "text": "Built-in concurrency control" },
+        { "key": "D", "text": "Centralized data dictionary" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "easy",
+      "marks": 1,
+      "explanation": "File processing systems duplicate the same data across multiple files maintained by different applications, leading to redundancy and inconsistencies. A DBMS centralizes data and enforces integrity to remove this issue."
+    },
+    {
+      "id": "u1-q002",
+      "prompt": "In the three-schema (ANSI/SPARC) architecture of a DBMS, the level that describes how the data is actually stored on disk is the:",
+      "options": [
+        { "key": "A", "text": "External / view level" },
+        { "key": "B", "text": "Conceptual / logical level" },
+        { "key": "C", "text": "Internal / physical level" },
+        { "key": "D", "text": "Application level" }
+      ],
+      "correct_answer": "C",
+      "difficulty": "easy",
+      "marks": 1,
+      "explanation": "The internal (physical) level describes the actual storage layout — data files, indices, hash tables, etc. The conceptual level describes the logical structure, and external level describes user-specific views."
+    },
+    {
+      "id": "u1-q003",
+      "prompt": "The ability to change the conceptual schema of a database without affecting application programs that use it is known as:",
+      "options": [
+        { "key": "A", "text": "Physical data independence" },
+        { "key": "B", "text": "Logical data independence" },
+        { "key": "C", "text": "Schema invariance" },
+        { "key": "D", "text": "View materialization" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "Logical data independence means changes to the logical (conceptual) schema, such as adding a new attribute, do not require rewriting external applications. Physical data independence concerns changes only to the storage layer."
+    },
+    {
+      "id": "u1-q004",
+      "prompt": "In an Extended Entity-Relationship (EER) diagram, which symbol/concept is used to represent that one entity set is a specialization of another?",
+      "options": [
+        { "key": "A", "text": "A double-lined ellipse" },
+        { "key": "B", "text": "A triangle labelled 'ISA' (or a circle/triangle with a sub-class line)" },
+        { "key": "C", "text": "A diamond with double border" },
+        { "key": "D", "text": "A dashed rectangle" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "Specialization/generalization in EER is represented using an 'ISA' triangle (or circle with disjoint/overlapping markers) connecting the superclass to its subclasses. Diamonds represent relationships, double ellipses represent multivalued attributes."
+    },
+    {
+      "id": "u1-q005",
+      "prompt": "A weak entity set in an ER diagram is best characterized by which of the following?",
+      "options": [
+        { "key": "A", "text": "It has its own primary key independent of any other entity set" },
+        { "key": "B", "text": "Its existence depends on a strong (owner) entity set, and it is identified using a partial key combined with the owner's key" },
+        { "key": "C", "text": "It can never participate in any relationship" },
+        { "key": "D", "text": "It must always be a multi-valued attribute" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "A weak entity does not have a sufficient key of its own and is identified by combining its partial (discriminator) key with the primary key of the owner entity through an identifying relationship (drawn with double diamonds/rectangles)."
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+1) when the teacher logins and goes inside it is directly going inside the normal test module page
+ it should lead to the choose the test type page and then the faculty can choose the test type
+
+ 2) when a student attempts and submits a test 
+ the test should reflect in the test history page of the students side

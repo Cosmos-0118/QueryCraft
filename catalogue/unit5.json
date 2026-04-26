@@ -1,0 +1,84 @@
+{
+  "unit": 5,
+  "title": "Concurrency Control, Recovery & NoSQL",
+  "topics": [
+    "Storage structure",
+    "Transaction control & ACID",
+    "Concurrency control algorithms (2PL, timestamp ordering)",
+    "Issues in concurrent execution",
+    "Failures & recovery (logs, checkpoints, ARIES)",
+    "NoSQL databases (Document, Key-Value, Column, Graph)"
+  ],
+  "questions": [
+    {
+      "id": "u5-q001",
+      "prompt": "Which of the following best describes the 'Isolation' property in ACID transactions?",
+      "options": [
+        { "key": "A", "text": "Once a transaction commits, its effects survive system failures" },
+        { "key": "B", "text": "Concurrently executing transactions appear to execute one after another, hiding their intermediate state from each other" },
+        { "key": "C", "text": "A transaction either completes entirely or has no effect at all" },
+        { "key": "D", "text": "The database always moves from one valid state to another valid state" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "easy",
+      "marks": 1,
+      "explanation": "Isolation means concurrent transactions should not see each other's partial effects — the result is equivalent to some serial execution. The other options describe Durability (A), Atomicity (C), and Consistency (D)."
+    },
+    {
+      "id": "u5-q002",
+      "prompt": "Strict Two-Phase Locking (Strict 2PL) guarantees:",
+      "options": [
+        { "key": "A", "text": "Only conflict-serializable schedules and freedom from cascading aborts" },
+        { "key": "B", "text": "Only deadlock-freedom" },
+        { "key": "C", "text": "View-serializable schedules but allows cascading aborts" },
+        { "key": "D", "text": "Linearizable reads but not serializable writes" }
+      ],
+      "correct_answer": "A",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "Strict 2PL holds all exclusive locks until commit/abort, which both ensures conflict-serializability AND prevents cascading aborts (no other transaction can read uncommitted data). However, it does not eliminate deadlocks."
+    },
+    {
+      "id": "u5-q003",
+      "prompt": "In the ARIES recovery algorithm, the three phases performed at restart after a crash are, in order:",
+      "options": [
+        { "key": "A", "text": "Undo, Redo, Analysis" },
+        { "key": "B", "text": "Analysis, Redo, Undo" },
+        { "key": "C", "text": "Redo, Undo, Analysis" },
+        { "key": "D", "text": "Checkpoint, Redo, Commit" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "hard",
+      "marks": 1,
+      "explanation": "ARIES recovery proceeds in three phases: (1) Analysis identifies dirty pages and active transactions from the log; (2) Redo reapplies all logged updates to bring the database to its crash-time state; (3) Undo rolls back transactions that did not commit."
+    },
+    {
+      "id": "u5-q004",
+      "prompt": "Phantom reads in concurrent transactions are most directly prevented by which isolation level?",
+      "options": [
+        { "key": "A", "text": "Read Uncommitted" },
+        { "key": "B", "text": "Read Committed" },
+        { "key": "C", "text": "Repeatable Read" },
+        { "key": "D", "text": "Serializable" }
+      ],
+      "correct_answer": "D",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "Phantom reads (rows appearing/disappearing because another transaction inserted/deleted matching rows) are only fully prevented at the Serializable isolation level. Repeatable Read prevents non-repeatable reads on existing rows but does not, by itself, stop phantoms in the SQL standard sense."
+    },
+    {
+      "id": "u5-q005",
+      "prompt": "Which type of NoSQL database is most appropriate for storing and querying highly inter-connected data such as social networks, where traversing relationships is the primary access pattern?",
+      "options": [
+        { "key": "A", "text": "Key-Value store (e.g., Redis)" },
+        { "key": "B", "text": "Document store (e.g., MongoDB)" },
+        { "key": "C", "text": "Wide-column / Column-family store (e.g., Cassandra)" },
+        { "key": "D", "text": "Graph database (e.g., Neo4j)" }
+      ],
+      "correct_answer": "D",
+      "difficulty": "easy",
+      "marks": 1,
+      "explanation": "Graph databases store nodes and edges as first-class citizens and are optimized for traversals (e.g., 'friends of friends'). Document and key-value stores treat relationships as secondary; column-family stores are best for very large, sparse, write-heavy tabular data."
+    }
+  ]
+}

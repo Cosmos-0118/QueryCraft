@@ -1,0 +1,29 @@
+so now 
+put all the questions and answers in the catalogue folder
+seperate them into 5 files inside naming them as unit 1,2,3,4,5
+add 100 questions in each unit based on the unit topic 
+add only the mcq questions 
+take questions from the web based on the below topics 
+dbms syllabus.jpeg
+
+Unit-1 - Introduction
+Issues in File Processing System, Need for DBMS, Basic terminologies of Database, Database system Architecture, Various Data models, ER diagram basics and extensions, Case study: Construction of Database
+
+Unit-2 - Relational DBMS
+
+design using Entity Relationship diagram for an application such as University Database, Banking System, Information System
+Conversion of ER model to Relational Table, Case study: Apply conversion concept. Discussion of various design issues. Pitfalls in Relational Database systems, Understanding various Relational languages such
+as Tuple Relational calculus, Domain relational calculus, Calculus Vs Algebra, Computational capabilities. Case Study: Applying Relational Algebra for all the queries of application Designed
+Unit-3 - SQL
+SQL commands, Constraints, Joins, set operations, Sub queries, Views, PL- SQL, Triggers, and Cursors. Case Study: Implement all the queries using SQL, PL-SQL, Cursor and Triggers
+Unit-4 - Normalization
+Normalization, Need for Normalization, NF1, NF2, NF3, NF4, NF5. Case study: Apply Conversion rules and normalize the Database
+Unit-5 - Concurrency Control
+Storage Structure, Transaction control, Concurrency control algorithms, Issues in Concurrent execution, Failures and Recovery algorithms Case study: Demonstration of Entire project by applying all the concepts
+leamt with minimum Front end requirements, NoSQL Databases-Document Oriented, Key value pairs, Column Oriented and Graph
+
+
+100 mcq questions from each unit to be put in each unit file under the Catalogue folder
+
+this catalogue folder is to be used by the test module to take questions 
+instead of the questions in the db

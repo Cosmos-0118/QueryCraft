@@ -1,0 +1,85 @@
+{
+  "unit": 3,
+  "title": "SQL",
+  "topics": [
+    "DDL/DML/DCL commands",
+    "Constraints",
+    "Joins & set operations",
+    "Subqueries & views",
+    "PL/SQL",
+    "Triggers",
+    "Cursors"
+  ],
+  "questions": [
+    {
+      "id": "u3-q001",
+      "prompt": "Which SQL command is classified as Data Definition Language (DDL) and is used to remove a table definition along with all its data?",
+      "options": [
+        { "key": "A", "text": "DELETE FROM table_name" },
+        { "key": "B", "text": "DROP TABLE table_name" },
+        { "key": "C", "text": "TRUNCATE TABLE table_name" },
+        { "key": "D", "text": "REMOVE TABLE table_name" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "easy",
+      "marks": 1,
+      "explanation": "DROP TABLE is a DDL statement that removes the table definition and its data permanently. DELETE is DML and removes rows but keeps the structure. TRUNCATE removes all rows quickly but also keeps the structure (and is technically DDL in some RDBMS)."
+    },
+    {
+      "id": "u3-q002",
+      "prompt": "Consider the query: SELECT name FROM Employee WHERE dept_id IN (SELECT id FROM Department WHERE location = 'Pune'). This is an example of:",
+      "options": [
+        { "key": "A", "text": "A correlated subquery" },
+        { "key": "B", "text": "A non-correlated (uncorrelated) subquery" },
+        { "key": "C", "text": "A recursive CTE" },
+        { "key": "D", "text": "A scalar function call" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "The inner subquery does not reference any column from the outer Employee query, so it can be evaluated independently — this is an uncorrelated subquery. A correlated subquery would reference the outer row inside the inner SELECT."
+    },
+    {
+      "id": "u3-q003",
+      "prompt": "Which of the following SQL set operations returns rows that appear in the result of the first query but NOT in the result of the second query?",
+      "options": [
+        { "key": "A", "text": "UNION" },
+        { "key": "B", "text": "INTERSECT" },
+        { "key": "C", "text": "EXCEPT (or MINUS in Oracle)" },
+        { "key": "D", "text": "JOIN" }
+      ],
+      "correct_answer": "C",
+      "difficulty": "easy",
+      "marks": 1,
+      "explanation": "EXCEPT (called MINUS in Oracle) returns the set difference: rows from the first query that are not in the second. UNION returns the union, INTERSECT returns rows in both, and JOIN is not a set operation."
+    },
+    {
+      "id": "u3-q004",
+      "prompt": "In PL/SQL, which type of trigger fires once for the entire DML statement, irrespective of how many rows are affected?",
+      "options": [
+        { "key": "A", "text": "Row-level trigger (FOR EACH ROW)" },
+        { "key": "B", "text": "Statement-level trigger" },
+        { "key": "C", "text": "INSTEAD OF trigger" },
+        { "key": "D", "text": "Compound trigger" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "A statement-level trigger executes once per DML statement, no matter how many rows are affected. A row-level trigger (FOR EACH ROW) fires once for every affected row. INSTEAD OF triggers are used on views."
+    },
+    {
+      "id": "u3-q005",
+      "prompt": "An explicit cursor in PL/SQL is most commonly used when the programmer needs to:",
+      "options": [
+        { "key": "A", "text": "Run a single-row SELECT INTO that returns exactly one row" },
+        { "key": "B", "text": "Process the result set of a SELECT query row by row in procedural code" },
+        { "key": "C", "text": "Define an integrity constraint on a table" },
+        { "key": "D", "text": "Disable a foreign key without dropping it" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "Explicit cursors give the developer fine-grained control to fetch and process rows one at a time, which is useful when the result set has many rows. Single-row SELECT INTO uses an implicit cursor automatically managed by PL/SQL."
+    }
+  ]
+}
