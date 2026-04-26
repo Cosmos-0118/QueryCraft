@@ -1,3 +1,21 @@
 User authentication
 make a login feature so that 
-only injected users can access the test module and only teachers can create tests and students can only attempt the tests and view their results
+only admin eneterd users can access the test module and only teachers can create tests and students can only attempt the tests and view their results
+so when a user clicks on the tets module feature from the dashboard
+there should be a login feature where 
+the user should enter their email and then create a password and then confirm the password and then login
+these users emails will be added by the admin in the admin module
+
+remove the continue as student and continue as teacher feature from the test module and replace it with the login feature
+otherwise everything is ok
+
+
+admin module creation 
+create an admin module where the admin can add users by entering their email and then assigning them a role like teacher or student 
+the admin module should only contain features like add user, view users, delete users and update users
+theres should be an option to import the user emails from a excel sheet and assign studen roles to those emails
+
+
+
+all these features are in side the test module only 
+dont change anything outside the test module and make sure the UI is consistent with the rest of the website

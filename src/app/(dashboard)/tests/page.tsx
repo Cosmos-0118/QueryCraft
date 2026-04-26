@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { useAuth } from '@/hooks/use-auth';
+import { useTestAuth } from '@/hooks/use-test-auth';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -19,7 +19,6 @@ import {
   Plus,
   Send,
   Sparkles,
-  UserCheck,
   Users,
 } from 'lucide-react';
 
@@ -337,18 +336,19 @@ export default function TestsPage() {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [showTeacherModuleChooser, setShowTeacherModuleChooser] = useState(false);
 
-  const { user, setRole, clearRole } = useAuth();
+  const { user, hydrated, isAuthenticated, logout } = useTestAuth();
   const isTeacher = user?.role === 'teacher';
   const isStudent = user?.role === 'student';
+  const isAdmin = user?.role === 'admin';
   const teacherAccessQuery = isTeacher && user?.id
     ? `?role=teacher&userId=${encodeURIComponent(user.id)}`
     : '';
 
-  const handleBackToRoleChooser = () => {
-    clearRole();
+  const handleSignOut = () => {
     setJoinError(null);
     setError(null);
     setShowTeacherModuleChooser(false);
+    logout();
   };
 
   const handleBackFromWorkspace = () => {
@@ -360,9 +360,19 @@ export default function TestsPage() {
       return;
     }
 
-    clearRole();
-    setShowTeacherModuleChooser(false);
+    logout();
   };
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!isAuthenticated) {
+      router.replace('/tests/login');
+      return;
+    }
+    if (isAdmin) {
+      router.replace('/admin');
+    }
+  }, [hydrated, isAuthenticated, isAdmin, router]);
 
   useEffect(() => {
     if (!isTeacher) return;
@@ -513,38 +523,13 @@ export default function TestsPage() {
     }
   };
 
-  if (!user?.role) {
+  if (!hydrated || !isAuthenticated || !user) {
     return (
-      <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col items-center justify-center px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
-        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
-        <div className="w-full max-w-4xl rounded-2xl border border-border/90 bg-card/85 p-8 shadow-xl shadow-black/10">
-          <h1 className="mt-3 text-center text-2xl font-bold tracking-tight sm:text-3xl">Choose Your Test Module Role</h1>
-          <p className="mx-auto mt-1.5 max-w-2xl text-center text-sm text-muted-foreground">
-            Continue as a teacher to create and publish tests, or as a student to join via test code.
-          </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <ChoiceCard
-              title="Continue as Teacher"
-              description="Create, publish, and monitor assessments as faculty."
-              icon={<UserCheck size={17} className="text-teal-200" />}
-              actionLabel="Teacher"
-              accentClass="border-teal-400/30 bg-teal-500/10"
-              onClick={() => {
-                setRole('teacher');
-                setShowTeacherModuleChooser(true);
-              }}
-            />
-            <ChoiceCard
-              title="Continue as Student"
-              description="Join with a test code and attempt available assessments."
-              icon={<Users size={17} className="text-cyan-200" />}
-              actionLabel="Student"
-              accentClass="border-cyan-400/30 bg-cyan-500/10"
-              onClick={() => {
-                setRole('student');
-                setShowTeacherModuleChooser(false);
-              }}
-            />
+      <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <div className="rounded-2xl border border-border/70 bg-card/70 p-6">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 size={15} className="animate-spin" />
+            Checking your session...
           </div>
         </div>
       </div>
@@ -557,11 +542,11 @@ export default function TestsPage() {
         <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
         <div className="rounded-2xl border border-border/70 bg-card/85 p-8 shadow-xl shadow-black/10">
           <button
-            onClick={handleBackToRoleChooser}
+            onClick={handleSignOut}
             className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
           >
             <ArrowLeft size={13} />
-            Back to Choose Role
+            Sign out
           </button>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
             <Sparkles size={11} />

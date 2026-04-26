@@ -35,8 +35,10 @@
     "pg": "^8.20.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "read-excel-file": "^9.0.6",
     "sql.js": "^1.14.1",
     "tailwind-merge": "^3.0.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.24.0",
     "zustand": "^5.0.0"
   },

@@ -41,6 +41,10 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
+  // read-excel-file pulls in unzipper, which lazily requires '@aws-sdk/client-s3'
+  // for an S3 streaming code path we never use. Externalizing the package keeps
+  // it out of the server bundle so Node loads it normally at runtime.
+  serverExternalPackages: ['read-excel-file', 'unzipper'],
   async headers() {
     return [
       {

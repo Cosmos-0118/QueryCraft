@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { useAuth } from '@/hooks/use-auth';
+import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -332,8 +332,20 @@ function CreateInteractiveQuizModal({
 
 export default function InteractiveQuizPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, hydrated, isAuthenticated } = useAuth();
   const isTeacher = user?.role === 'teacher';
+  const isAdmin = user?.role === 'admin';
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!isAuthenticated) {
+      router.replace('/tests/login');
+      return;
+    }
+    if (isAdmin) {
+      router.replace('/admin');
+    }
+  }, [hydrated, isAuthenticated, isAdmin, router]);
 
   const [tests, setTests] = useState<Test[]>([]);
   const [loading, setLoading] = useState(true);
