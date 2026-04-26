@@ -197,9 +197,7 @@ export function listTests(options?: { role?: TestRole; userId?: string }) {
   const role = options?.role;
   const userId = options?.userId;
 
-  let rows = role === 'student'
-    ? store.tests.filter((test) => test.status === 'published')
-    : store.tests;
+  let rows = store.tests;
 
   if (role === 'student' && userId) {
     const joinedTestIds = new Set(
@@ -208,7 +206,17 @@ export function listTests(options?: { role?: TestRole; userId?: string }) {
         .map((join) => join.test_id),
     );
 
-    rows = rows.filter((test) => joinedTestIds.has(test.id));
+    const submittedTestIds = new Set(
+      store.attempts
+        .filter((attempt) => attempt.student_id === userId && attempt.status === 'submitted')
+        .map((attempt) => attempt.test_id),
+    );
+
+    rows = rows.filter(
+      (test) => (test.status === 'published' && joinedTestIds.has(test.id)) || submittedTestIds.has(test.id),
+    );
+  } else if (role === 'student') {
+    rows = rows.filter((test) => test.status === 'published');
   }
 
   return [...rows].sort(

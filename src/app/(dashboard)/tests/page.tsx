@@ -32,12 +32,40 @@ interface Test {
   module_type?: 'classic' | 'interactive_quiz';
 }
 
+interface StudentAttemptLookup {
+  id: string;
+  status: 'in_progress' | 'submitted';
+  submitted_at: string | null;
+  score: number | null;
+}
+
+interface StudentPastTest {
+  testId: string;
+  attemptId: string;
+  title: string;
+  moduleType: 'classic' | 'interactive_quiz';
+  submittedAt: string;
+  score: number | null;
+}
+
 function getAttemptPath(test: Test) {
   if (test.module_type === 'interactive_quiz') {
     return `/interactive-quiz/${test.id}/attempt`;
   }
 
   return `/tests/${test.id}/attempt`;
+}
+
+function formatModuleTypeLabel(moduleType: 'classic' | 'interactive_quiz') {
+  return moduleType === 'interactive_quiz' ? 'Interactive Quiz' : 'Normal Test';
+}
+
+function getPastTestResultPath(row: StudentPastTest) {
+  if (row.moduleType === 'interactive_quiz') {
+    return `/interactive-quiz/${row.testId}/leaderboard?attemptId=${encodeURIComponent(row.attemptId)}`;
+  }
+
+  return `/tests/${row.testId}/result?attemptId=${encodeURIComponent(row.attemptId)}`;
 }
 
 function formatStatus(status: string) {
@@ -334,12 +362,16 @@ export default function TestsPage() {
   const [joinCode, setJoinCode] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [studentPastTests, setStudentPastTests] = useState<StudentPastTest[]>([]);
+  const [pastTestsLoading, setPastTestsLoading] = useState(false);
+  const [pastTestsError, setPastTestsError] = useState<string | null>(null);
   const [showTeacherModuleChooser, setShowTeacherModuleChooser] = useState(false);
 
   const { user, hydrated, isAuthenticated, logout } = useTestAuth();
   const isTeacher = user?.role === 'teacher';
   const isStudent = user?.role === 'student';
   const isAdmin = user?.role === 'admin';
+  const submissionNoticeVisible = searchParams?.get('submitted') === '1';
   const teacherAccessQuery = isTeacher && user?.id
     ? `?role=teacher&userId=${encodeURIComponent(user.id)}`
     : '';
@@ -427,30 +459,91 @@ export default function TestsPage() {
     [tests],
   );
 
-  const visibleTests = useMemo(
+  const teacherVisibleTests = useMemo(
     () => {
       // Faculty-side: keep the normal Test Module list strictly classic; interactive
       // quizzes have their own list in the Interactive Quiz Module.
-      const classicOnly = sortedTests.filter(
+      return sortedTests.filter(
         (test) => (test.module_type ?? 'classic') === 'classic',
       );
-      return isTeacher
-        ? classicOnly
-        : classicOnly.filter((test) => test.status.toLowerCase() === 'published');
     },
-    [isTeacher, sortedTests],
+    [sortedTests],
   );
 
-  const stats = useMemo(() => {
-    const published = visibleTests.filter((test) => test.status.toLowerCase() === 'published').length;
-    const drafts = visibleTests.length - published;
+  const teacherStats = useMemo(() => {
+    const published = teacherVisibleTests.filter((test) => test.status.toLowerCase() === 'published').length;
+    const drafts = teacherVisibleTests.length - published;
     return {
-      total: visibleTests.length,
+      total: teacherVisibleTests.length,
       published,
       drafts,
-      roleLabel: isTeacher ? 'Teacher Workspace' : 'Student Workspace',
     };
-  }, [visibleTests, isTeacher]);
+  }, [teacherVisibleTests]);
+
+  useEffect(() => {
+    if (!isStudent || !user?.id) {
+      setStudentPastTests([]);
+      setPastTestsError(null);
+      setPastTestsLoading(false);
+      return;
+    }
+
+    if (loading || error) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadStudentPastTests = async () => {
+      try {
+        setPastTestsLoading(true);
+        setPastTestsError(null);
+
+        const rows = await Promise.all(
+          sortedTests.map(async (test) => {
+            const attemptRes = await fetch(
+              `/api/tests/${test.id}/attempts?studentId=${encodeURIComponent(user.id)}`,
+              { signal: controller.signal },
+            );
+
+            if (!attemptRes.ok) {
+              return null;
+            }
+
+            const attemptData = (await attemptRes.json()) as { attempt?: StudentAttemptLookup };
+            if (!attemptData.attempt || attemptData.attempt.status !== 'submitted') {
+              return null;
+            }
+
+            return {
+              testId: test.id,
+              attemptId: attemptData.attempt.id,
+              title: test.title,
+              moduleType: test.module_type ?? 'classic',
+              submittedAt: attemptData.attempt.submitted_at ?? test.updated_at,
+              score: attemptData.attempt.score,
+            } satisfies StudentPastTest;
+          }),
+        );
+
+        const submittedRows = rows
+          .filter((row): row is StudentPastTest => !!row)
+          .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+
+        setStudentPastTests(submittedRows);
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          setPastTestsError('Failed to load submitted tests.');
+        }
+      } finally {
+        setPastTestsLoading(false);
+      }
+    };
+
+    void loadStudentPastTests();
+
+    return () => controller.abort();
+  }, [error, isStudent, loading, sortedTests, user?.id]);
 
   const handleCreate = (test: Test) => {
     setTests((prev) => [test, ...prev]);
@@ -607,7 +700,7 @@ export default function TestsPage() {
             <>
               <div className="rounded-xl border border-border/80 bg-card/80 px-3 py-2 text-right shadow-sm">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Total Tests</p>
-                <p className="text-sm font-semibold text-foreground">{stats.total}</p>
+                <p className="text-sm font-semibold text-foreground">{studentPastTests.length}</p>
               </div>
               <div className="rounded-xl border border-border/80 bg-card/80 px-3 py-2 text-right shadow-sm">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Role</p>
@@ -631,19 +724,19 @@ export default function TestsPage() {
         <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Total Tests"
-            value={String(stats.total)}
+            value={String(teacherStats.total)}
             description="All assessments in this workspace"
             icon={<ClipboardList size={16} />}
           />
           <StatCard
             title="Draft"
-            value={String(stats.drafts)}
+            value={String(teacherStats.drafts)}
             description="Still editable and not visible"
             icon={<Pencil size={16} />}
           />
           <StatCard
             title="Published"
-            value={String(stats.published)}
+            value={String(teacherStats.published)}
             description="Ready for student access"
             icon={<CheckCircle2 size={16} />}
           />
@@ -657,42 +750,115 @@ export default function TestsPage() {
       )}
 
       {isStudent && (
-        <form
-          onSubmit={handleJoinByCode}
-          className="mb-6 rounded-2xl border border-border/90 bg-card/85 p-5 shadow-xl shadow-black/10"
-        >
-          <div className="mb-3 flex items-center gap-2">
-            <div className="inline-flex rounded-lg border border-border/70 bg-background/60 p-2 text-muted-foreground">
-              <KeyRound size={14} />
+        <div className="mb-6 space-y-4">
+          <form
+            onSubmit={handleJoinByCode}
+            className="rounded-2xl border border-border/90 bg-card/85 p-5 shadow-xl shadow-black/10"
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <div className="inline-flex rounded-lg border border-border/70 bg-background/60 p-2 text-muted-foreground">
+                <KeyRound size={14} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold tracking-tight">Enter Test Code</h2>
+                <p className="text-xs text-muted-foreground">Use the code shared by your teacher to start the test.</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-sm font-semibold tracking-tight">Enter Test Code</h2>
-              <p className="text-xs text-muted-foreground">Use the code shared by your teacher to start the test.</p>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                placeholder="QC-START1"
+                className="h-11 flex-1 rounded-xl border border-border bg-background/90 px-3.5 text-sm uppercase tracking-[0.12em] outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                maxLength={16}
+              />
+              <button
+                type="submit"
+                disabled={joinLoading || !joinCode.trim()}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {joinLoading ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                {joinLoading ? 'Joining...' : 'Join Test'}
+              </button>
             </div>
-          </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              placeholder="QC-START1"
-              className="h-11 flex-1 rounded-xl border border-border bg-background/90 px-3.5 text-sm uppercase tracking-[0.12em] outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-              maxLength={16}
-            />
-            <button
-              type="submit"
-              disabled={joinLoading || !joinCode.trim()}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {joinLoading ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
-              {joinLoading ? 'Joining...' : 'Join Test'}
-            </button>
-          </div>
+            {joinError && (
+              <p className="mt-2 text-sm text-red-300">{joinError}</p>
+            )}
+          </form>
 
-          {joinError && (
-            <p className="mt-2 text-sm text-red-300">{joinError}</p>
-          )}
-        </form>
+          <section className="rounded-2xl border border-border/90 bg-card/85 p-5 shadow-xl shadow-black/10">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold tracking-tight">Past Tests</h2>
+                <p className="text-xs text-muted-foreground">Submitted attempts from normal and interactive tests.</p>
+              </div>
+              <span className="rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                {studentPastTests.length}
+              </span>
+            </div>
+
+            {submissionNoticeVisible && (
+              <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                Test submitted successfully. Your latest attempt appears below.
+              </div>
+            )}
+
+            {pastTestsLoading && (
+              <div className="space-y-2">
+                <div className="h-12 animate-pulse rounded-xl bg-muted/40" />
+                <div className="h-12 animate-pulse rounded-xl bg-muted/40" />
+              </div>
+            )}
+
+            {!pastTestsLoading && pastTestsError && (
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                {pastTestsError}
+              </div>
+            )}
+
+            {!pastTestsLoading && !pastTestsError && studentPastTests.length === 0 && (
+              <div className="rounded-xl border border-border/70 bg-background/40 px-3 py-4 text-sm text-muted-foreground">
+                No submitted tests yet. Complete and submit a test to see it here.
+              </div>
+            )}
+
+            {!pastTestsLoading && !pastTestsError && studentPastTests.length > 0 && (
+              <div className="space-y-2">
+                {studentPastTests.map((row) => (
+                  <div
+                    key={`${row.testId}_${row.attemptId}`}
+                    className="rounded-xl border border-border/70 bg-background/50 px-3 py-3"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{row.title}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span className="rounded-full border border-border/70 bg-background/70 px-2 py-0.5 font-medium">
+                            {formatModuleTypeLabel(row.moduleType)}
+                          </span>
+                          <span>Submitted {new Date(row.submittedAt).toLocaleString()}</span>
+                          <span>
+                            Score {typeof row.score === 'number' ? `${Math.round(row.score)}%` : '-'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <Link
+                        href={getPastTestResultPath(row)}
+                        className="inline-flex h-8 items-center gap-1.5 self-start rounded-lg border border-border/80 bg-background/70 px-2.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                      >
+                        <Eye size={13} />
+                        View
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
       )}
 
       <CreateTestModal
@@ -735,7 +901,7 @@ export default function TestsPage() {
         </div>
       )}
 
-      {!loading && !error && visibleTests.length === 0 && (
+      {isTeacher && !loading && !error && teacherVisibleTests.length === 0 && (
         <div className="rounded-2xl border border-border/90 bg-card/80 p-10 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-border/85 bg-background/60 text-muted-foreground">
             <ClipboardList size={20} />
@@ -758,14 +924,14 @@ export default function TestsPage() {
         </div>
       )}
 
-      {!loading && !error && visibleTests.length > 0 && (
+      {isTeacher && !loading && !error && teacherVisibleTests.length > 0 && (
         <div className="overflow-hidden rounded-2xl border border-border/90 bg-card/85 shadow-xl shadow-black/10">
           <div className="hidden grid-cols-[minmax(220px,1fr)_auto] gap-3 border-b border-border/85 bg-background/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground md:grid">
             <span>Test</span>
             <span>Actions</span>
           </div>
 
-          {visibleTests.map((test) => {
+          {teacherVisibleTests.map((test) => {
             const isPublished = test.status.toLowerCase() === 'published';
             const isPublishing = publishingId === test.id;
             const isExpanded = expandedTestId === test.id;

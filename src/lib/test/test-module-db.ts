@@ -1178,7 +1178,8 @@ export async function listTests(options?: { role?: TestRole; userId?: string }) 
         ORDER BY ti.created_at DESC
         LIMIT 1
       ) invite ON true
-      WHERE t.status = 'published'
+      WHERE (
+        t.status = 'published'
         AND EXISTS (
           SELECT 1
           FROM audit_logs join_logs
@@ -1188,6 +1189,15 @@ export async function listTests(options?: { role?: TestRole; userId?: string }) 
             AND join_logs.resource_id = t.id
             AND student_profile.app_user_id = $1
         )
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM attempts attempt_rows
+        JOIN users_test_profile student_profile ON student_profile.id = attempt_rows.student_profile_id
+        WHERE attempt_rows.test_id = t.id
+          AND attempt_rows.status = 'submitted'
+          AND student_profile.app_user_id = $1
+      )
       ORDER BY t.updated_at DESC;
       `,
       [userId],
@@ -1540,7 +1550,7 @@ export async function getInteractiveCheckContext(options: {
     FROM attempts a
     JOIN tests t ON t.id = a.test_id
     JOIN test_questions tq ON tq.id = $3 AND tq.test_id = t.id
-    JOIN question_bank qb ON qb.id = tq.question_bank_id
+    LEFT JOIN question_bank qb ON qb.id = tq.question_bank_id
     WHERE a.id = $2
       AND a.test_id = $1
     LIMIT 1;
@@ -1552,7 +1562,7 @@ export async function getInteractiveCheckContext(options: {
     | {
         attempt_status: 'in_progress' | 'submitted';
         anti_cheat_policy: unknown;
-        question_type: StoredQuestionType;
+        question_type: StoredQuestionType | null;
         answer_key: unknown;
         question_snapshot: unknown;
       }
@@ -1561,11 +1571,19 @@ export async function getInteractiveCheckContext(options: {
   if (!row) return null;
 
   const snapshot = asObject(row.question_snapshot) ?? {};
+  const snapshotType = asString(snapshot.question_type);
+  const resolvedQuestionType: StoredQuestionType =
+    snapshotType === 'mcq' || snapshotType === 'sql_fill'
+      ? snapshotType
+      : row.question_type === 'mcq' || row.question_type === 'sql_fill'
+        ? row.question_type
+        : 'mcq';
+
   const answerKey = asObject(row.answer_key) ?? {};
   const snapshotCorrect = asString(snapshot.correct_answer);
   const answerKeyCorrect = asString(answerKey.correctAnswer) ?? asString(answerKey.correctOptionKey);
   const correct =
-    row.question_type === 'mcq'
+    resolvedQuestionType === 'mcq'
       ? normalizeOptionKey(snapshotCorrect ?? answerKeyCorrect ?? '') || null
       : snapshotCorrect ?? answerKeyCorrect ?? null;
 
@@ -1573,7 +1591,7 @@ export async function getInteractiveCheckContext(options: {
     attempt_status: row.attempt_status,
     module_type: parseModuleTypeFromPolicy(row.anti_cheat_policy),
     interactive_settings: parseInteractiveQuizSettingsFromPolicy(row.anti_cheat_policy),
-    question_type: row.question_type,
+    question_type: resolvedQuestionType,
     correct_answer: correct,
   };
 }

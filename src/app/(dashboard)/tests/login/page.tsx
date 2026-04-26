@@ -38,6 +38,18 @@ interface AuthSuccessResponse {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function getPostLoginPath(role: 'admin' | 'teacher' | 'student') {
+  if (role === 'admin') {
+    return '/admin';
+  }
+
+  if (role === 'teacher') {
+    return '/tests?chooser=1';
+  }
+
+  return '/tests';
+}
+
 export default function TestModuleLoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -63,11 +75,7 @@ export default function TestModuleLoginPage() {
       router.replace(safeNext);
       return;
     }
-    if (user.role === 'admin') {
-      router.replace('/admin');
-    } else {
-      router.replace('/tests');
-    }
+    router.replace(getPostLoginPath(user.role));
   }, [hydrated, isAuthenticated, router, safeNext, user]);
 
   const resetPasswordFields = () => {
@@ -97,11 +105,7 @@ export default function TestModuleLoginPage() {
       router.replace(safeNext);
       return;
     }
-    if (data.user.role === 'admin') {
-      router.replace('/admin');
-    } else {
-      router.replace('/tests');
-    }
+    router.replace(getPostLoginPath(data.user.role));
   };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
