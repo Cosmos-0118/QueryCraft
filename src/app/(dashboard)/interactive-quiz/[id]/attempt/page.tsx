@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '@/hooks/use-auth';
+import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
 import {
   AlertTriangle,
   ArrowLeft,

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useAuth } from '@/hooks/use-auth';
+import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
 import {
   AlertTriangle,
   ArrowLeft,
