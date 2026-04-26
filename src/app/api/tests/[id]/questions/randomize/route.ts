@@ -37,6 +37,13 @@ export async function POST(
       return NextResponse.json({ error: 'You do not have access to this test.' }, { status: 403 });
     }
 
+    if (test.status.toLowerCase() === 'published') {
+      return NextResponse.json(
+        { error: 'Published tests are read-only. Question editing is disabled after publish.' },
+        { status: 409 },
+      );
+    }
+
     const body = await req.json().catch(() => ({} as {
       count?: unknown;
       question_type?: unknown;

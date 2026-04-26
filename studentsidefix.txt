@@ -1,0 +1,7 @@
+Student side
+1)refer image 1
+remove the Draft , published and make the role and the total tests to be on the right top of the page
+2) refer image 2
+the test it shoudl only hav the option to view result and remove the opEn attempt and the eye icon 
+if the view result opton is clicked then it should directly go the results page
+3) remove retry attempt from the results page
