@@ -1,0 +1,85 @@
+{
+  "unit": 2,
+  "title": "Relational DBMS",
+  "topics": [
+    "ER design (University, Banking, Information System)",
+    "ER to Relational conversion",
+    "Design issues & pitfalls",
+    "Tuple relational calculus",
+    "Domain relational calculus",
+    "Calculus vs Algebra",
+    "Relational algebra application"
+  ],
+  "questions": [
+    {
+      "id": "u2-q001",
+      "prompt": "When converting an M:N (many-to-many) relationship in an ER diagram into relational tables, the correct approach is to:",
+      "options": [
+        { "key": "A", "text": "Merge the two participating entity sets into a single table" },
+        { "key": "B", "text": "Add a foreign key column to either one of the existing entity tables" },
+        { "key": "C", "text": "Create a new table whose primary key is the combination of the primary keys of the participating entities" },
+        { "key": "D", "text": "Drop the relationship; M:N relationships cannot be represented in the relational model" }
+      ],
+      "correct_answer": "C",
+      "difficulty": "easy",
+      "marks": 1,
+      "explanation": "An M:N relationship requires its own table (often called an associative/junction table) with foreign keys referencing both entities. The combined foreign-key columns form its primary key."
+    },
+    {
+      "id": "u2-q002",
+      "prompt": "The relational algebra operator that returns only those tuples from R that have a match in S based on common attributes is the:",
+      "options": [
+        { "key": "A", "text": "Cartesian product (×)" },
+        { "key": "B", "text": "Natural join (⋈)" },
+        { "key": "C", "text": "Union (∪)" },
+        { "key": "D", "text": "Set difference (−)" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "easy",
+      "marks": 1,
+      "explanation": "The natural join combines tuples from R and S that agree on all commonly-named attributes, eliminating duplicate columns. Cartesian product just pairs everything; union/difference are set operations."
+    },
+    {
+      "id": "u2-q003",
+      "prompt": "Which of the following correctly describes the difference between Tuple Relational Calculus (TRC) and Domain Relational Calculus (DRC)?",
+      "options": [
+        { "key": "A", "text": "TRC variables range over tuples of relations, while DRC variables range over individual attribute (column) values" },
+        { "key": "B", "text": "TRC is procedural while DRC is declarative" },
+        { "key": "C", "text": "TRC supports aggregation but DRC does not allow any quantifiers" },
+        { "key": "D", "text": "TRC is strictly less expressive than DRC" }
+      ],
+      "correct_answer": "A",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "Both calculi are declarative and equivalent in expressive power to safe relational algebra. The fundamental difference is the kind of variable used: TRC uses tuple variables (e.g., t.Name), DRC uses domain variables ranging over attribute values."
+    },
+    {
+      "id": "u2-q004",
+      "prompt": "Codd showed that relational algebra and (safe) relational calculus are:",
+      "options": [
+        { "key": "A", "text": "Strictly less powerful than SQL" },
+        { "key": "B", "text": "Equivalent in expressive power (relationally complete)" },
+        { "key": "C", "text": "Turing-complete" },
+        { "key": "D", "text": "Equivalent only on single-table queries" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "medium",
+      "marks": 1,
+      "explanation": "A query language is called 'relationally complete' if it can express every query expressible in relational algebra. Codd proved relational algebra and safe relational calculus are equivalent — both are relationally complete but not Turing-complete."
+    },
+    {
+      "id": "u2-q005",
+      "prompt": "Consider relations Student(sid, name, dept) and Enrolled(sid, course). Which relational-algebra expression returns the names of students enrolled in course 'CS101'?",
+      "options": [
+        { "key": "A", "text": "π_name ( σ_course='CS101' (Student) )" },
+        { "key": "B", "text": "π_name ( Student ⋈ ( σ_course='CS101' (Enrolled) ) )" },
+        { "key": "C", "text": "σ_name ( Student × Enrolled )" },
+        { "key": "D", "text": "Student − π_sid (Enrolled)" }
+      ],
+      "correct_answer": "B",
+      "difficulty": "hard",
+      "marks": 1,
+      "explanation": "First select Enrolled tuples for course = 'CS101', then natural-join with Student on sid (so we associate names), and finally project the name attribute. Option A is wrong because Student does not have a course attribute."
+    }
+  ]
+}

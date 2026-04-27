@@ -50,12 +50,14 @@ export async function POST(
       mix_mcq_percent?: unknown;
       mix_mcq_count?: unknown;
       difficulty?: unknown;
+      units?: unknown;
     }));
     const countValue = body?.count;
     const requestedType = body?.question_type;
     const requestedMixMcqPercent = body?.mix_mcq_percent;
     const requestedMixMcqCount = body?.mix_mcq_count;
     const requestedDifficulty = body?.difficulty;
+    const requestedUnits = body?.units;
 
     if (typeof countValue !== 'number' || !Number.isFinite(countValue) || countValue <= 0) {
       return NextResponse.json({ error: 'count must be a positive number.' }, { status: 400 });
@@ -121,6 +123,22 @@ export async function POST(
       }
     }
 
+    let normalizedUnits: number[] | undefined;
+    if (requestedUnits !== undefined && requestedUnits !== null) {
+      if (!Array.isArray(requestedUnits)) {
+        return NextResponse.json({ error: 'units must be an array of unit numbers (1-5).' }, { status: 400 });
+      }
+      const collected: number[] = [];
+      for (const raw of requestedUnits) {
+        const value = typeof raw === 'number' ? Math.floor(raw) : Math.floor(Number(raw));
+        if (!Number.isFinite(value) || value < 1 || value > 5) {
+          return NextResponse.json({ error: 'Each unit must be an integer between 1 and 5.' }, { status: 400 });
+        }
+        if (!collected.includes(value)) collected.push(value);
+      }
+      normalizedUnits = collected.length > 0 ? collected : undefined;
+    }
+
     const questions = await addRandomQuestionsFromBankToTest({
       testId,
       count: countValue,
@@ -132,6 +150,7 @@ export async function POST(
         ? Math.round(requestedMixMcqCount)
         : undefined,
       difficulty: requestedDifficulty as DifficultyProfile | undefined,
+      units: normalizedUnits,
     });
 
     if (questions === null) {

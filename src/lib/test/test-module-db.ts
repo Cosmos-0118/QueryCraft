@@ -6,6 +6,11 @@ import {
   type InteractiveQuizSettings,
   type TestModuleType,
 } from '@/lib/test/interactive-quiz';
+import {
+  randomizeCatalogueQuestions,
+  type CatalogueDifficulty,
+  type CatalogueQuestion,
+} from '@/lib/catalogue';
 
 type TestStatus = 'draft' | 'published' | 'closed' | 'archived';
 type AttemptStatus = 'in_progress' | 'submitted';
@@ -181,20 +186,12 @@ interface UserProfileRow {
 interface RawQuestionRow {
   id: string;
   test_id: string;
-  prompt: string;
-  question_type: StoredQuestionType;
+  prompt: string | null;
+  question_type: StoredQuestionType | null;
   answer_key: unknown;
   options_json: unknown;
   question_snapshot: unknown;
-}
-
-interface RandomQuestionBankRow {
-  question_bank_id: string;
-  prompt: string;
-  question_type: StoredQuestionType;
-  answer_key: unknown;
-  options_json: unknown;
-  marks: number | string;
+  catalogue_question_id?: string | null;
 }
 
 interface QuestionForEvaluation {
@@ -452,11 +449,14 @@ function mapQuestionRecord(row: RawQuestionRow): QuestionRecord {
   const snapshot = asObject(row.question_snapshot) ?? {};
   const answerKey = asObject(row.answer_key) ?? {};
 
-  const text = asString(snapshot.text) ?? row.prompt;
+  const text = asString(snapshot.text) ?? row.prompt ?? '';
   const snapshotType = asString(snapshot.question_type);
+  const fallbackType: StoredQuestionType = row.question_type === 'mcq' || row.question_type === 'sql_fill'
+    ? row.question_type
+    : 'mcq';
   const questionType: StoredQuestionType = snapshotType === 'mcq' || snapshotType === 'sql_fill'
     ? snapshotType
-    : row.question_type;
+    : fallbackType;
 
   const snapshotOptions = sanitizeQuestionOptions(snapshot.options);
   const rowOptions = sanitizeQuestionOptions(row.options_json);
@@ -1178,7 +1178,8 @@ export async function listTests(options?: { role?: TestRole; userId?: string }) 
         ORDER BY ti.created_at DESC
         LIMIT 1
       ) invite ON true
-      WHERE t.status = 'published'
+      WHERE (
+        t.status = 'published'
         AND EXISTS (
           SELECT 1
           FROM audit_logs join_logs
@@ -1188,6 +1189,15 @@ export async function listTests(options?: { role?: TestRole; userId?: string }) 
             AND join_logs.resource_id = t.id
             AND student_profile.app_user_id = $1
         )
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM attempts attempt_rows
+        JOIN users_test_profile student_profile ON student_profile.id = attempt_rows.student_profile_id
+        WHERE attempt_rows.test_id = t.id
+          AND attempt_rows.status = 'submitted'
+          AND student_profile.app_user_id = $1
+      )
       ORDER BY t.updated_at DESC;
       `,
       [userId],
@@ -1540,7 +1550,7 @@ export async function getInteractiveCheckContext(options: {
     FROM attempts a
     JOIN tests t ON t.id = a.test_id
     JOIN test_questions tq ON tq.id = $3 AND tq.test_id = t.id
-    JOIN question_bank qb ON qb.id = tq.question_bank_id
+    LEFT JOIN question_bank qb ON qb.id = tq.question_bank_id
     WHERE a.id = $2
       AND a.test_id = $1
     LIMIT 1;
@@ -1552,7 +1562,7 @@ export async function getInteractiveCheckContext(options: {
     | {
         attempt_status: 'in_progress' | 'submitted';
         anti_cheat_policy: unknown;
-        question_type: StoredQuestionType;
+        question_type: StoredQuestionType | null;
         answer_key: unknown;
         question_snapshot: unknown;
       }
@@ -1561,11 +1571,19 @@ export async function getInteractiveCheckContext(options: {
   if (!row) return null;
 
   const snapshot = asObject(row.question_snapshot) ?? {};
+  const snapshotType = asString(snapshot.question_type);
+  const resolvedQuestionType: StoredQuestionType =
+    snapshotType === 'mcq' || snapshotType === 'sql_fill'
+      ? snapshotType
+      : row.question_type === 'mcq' || row.question_type === 'sql_fill'
+        ? row.question_type
+        : 'mcq';
+
   const answerKey = asObject(row.answer_key) ?? {};
   const snapshotCorrect = asString(snapshot.correct_answer);
   const answerKeyCorrect = asString(answerKey.correctAnswer) ?? asString(answerKey.correctOptionKey);
   const correct =
-    row.question_type === 'mcq'
+    resolvedQuestionType === 'mcq'
       ? normalizeOptionKey(snapshotCorrect ?? answerKeyCorrect ?? '') || null
       : snapshotCorrect ?? answerKeyCorrect ?? null;
 
@@ -1573,7 +1591,7 @@ export async function getInteractiveCheckContext(options: {
     attempt_status: row.attempt_status,
     module_type: parseModuleTypeFromPolicy(row.anti_cheat_policy),
     interactive_settings: parseInteractiveQuizSettingsFromPolicy(row.anti_cheat_policy),
-    question_type: row.question_type,
+    question_type: resolvedQuestionType,
     correct_answer: correct,
   };
 }
@@ -1585,12 +1603,13 @@ export async function listQuestionsForTest(testId: string) {
       tq.id,
       tq.test_id,
       tq.question_snapshot,
+      tq.catalogue_question_id,
       qb.prompt,
       qb.answer_key,
       qb.question_type,
       opt.options_json
     FROM test_questions tq
-    JOIN question_bank qb ON qb.id = tq.question_bank_id
+    LEFT JOIN question_bank qb ON qb.id = tq.question_bank_id
     LEFT JOIN LATERAL (
       SELECT jsonb_agg(
         jsonb_build_object('key', qo.option_key, 'text', qo.option_text)
@@ -1615,6 +1634,7 @@ export async function addRandomQuestionsFromBankToTest(options: {
   mixMcqPercent?: number;
   mixMcqCount?: number;
   difficulty?: 'easy' | 'medium' | 'hard' | 'basic' | 'mixed';
+  units?: number[];
 }) {
   const normalizedCount = Math.max(1, Math.min(50, Math.floor(options.count)));
 
@@ -1639,10 +1659,12 @@ export async function addRandomQuestionsFromBankToTest(options: {
 
   const moduleType = parseModuleTypeFromPolicy(testRow.anti_cheat_policy);
   const normalizedDifficulty = options.difficulty === 'basic' ? 'easy' : options.difficulty;
-  const difficultyFilter =
+  const difficultyFilter: CatalogueDifficulty | 'mixed' | undefined =
     normalizedDifficulty === 'easy' || normalizedDifficulty === 'medium' || normalizedDifficulty === 'hard'
       ? normalizedDifficulty
-      : null;
+      : normalizedDifficulty === 'mixed'
+        ? 'mixed'
+        : undefined;
 
   if (
     moduleType === 'interactive_quiz'
@@ -1654,7 +1676,7 @@ export async function addRandomQuestionsFromBankToTest(options: {
 
   const requestedQuestionType: RandomQuestionTypeFilter = moduleType === 'interactive_quiz'
     ? 'mcq'
-    : (options.questionType ?? 'mixed');
+    : (options.questionType ?? 'mcq');
 
   if (
     requestedQuestionType !== 'mcq'
@@ -1664,97 +1686,54 @@ export async function addRandomQuestionsFromBankToTest(options: {
     throw new Error('questionType must be one of mcq, sql_fill, or mixed.');
   }
 
-  const loadRandomRows = async (questionType: StoredQuestionType, limit: number) => {
-    if (limit <= 0) return [];
-
-    const randomRowsRes = await sql.raw(
-      `
-      SELECT
-        qb.id AS question_bank_id,
-        qb.prompt,
-        qb.question_type,
-        qb.answer_key,
-        opt.options_json,
-        qb.marks
-      FROM question_bank qb
-      LEFT JOIN LATERAL (
-        SELECT jsonb_agg(
-          jsonb_build_object('key', qo.option_key, 'text', qo.option_text)
-          ORDER BY qo.display_order ASC
-        ) AS options_json
-        FROM question_options qo
-        WHERE qo.question_id = qb.id
-      ) opt ON true
-      WHERE qb.status = 'approved'
-        AND qb.question_type = $3
-        AND ($4::text IS NULL OR qb.difficulty = $4)
-        AND NOT EXISTS (
-          SELECT 1
-          FROM test_questions tq
-          WHERE tq.test_id = $1
-            AND tq.question_bank_id = qb.id
-        )
-      ORDER BY random()
-      LIMIT $2;
-      `,
-      [options.testId, limit, questionType, difficultyFilter],
+  // The catalogue is MCQ-only. SQL / mixed randomization is no longer supported
+  // through this entry-point; teachers can still author SQL questions manually.
+  if (requestedQuestionType !== 'mcq') {
+    throw new Error(
+      'Randomized questions are sourced from the MCQ catalogue. SQL/mixed randomization is not available; please add SQL questions manually.',
     );
-
-    return randomRowsRes.rows as RandomQuestionBankRow[];
-  };
-
-  let randomRows: RandomQuestionBankRow[] = [];
-
-  if (requestedQuestionType === 'mixed') {
-    if (normalizedCount < 2) {
-      throw new Error('Mixed questions require at least 2 questions to include both types.');
-    }
-
-    let mcqCount: number;
-    if (options.mixMcqCount !== undefined) {
-      const requestedMcqCount = Math.floor(options.mixMcqCount);
-      if (!Number.isFinite(requestedMcqCount) || requestedMcqCount < 1 || requestedMcqCount >= normalizedCount) {
-        throw new Error('mixMcqCount must be between 1 and count - 1 for mixed questions.');
-      }
-      mcqCount = requestedMcqCount;
-    } else {
-      const storedMixMcq = testRow.mix_mcq_percent === null ? null : toNumber(testRow.mix_mcq_percent);
-      const storedMixSql = testRow.mix_sql_fill_percent === null ? null : toNumber(testRow.mix_sql_fill_percent);
-      const resolvedRatio = resolveMixedModeRatio({
-        questionMode: 'mixed',
-        mixMcqPercent: options.mixMcqPercent ?? storedMixMcq,
-        mixSqlFillPercent: options.mixMcqPercent === undefined ? storedMixSql : null,
-      });
-
-      const mixMcqPercent = resolvedRatio.mixMcqPercent ?? DEFAULT_MIX_MCQ_PERCENT;
-      mcqCount = Math.round((normalizedCount * mixMcqPercent) / 100);
-      mcqCount = Math.max(1, Math.min(normalizedCount - 1, mcqCount));
-    }
-
-    const sqlCount = normalizedCount - mcqCount;
-
-    const [mcqRows, sqlRows] = await Promise.all([
-      loadRandomRows('mcq', mcqCount),
-      loadRandomRows('sql_fill', sqlCount),
-    ]);
-
-    if (mcqRows.length < mcqCount || sqlRows.length < sqlCount) {
-      throw new Error(
-        `Not enough approved questions for the requested mixed split. Need ${mcqCount} MCQ and ${sqlCount} SQL/TEXT questions.`,
-      );
-    }
-
-    randomRows = [...mcqRows, ...sqlRows];
-    for (let i = randomRows.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [randomRows[i], randomRows[j]] = [randomRows[j], randomRows[i]];
-    }
-  } else {
-    randomRows = await loadRandomRows(requestedQuestionType, normalizedCount);
   }
 
-  if (randomRows.length === 0) {
+  // Validate units filter (1..5 are supported by the catalogue).
+  const requestedUnits = Array.isArray(options.units)
+    ? options.units
+        .map((u) => Math.floor(Number(u)))
+        .filter((u) => Number.isFinite(u) && u >= 1 && u <= 5)
+    : undefined;
+
+  // Exclude catalogue ids already added to this test, so re-randomization
+  // does not produce duplicates.
+  const existingRes = await sql.raw(
+    `
+    SELECT catalogue_question_id
+    FROM test_questions
+    WHERE test_id = $1
+      AND catalogue_question_id IS NOT NULL;
+    `,
+    [options.testId],
+  );
+
+  const existingIds = (existingRes.rows as Array<{ catalogue_question_id: string | null }>)
+    .map((row) => row.catalogue_question_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+  const catalogueQuestions: CatalogueQuestion[] = await randomizeCatalogueQuestions({
+    count: normalizedCount,
+    units: requestedUnits,
+    difficulty: difficultyFilter,
+    excludeIds: existingIds,
+  });
+
+  if (catalogueQuestions.length === 0) {
     return [];
+  }
+
+  if (catalogueQuestions.length < normalizedCount) {
+    // Soft-warn in logs but still insert what we could find. This keeps the
+    // teacher flow snappy when the catalogue is small.
+    console.warn(
+      `[catalogue] Requested ${normalizedCount} questions but only ${catalogueQuestions.length} matched the filters (test=${options.testId}).`,
+    );
   }
 
   const orderRes = await sql.raw(
@@ -1770,32 +1749,31 @@ export async function addRandomQuestionsFromBankToTest(options: {
   const maxOrder = toNumber(maxOrderRaw);
 
   const values: unknown[] = [];
-  const tuples = randomRows.map((row, index) => {
-    const answerKey = asObject(row.answer_key) ?? {};
-    const rawCorrectAnswer = asString(answerKey.correctAnswer)
-      ?? asString(answerKey.correctOptionKey)
-      ?? null;
-    const correctAnswer = row.question_type === 'mcq'
-      ? normalizeOptionKey(rawCorrectAnswer ?? '') || null
-      : rawCorrectAnswer;
-    const mcqOptions = sanitizeQuestionOptions(row.options_json) ?? [];
-    const expectedKeywords = asStringArray(answerKey.expectedKeywords)
-      ?? deriveKeywords(correctAnswer || row.prompt);
+  const tuples = catalogueQuestions.map((question, index) => {
+    const correctAnswer = normalizeOptionKey(question.correct_answer) || null;
+    const sanitizedOptions = question.options.map((opt) => ({
+      key: normalizeOptionKey(opt.key),
+      text: opt.text,
+    }));
+    const expectedKeywords = deriveKeywords(correctAnswer || question.prompt);
 
     const snapshot = JSON.stringify({
-      text: row.prompt,
-      question_type: row.question_type,
-      options: mcqOptions,
+      text: question.prompt,
+      question_type: 'mcq',
+      options: sanitizedOptions,
       correct_answer: correctAnswer,
       expected_keywords: expectedKeywords,
+      catalogue_question_id: question.id,
+      catalogue_unit: question.unit,
+      explanation: question.explanation ?? null,
     });
 
     const base = index * 5;
     values.push(
       options.testId,
-      row.question_bank_id,
+      question.id,
       snapshot,
-      toNumber(row.marks) || 1,
+      Math.max(1, Math.floor(question.marks)),
       maxOrder + index + 1,
     );
 
@@ -1806,7 +1784,7 @@ export async function addRandomQuestionsFromBankToTest(options: {
     `
     INSERT INTO test_questions (
       test_id,
-      question_bank_id,
+      catalogue_question_id,
       question_snapshot,
       marks,
       display_order,

@@ -307,8 +307,18 @@ export default function TestAttemptPage() {
           return;
         }
 
+        const resolvedAttemptId =
+          data?.attempt && typeof data.attempt.id === 'string'
+            ? data.attempt.id
+            : attemptId;
+
         setSubmitted(true);
         setSaveMessage('Time is up. Your attempt was auto-submitted.');
+        window.setTimeout(() => {
+          router.push(
+            `/tests/${testId}/result?attemptId=${encodeURIComponent(resolvedAttemptId)}`,
+          );
+        }, 900);
       } catch {
         setError('Time is up. Auto-submit failed, please submit manually.');
       } finally {
@@ -326,6 +336,7 @@ export default function TestAttemptPage() {
     submitted,
     submitting,
     testId,
+    router,
   ]);
 
   useEffect(() => {
@@ -703,9 +714,15 @@ export default function TestAttemptPage() {
         return;
       }
 
+      const resolvedAttemptId =
+        data?.attempt && typeof data.attempt.id === 'string'
+          ? data.attempt.id
+          : attemptId;
+
       setSubmitted(true);
       setAutoSubmitTriggered(true);
       setSaveMessage('Attempt submitted successfully.');
+      router.push(`/tests/${testId}/result?attemptId=${encodeURIComponent(resolvedAttemptId)}`);
     } catch {
       setError('Unable to submit attempt.');
     } finally {
