@@ -1,5 +1,26 @@
-why is it showing no submitted answers when te student has finished attempting the test and 
-the scores are not updating prperly fix that as well
-check if the leaderboard is also working properly 
-the students results are also not proper in the faculty side as well 
-its only showing no submitted answers
+1) teacher side
+so give a feature for the faculty to publish the results of the test for only the normal test type
+inside the review submissions page of the test of the faculty side
+so that if the teacher publishes the result 
+then only the students can view the results and the right answers and the  wrong answers 
+
+in the students side 
+when a student submits a normal test then it should go to the results page and show that
+Wait for the teacher to publish the results 
+
+so once the teacher publishes the results then the student should should be able to see the results
+the questions and its options and what u have written and if its a correct or wrong answer
+
+
+2)the results page of the normal test after a student submits a test 
+the results are not being shown properly 
+its says no submitted answers fix that
+the results page will have the toatal score and the questiosn and the options and what the student chose
+and if its the correct answer
+make sure it works properly
+
+for the interactive tets module when the student submits 
+then the leaderboard is not updating with the accurate marks 
+its only showing as 0 points 
+make sure the points system is properly working
+

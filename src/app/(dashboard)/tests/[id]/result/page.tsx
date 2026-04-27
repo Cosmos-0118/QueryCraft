@@ -23,11 +23,15 @@ interface Test {
   status: string;
   created_by: string;
   updated_at: string;
+  module_type?: 'classic' | 'interactive_quiz';
 }
 
 interface Question {
   id: string;
   text: string;
+  question_type?: 'mcq' | 'sql_fill';
+  options?: Array<{ key: string; text: string }>;
+  correct_answer?: string | null;
 }
 
 interface AttemptResult {
@@ -45,6 +49,12 @@ interface ViolationEvent {
   occurred_at: string;
 }
 
+interface AttemptAnswer {
+  question_id: string;
+  question_text: string;
+  answer: string;
+}
+
 interface AttemptRecord {
   id: string;
   student_id: string;
@@ -56,6 +66,8 @@ interface AttemptRecord {
   violation_count?: number;
   violation_events?: ViolationEvent[];
   results: AttemptResult[];
+  answers?: AttemptAnswer[];
+  published?: boolean;
 }
 
 function formatViolationEventLabel(eventType: ViolationEvent['event_type']) {
@@ -132,7 +144,7 @@ export default function TestResultPage() {
       try {
         const [testRes, questionsRes] = await Promise.all([
           fetch(`/api/tests/${testId}${teacherAccessQuery}`, { signal: controller.signal }),
-          fetch(`/api/tests/${testId}/questions${teacherAccessQuery}`, { signal: controller.signal }),
+          fetch(`/api/tests/${testId}/questions${teacherAccessQuery ? `${teacherAccessQuery}&view=result` : '?view=result'}`, { signal: controller.signal }),
         ]);
 
         const [testData, questionsData] = await Promise.all([testRes.json(), questionsRes.json()]);
@@ -179,9 +191,36 @@ export default function TestResultPage() {
     return () => controller.abort();
   }, [attemptIdQuery, studentIdQuery, teacherAccessQuery, testId, user?.id]);
 
+  const isClassicTest = !test?.module_type || test.module_type === 'classic';
+  const isPublished = attempt?.published === true;
+  const showResults = isTeacher || !isClassicTest || isPublished;
+
+  const answerMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (attempt?.answers) {
+      for (const ans of attempt.answers) {
+        if (ans.answer) map.set(ans.question_id, ans.answer);
+      }
+    }
+    return map;
+  }, [attempt?.answers]);
+
   const reviewItems = useMemo(() => {
     if (attempt?.results && attempt.results.length > 0) {
-      return attempt.results;
+      return attempt.results.map((r) => ({
+        ...r,
+        answer: r.answer || answerMap.get(r.question_id) || '',
+      }));
+    }
+
+    if (attempt?.answers && attempt.answers.length > 0) {
+      return attempt.answers.map((ans) => ({
+        question_id: ans.question_id,
+        question_text: ans.question_text,
+        answer: ans.answer,
+        is_correct: false,
+        feedback: '',
+      }));
     }
 
     return questions.map((question) => ({
@@ -189,9 +228,17 @@ export default function TestResultPage() {
       question_text: question.text,
       answer: '',
       is_correct: false,
-      feedback: 'No submitted answer.',
+      feedback: '',
     }));
-  }, [attempt?.results, questions]);
+  }, [attempt?.results, attempt?.answers, answerMap, questions]);
+
+  const questionMap = useMemo(() => {
+    const map = new Map<string, Question>();
+    for (const q of questions) {
+      map.set(q.id, q);
+    }
+    return map;
+  }, [questions]);
 
   const totalQuestions = reviewItems.length;
   const correctCount = reviewItems.filter((item) => item.is_correct).length;
@@ -288,6 +335,35 @@ export default function TestResultPage() {
                 Back to Review Board
               </Link>
             )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!showResults) {
+    return (
+      <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
+        <div className="rounded-2xl border border-border/70 bg-card/85 p-10 text-center shadow-xl shadow-black/10">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/15 text-amber-200">
+            <Clock3 size={24} />
+          </div>
+          <h2 className="mt-5 text-xl font-semibold tracking-tight">Results Not Published Yet</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your test has been submitted successfully. Please wait for the teacher to review and publish the results.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Check back later to view your score, answers, and feedback.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            <Link
+              href="/tests"
+              className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            >
+              <ArrowLeft size={15} />
+              Back to Tests
+            </Link>
           </div>
         </div>
       </div>
@@ -443,36 +519,83 @@ export default function TestResultPage() {
               No question review is available yet.
             </div>
           )}
-          {reviewItems.map((item, index) => (
-            <div
-              key={item.question_id}
-              className="rounded-xl border border-border/70 bg-background/50 px-3 py-3"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Question {index + 1}</p>
-                  <p className="mt-1 text-sm text-foreground">{item.question_text}</p>
+          {reviewItems.map((item, index) => {
+            const question = questionMap.get(item.question_id);
+            const options = question?.options ?? [];
+            const isMcq = question?.question_type === 'mcq' && options.length > 0;
+            const selectedKey = (item.answer ?? '').trim().toUpperCase();
+            const correctKey = (question?.correct_answer ?? '').trim().toUpperCase();
+
+            return (
+              <div
+                key={item.question_id}
+                className="rounded-xl border border-border/70 bg-background/50 px-3 py-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Question {index + 1}</p>
+                    <p className="mt-1 text-sm text-foreground">{item.question_text}</p>
+                  </div>
+                  <span
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                      item.is_correct
+                        ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300'
+                        : 'border-amber-500/30 bg-amber-500/12 text-amber-300'
+                    }`}
+                  >
+                    {item.is_correct ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
+                    {item.is_correct ? 'Correct' : 'Needs Work'}
+                  </span>
                 </div>
-                <span
-                  className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                    item.is_correct
-                      ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300'
-                      : 'border-amber-500/30 bg-amber-500/12 text-amber-300'
-                  }`}
-                >
-                  {item.is_correct ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
-                  {item.is_correct ? 'Correct' : 'Needs Work'}
-                </span>
-              </div>
 
-              <div className="mt-2 rounded-lg border border-border/70 bg-card/60 px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Submitted Answer</p>
-                <p className="mt-1 text-sm text-foreground">{item.answer || 'No answer submitted.'}</p>
-              </div>
+                {isMcq ? (
+                  <div className="mt-2 space-y-1.5">
+                    {options.map((opt) => {
+                      const isSelected = opt.key.toUpperCase() === selectedKey;
+                      const isCorrectOption = opt.key.toUpperCase() === correctKey && correctKey !== '';
+                      let optionStyle = 'border-border/70 bg-card/60 text-muted-foreground';
+                      if (isSelected && item.is_correct) {
+                        optionStyle = 'border-emerald-500/30 bg-emerald-500/12 text-emerald-200';
+                      } else if (isSelected && !item.is_correct) {
+                        optionStyle = 'border-red-500/30 bg-red-500/12 text-red-200';
+                      } else if (isCorrectOption) {
+                        optionStyle = 'border-emerald-500/20 bg-emerald-500/8 text-emerald-300/80';
+                      }
 
-              <p className="mt-2 text-xs text-muted-foreground">{item.feedback}</p>
-            </div>
-          ))}
+                      return (
+                        <div
+                          key={opt.key}
+                          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${optionStyle}`}
+                        >
+                          <span className="inline-flex w-6 shrink-0 items-center justify-center rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 text-[11px] font-semibold">
+                            {opt.key}
+                          </span>
+                          <span className="flex-1">{opt.text}</span>
+                          {isSelected && (
+                            <span className="text-[11px] font-semibold">
+                              {item.is_correct ? <CheckCircle2 size={13} className="text-emerald-300" /> : <XCircle size={13} className="text-red-300" />}
+                            </span>
+                          )}
+                          {isCorrectOption && !isSelected && (
+                            <span className="text-[10px] font-semibold text-emerald-400">Correct</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-lg border border-border/70 bg-card/60 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Submitted Answer</p>
+                    <p className="mt-1 text-sm text-foreground">{item.answer || 'No answer recorded.'}</p>
+                  </div>
+                )}
+
+                {item.feedback && (
+                  <p className="mt-2 text-xs text-muted-foreground">{item.feedback}</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 
