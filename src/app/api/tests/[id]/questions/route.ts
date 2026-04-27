@@ -54,7 +54,8 @@ async function ensureEditableTest(testId: string) {
 export async function GET(req: Request, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
   const params = await Promise.resolve(context.params);
   const searchParams = new URL(req.url).searchParams;
-  const includeAnswer = searchParams.get('view') === 'teacher';
+  const viewParam = searchParams.get('view');
+  const includeAnswer = viewParam === 'teacher' || viewParam === 'result';
 
   if (searchParams.get('role') === 'teacher') {
     const access = await ensureTeacherAccess(req, params.id);

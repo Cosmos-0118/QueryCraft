@@ -667,7 +667,7 @@ async function listEvaluationQuestions(testId: string): Promise<QuestionForEvalu
       qb.answer_key,
       qb.question_type
     FROM test_questions tq
-    JOIN question_bank qb ON qb.id = tq.question_bank_id
+    LEFT JOIN question_bank qb ON qb.id = tq.question_bank_id
     WHERE tq.test_id = $1
     ORDER BY tq.display_order ASC, tq.created_at ASC;
     `,
@@ -677,17 +677,25 @@ async function listEvaluationQuestions(testId: string): Promise<QuestionForEvalu
   return (result.rows as Array<{
     id: string;
     question_snapshot: unknown;
-    prompt: string;
+    prompt: string | null;
     answer_key: unknown;
-    question_type: StoredQuestionType;
+    question_type: StoredQuestionType | null;
   }>).map((row) => {
     const snapshot = asObject(row.question_snapshot) ?? {};
     const answerKey = asObject(row.answer_key) ?? {};
 
-    const text = asString(snapshot.text) ?? row.prompt;
+    const text = asString(snapshot.text) ?? row.prompt ?? '';
     const snapshotCorrect = asString(snapshot.correct_answer);
     const answerKeyCorrect = asString(answerKey.correctAnswer) ?? asString(answerKey.correctOptionKey);
     const correctAnswer = snapshotCorrect ?? answerKeyCorrect ?? null;
+
+    const snapshotType = asString(snapshot.question_type);
+    const resolvedType: StoredQuestionType =
+      snapshotType === 'mcq' || snapshotType === 'sql_fill'
+        ? snapshotType
+        : row.question_type === 'mcq' || row.question_type === 'sql_fill'
+          ? row.question_type
+          : 'mcq';
 
     const snapshotKeywords = asStringArray(snapshot.expected_keywords);
     const answerKeyKeywords = asStringArray(answerKey.expectedKeywords);
@@ -698,7 +706,7 @@ async function listEvaluationQuestions(testId: string): Promise<QuestionForEvalu
       text,
       correct_answer: correctAnswer,
       expected_keywords: expectedKeywords,
-      question_type: row.question_type,
+      question_type: resolvedType,
     };
   });
 }
@@ -760,11 +768,11 @@ async function loadAttemptAnswers(attemptId: string): Promise<AttemptAnswer[]> {
     `
     SELECT
       aa.test_question_id AS question_id,
-      COALESCE(tq.question_snapshot->>'text', qb.prompt) AS question_text,
+      COALESCE(tq.question_snapshot->>'text', qb.prompt, '') AS question_text,
       COALESCE(aa.sql_text, aa.selected_option_key, '') AS answer
     FROM attempt_answers aa
     JOIN test_questions tq ON tq.id = aa.test_question_id
-    JOIN question_bank qb ON qb.id = tq.question_bank_id
+    LEFT JOIN question_bank qb ON qb.id = tq.question_bank_id
     WHERE aa.attempt_id = $1
     ORDER BY tq.display_order ASC, tq.created_at ASC;
     `,
@@ -783,12 +791,12 @@ async function loadAttemptResults(attemptId: string): Promise<AttemptResult[]> {
     `
     SELECT
       aa.test_question_id AS question_id,
-      COALESCE(tq.question_snapshot->>'text', qb.prompt) AS question_text,
+      COALESCE(tq.question_snapshot->>'text', qb.prompt, '') AS question_text,
       COALESCE(aa.sql_text, aa.selected_option_key, '') AS answer,
       eval_latest.diagnostics
     FROM attempt_answers aa
     JOIN test_questions tq ON tq.id = aa.test_question_id
-    JOIN question_bank qb ON qb.id = tq.question_bank_id
+    LEFT JOIN question_bank qb ON qb.id = tq.question_bank_id
     LEFT JOIN LATERAL (
       SELECT ae.diagnostics
       FROM answer_evaluations ae
@@ -2625,9 +2633,10 @@ export async function saveAttemptAnswers(options: {
     `
     SELECT
       tq.id::text AS id,
-      qb.question_type
+      qb.question_type AS bank_question_type,
+      tq.question_snapshot
     FROM test_questions tq
-    JOIN question_bank qb ON qb.id = tq.question_bank_id
+    LEFT JOIN question_bank qb ON qb.id = tq.question_bank_id
     WHERE tq.test_id = $1
       AND tq.id::text = ANY($2::text[]);
     `,
@@ -2638,10 +2647,17 @@ export async function saveAttemptAnswers(options: {
   );
 
   const questionTypeMap = new Map(
-    (questionTypeRes.rows as Array<{ id: string; question_type: StoredQuestionType }>).map((row) => [
-      row.id,
-      row.question_type,
-    ]),
+    (questionTypeRes.rows as Array<{ id: string; bank_question_type: StoredQuestionType | null; question_snapshot: unknown }>).map((row) => {
+      const snapshot = asObject(row.question_snapshot) ?? {};
+      const snapshotType = asString(snapshot.question_type);
+      const resolvedType: StoredQuestionType =
+        row.bank_question_type === 'mcq' || row.bank_question_type === 'sql_fill'
+          ? row.bank_question_type
+          : snapshotType === 'mcq' || snapshotType === 'sql_fill'
+            ? snapshotType
+            : 'mcq';
+      return [row.id, resolvedType] as const;
+    }),
   );
 
   const answeredRows: Array<{
@@ -2776,7 +2792,7 @@ export async function submitAttempt(options: {
 
   const existingAnswerMap = new Map(
     (existingAnswersRes.rows as Array<{ test_question_id: string; answer: string }>).map((row) => [
-      row.test_question_id,
+      String(row.test_question_id),
       row.answer,
     ]),
   );
@@ -2785,7 +2801,7 @@ export async function submitAttempt(options: {
     attemptId: options.attemptId,
     questionId: question.id,
     questionType: question.question_type,
-    answer: existingAnswerMap.get(question.id) ?? '',
+    answer: existingAnswerMap.get(String(question.id)) ?? '',
     isFinal: true,
     answeredAt: nowIso(),
     updatedAt: nowIso(),
@@ -2817,15 +2833,15 @@ export async function submitAttempt(options: {
   }>;
 
   const answerIdByQuestionId = new Map(
-    insertedAnswerRows.map((row) => [row.test_question_id, row.id]),
+    insertedAnswerRows.map((row) => [String(row.test_question_id), row.id]),
   );
 
-  const questionById = new Map(questions.map((question) => [question.id, question]));
+  const questionById = new Map(questions.map((question) => [String(question.id), question]));
 
   const evaluations = evaluated.results.map((result) => {
-    const question = questionById.get(result.question_id);
+    const question = questionById.get(String(result.question_id));
     return {
-      attemptAnswerId: answerIdByQuestionId.get(result.question_id) ?? '',
+      attemptAnswerId: answerIdByQuestionId.get(String(result.question_id)) ?? '',
       evaluationType: question?.question_type === 'mcq' ? 'mcq_auto' : 'sql_syntax',
       awardedScore: result.is_correct ? 1 : 0,
       isCorrect: result.is_correct,

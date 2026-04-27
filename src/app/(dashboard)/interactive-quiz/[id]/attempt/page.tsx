@@ -212,9 +212,9 @@ export default function InteractiveQuizAttemptPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          answers,
+          answers: answersRef.current,
           mode: 'interactive_quiz',
-          timing_by_question: timingByQuestion,
+          timing_by_question: timingRef.current,
         }),
       });
       const data = await response.json();
@@ -230,7 +230,7 @@ export default function InteractiveQuizAttemptPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [answers, attemptId, goToLeaderboard, submitting, testId, timingByQuestion]);
+  }, [attemptId, goToLeaderboard, submitting, testId]);
 
   const recordViolation = useCallback(
     async (

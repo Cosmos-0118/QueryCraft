@@ -26,6 +26,7 @@ interface Test {
   status: string;
   created_by: string;
   updated_at: string;
+  module_type?: 'classic' | 'interactive_quiz';
 }
 
 interface Assignment {
@@ -126,6 +127,53 @@ export default function TestReviewPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [filter, setFilter] = useState<ReviewFilter>('all');
+  const [publishingAll, setPublishingAll] = useState(false);
+  const [publishingIds, setPublishingIds] = useState<Set<string>>(new Set());
+
+  const isClassicTest = !test?.module_type || test.module_type === 'classic';
+
+  const handlePublishAll = async () => {
+    if (!testId || !isTeacher || !user?.id || publishingAll) return;
+    setPublishingAll(true);
+    try {
+      const res = await fetch(`/api/tests/${testId}/review${teacherAccessQuery}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publishAll: true }),
+      });
+      if (res.ok) {
+        setSubmissions((prev) =>
+          prev.map((s) => (s.status === 'submitted' ? { ...s, published: true } : s)),
+        );
+      }
+    } catch { /* ignore */ } finally {
+      setPublishingAll(false);
+    }
+  };
+
+  const handleTogglePublish = async (submission: Submission) => {
+    if (!testId || !isTeacher || !user?.id || !submission.attemptId) return;
+    const newPublished = !submission.published;
+    setPublishingIds((prev) => new Set(prev).add(submission.id));
+    try {
+      const res = await fetch(`/api/tests/${testId}/review${teacherAccessQuery}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attemptId: submission.attemptId, published: newPublished }),
+      });
+      if (res.ok) {
+        setSubmissions((prev) =>
+          prev.map((s) => (s.id === submission.id ? { ...s, published: newPublished } : s)),
+        );
+      }
+    } catch { /* ignore */ } finally {
+      setPublishingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(submission.id);
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     if (!testId) return;
@@ -403,7 +451,7 @@ export default function TestReviewPage() {
             <Filter size={12} />
             Filter Submissions
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {(['all', 'submitted', 'pending'] as const).map((item) => (
               <button
                 key={item}
@@ -417,6 +465,15 @@ export default function TestReviewPage() {
                 {item}
               </button>
             ))}
+            {isClassicTest && stats.submitted > 0 && (
+              <button
+                onClick={() => void handlePublishAll()}
+                disabled={publishingAll}
+                className="ml-2 rounded-full border border-emerald-400/40 bg-emerald-400/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-emerald-200 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {publishingAll ? 'Publishing...' : 'Publish All Results'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -459,6 +516,24 @@ export default function TestReviewPage() {
                   <span className="rounded-lg border border-border/70 bg-card/60 px-2.5 py-1 text-xs font-semibold text-foreground">
                     {typeof submission.score === 'number' ? `${submission.score}%` : 'Not graded'}
                   </span>
+
+                  {isClassicTest && submission.status === 'submitted' && submission.attemptId && (
+                    <button
+                      onClick={() => void handleTogglePublish(submission)}
+                      disabled={publishingIds.has(submission.id)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        submission.published
+                          ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300 hover:bg-emerald-500/20'
+                          : 'border-amber-500/30 bg-amber-500/12 text-amber-300 hover:bg-amber-500/20'
+                      }`}
+                    >
+                      {submission.published ? (
+                        <><CheckCircle2 size={12} /> Published</>
+                      ) : (
+                        <><Clock3 size={12} /> Unpublished</>
+                      )}
+                    </button>
+                  )}
 
                   {submission.status === 'submitted' && submission.attemptId ? (
                     <Link
