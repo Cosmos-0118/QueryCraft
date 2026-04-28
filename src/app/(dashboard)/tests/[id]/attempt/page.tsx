@@ -8,11 +8,11 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock3,
   Loader2,
-  Save,
   Send,
   ShieldAlert,
   Sparkles,
@@ -158,13 +158,17 @@ export default function TestAttemptPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [savingDraft, setSavingDraft] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   const answersRef = useRef<Record<string, string>>({});
   const saveInFlightRef = useRef(false);
   const savePromiseRef = useRef<Promise<boolean> | null>(null);
   const lastSavedSnapshotRef = useRef('{}');
   const lastSavedAnswersRef = useRef<Record<string, string>>({});
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedIndicatorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSaveRef = useRef(false);
+  const scheduleAutoSaveRef = useRef<(() => void) | null>(null);
   const violationCountRef = useRef(0);
   const lastTabSwitchAtRef = useRef(0);
   const blockedEventLastAtRef = useRef<Record<string, number>>({});
@@ -421,16 +425,19 @@ export default function TestAttemptPage() {
       }
 
       if (saveInFlightRef.current) {
+        // Mark that another save is needed once the in-flight one finishes,
+        // so the latest answer is never lost.
+        pendingSaveRef.current = true;
         return savePromiseRef.current ?? false;
       }
 
       saveInFlightRef.current = true;
 
       if (mode === 'manual') {
-        setSavingDraft(true);
         setSaveMessage(null);
         setError(null);
       }
+      setAutoSaveStatus('saving');
 
       const previousAnswers = lastSavedAnswersRef.current;
       const currentAnswers = answersRef.current;
@@ -454,8 +461,8 @@ export default function TestAttemptPage() {
         lastSavedAnswersRef.current = { ...currentAnswers };
         saveInFlightRef.current = false;
         savePromiseRef.current = null;
+        setAutoSaveStatus('idle');
         if (mode === 'manual') {
-          setSavingDraft(false);
           setSaveMessage('Answers are already up to date.');
         }
         return true;
@@ -484,18 +491,31 @@ export default function TestAttemptPage() {
             setSaveMessage('Answers saved successfully.');
           }
 
+          setAutoSaveStatus('saved');
+          if (savedIndicatorTimerRef.current) {
+            clearTimeout(savedIndicatorTimerRef.current);
+          }
+          savedIndicatorTimerRef.current = setTimeout(() => {
+            setAutoSaveStatus('idle');
+          }, 1500);
+
           return true;
         } catch {
           if (mode === 'manual') {
             setError('Unable to save answers.');
           }
+          setAutoSaveStatus('idle');
           return false;
         } finally {
-          if (mode === 'manual') {
-            setSavingDraft(false);
-          }
           saveInFlightRef.current = false;
           savePromiseRef.current = null;
+          if (pendingSaveRef.current) {
+            pendingSaveRef.current = false;
+            if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+            autoSaveTimerRef.current = setTimeout(() => {
+              scheduleAutoSaveRef.current?.();
+            }, 50);
+          }
         }
       })();
 
@@ -687,9 +707,25 @@ export default function TestAttemptPage() {
     return () => clearInterval(intervalId);
   }, [attemptId, loading, persistAnswers, submitted, testId]);
 
-  const handleSaveCurrent = async () => {
-    void persistAnswers('manual');
-  };
+  const scheduleAutoSave = useCallback(() => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    autoSaveTimerRef.current = setTimeout(() => {
+      void persistAnswers('auto');
+    }, 600);
+  }, [persistAnswers]);
+
+  useEffect(() => {
+    scheduleAutoSaveRef.current = scheduleAutoSave;
+  }, [scheduleAutoSave]);
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      if (savedIndicatorTimerRef.current) clearTimeout(savedIndicatorTimerRef.current);
+    };
+  }, []);
 
   const handleSubmit = async () => {
     if (!questions.length || !attemptId || !testId || submitted) return;
@@ -1004,6 +1040,7 @@ export default function TestAttemptPage() {
                             return next;
                           });
                           if (saveMessage) setSaveMessage(null);
+                          scheduleAutoSave();
                         }}
                         className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm transition ${
                           isSelected
@@ -1027,6 +1064,7 @@ export default function TestAttemptPage() {
                       return next;
                     });
                     if (saveMessage) setSaveMessage(null);
+                    scheduleAutoSave();
                   }}
                   onCopy={(e) => {
                     e.preventDefault();
@@ -1078,17 +1116,21 @@ export default function TestAttemptPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="hidden text-xs text-muted-foreground sm:inline">
-                  Auto saving answers
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {autoSaveStatus === 'saving' ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" />
+                      Saving...
+                    </>
+                  ) : autoSaveStatus === 'saved' ? (
+                    <>
+                      <Check size={12} className="text-emerald-400" />
+                      Saved
+                    </>
+                  ) : (
+                    'Answers auto-save as you go'
+                  )}
                 </span>
-                <button
-                  onClick={handleSaveCurrent}
-                  disabled={savingDraft || !attemptId}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-                >
-                  {savingDraft ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  {savingDraft ? 'Saving...' : 'Save Answer'}
-                </button>
                 <button
                   onClick={handleSubmit}
                   disabled={submitting || questions.length === 0 || !attemptId}
