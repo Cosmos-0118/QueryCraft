@@ -56,8 +56,8 @@ export default function HistoryPage() {
   const history = store.queryHistory;
   const isLightTheme = theme === 'light';
   const cardClass = isLightTheme
-    ? 'rounded-xl border border-slate-200 bg-white shadow-sm'
-    : 'rounded-xl border border-zinc-700/50 bg-zinc-900/60';
+    ? 'rounded-xl border border-border bg-card shadow-sm'
+    : 'rounded-xl border border-border/50 bg-muted/60';
 
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
@@ -95,15 +95,15 @@ export default function HistoryPage() {
             className={cn(
               'mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors',
               isLightTheme
-                ? 'border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-800'
-                : 'border-zinc-700/50 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-200',
+                ? 'border-border bg-card text-muted-foreground hover:border-border/80 hover:bg-muted hover:text-foreground/90'
+                : 'border-border/50 bg-muted/50 text-muted-foreground hover:border-zinc-600 hover:bg-muted hover:text-foreground/90',
             )}
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-foreground">Query History</h1>
-            <p className={cn('mt-0.5 text-[11px]', isLightTheme ? 'text-slate-500' : 'text-zinc-500')}>
+            <p className={cn('mt-0.5 text-[11px]', 'text-muted-foreground/80')}>
               {history.length} quer{history.length === 1 ? 'y' : 'ies'} recorded
               {history.length > 0 && (
                 <span>
@@ -137,7 +137,7 @@ export default function HistoryPage() {
           <div
             className={cn(
               'flex items-center gap-0.5 rounded-xl border p-1',
-              isLightTheme ? 'border-slate-200 bg-slate-100/90' : 'border-zinc-800/60 bg-zinc-900/60',
+              'border-border/60 bg-muted/60',
             )}
           >
             {([
@@ -152,11 +152,11 @@ export default function HistoryPage() {
                   'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all',
                   isLightTheme
                     ? filter === tab.key
-                      ? 'bg-slate-700 text-white shadow-sm'
-                      : 'text-slate-600 hover:bg-slate-200 hover:text-slate-800'
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground/90'
                     : filter === tab.key
-                      ? 'bg-zinc-800/80 text-zinc-200'
-                      : 'text-zinc-500 hover:bg-zinc-800/40 hover:text-zinc-300',
+                      ? 'bg-muted/80 text-foreground/90'
+                      : 'text-muted-foreground/80 hover:bg-muted/40 hover:text-foreground/80',
                 )}
               >
                 {tab.label}
@@ -164,11 +164,11 @@ export default function HistoryPage() {
                   'rounded-md px-1.5 py-0.5 text-[10px] font-bold',
                   isLightTheme
                     ? filter === tab.key
-                      ? 'bg-white/20 text-white'
-                      : 'bg-slate-200 text-slate-600'
+                      ? 'bg-card/20 text-white'
+                      : 'bg-muted/60 text-muted-foreground'
                     : filter === tab.key
                       ? 'bg-violet-500/15 text-violet-400'
-                      : 'bg-zinc-800/40 text-zinc-600',
+                      : 'bg-muted/40 text-muted-foreground/60',
                 )}>
                   {tab.count}
                 </span>
@@ -181,7 +181,7 @@ export default function HistoryPage() {
             <Search
               className={cn(
                 'absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2',
-                isLightTheme ? 'text-slate-400' : 'text-zinc-600',
+                'text-muted-foreground/60',
               )}
             />
             <input
@@ -192,8 +192,8 @@ export default function HistoryPage() {
               className={cn(
                 'w-full rounded-lg border py-2 pl-9 pr-3 text-xs outline-none transition-colors',
                 isLightTheme
-                  ? 'border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:border-slate-500 focus:ring-1 focus:ring-slate-300'
-                  : 'border-zinc-800/60 bg-zinc-900/60 text-zinc-200 placeholder-zinc-600 focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20',
+                  ? 'border-border bg-card text-foreground/90 placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-1 focus:ring-primary/20'
+                  : 'border-border/60 bg-muted/60 text-foreground/90 placeholder-zinc-600 focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20',
               )}
             />
           </div>
@@ -206,17 +206,17 @@ export default function HistoryPage() {
           <div
             className={cn(
               'mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl',
-              isLightTheme ? 'bg-slate-100' : 'bg-zinc-800/60',
+              'bg-muted/60',
             )}
           >
-            <Clock className={cn('h-6 w-6', isLightTheme ? 'text-slate-500' : 'text-zinc-600')} />
+            <Clock className={cn('h-6 w-6', 'text-muted-foreground/60')} />
           </div>
-          <p className={cn('text-sm font-medium', isLightTheme ? 'text-slate-700' : 'text-zinc-400')}>No queries yet</p>
-          <p className={cn('mt-1 text-xs', isLightTheme ? 'text-slate-500' : 'text-zinc-600')}>
+          <p className={cn('text-sm font-medium', 'text-muted-foreground')}>No queries yet</p>
+          <p className={cn('mt-1 text-xs', 'text-muted-foreground/60')}>
             Run some SQL in the{' '}
             <Link
               href="/sandbox"
-              className={cn(isLightTheme ? 'text-slate-700 hover:text-slate-900 hover:underline' : 'text-emerald-400 hover:underline')}
+              className={cn('text-emerald-400 hover:underline')}
             >
               sandbox
             </Link>
@@ -228,7 +228,7 @@ export default function HistoryPage() {
       {/* No filter results */}
       {history.length > 0 && filtered.length === 0 && (
         <div className={cn(cardClass, 'py-10 text-center')}>
-          <p className={cn('text-sm', isLightTheme ? 'text-slate-600' : 'text-zinc-400')}>No queries match your filters.</p>
+          <p className={cn('text-sm', 'text-muted-foreground')}>No queries match your filters.</p>
         </div>
       )}
 
@@ -237,8 +237,8 @@ export default function HistoryPage() {
         <div className={cn(
           'divide-y rounded-xl border',
           isLightTheme
-            ? 'divide-slate-200 border-slate-200 bg-white shadow-sm'
-            : 'divide-zinc-800/50 border-zinc-700/50 bg-zinc-900/60',
+            ? 'divide-slate-200 border-border bg-card shadow-sm'
+            : 'divide-zinc-800/50 border-border/50 bg-muted/60',
         )}>
           {filtered.map((entry, i) => (
             <HistoryEntryCard
@@ -280,7 +280,7 @@ function HistoryEntryCard({
   const hasResult = statementResults.some((statement) => statement.columns.length > 0);
 
   return (
-    <div className={cn('transition-colors', isExpanded && (isLightTheme ? 'bg-slate-50' : 'bg-zinc-800/10'))}>
+    <div className={cn('transition-colors', isExpanded && ('bg-muted/10'))}>
       {/* Header row */}
       <div className="flex items-start gap-3 px-4 py-3">
         <button
@@ -288,8 +288,8 @@ function HistoryEntryCard({
           className={cn(
             'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors',
             isLightTheme
-              ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'
-              : 'text-zinc-600 hover:bg-zinc-800/60 hover:text-zinc-400',
+              ? 'text-muted-foreground/60 hover:bg-muted/80 hover:text-foreground/80'
+              : 'text-muted-foreground/60 hover:bg-muted/60 hover:text-muted-foreground',
           )}
         >
           {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -299,14 +299,14 @@ function HistoryEntryCard({
           {/* Query preview */}
           <div className="flex items-center gap-2">
             {entry.success ? (
-              <CheckCircle2 className={cn('h-3.5 w-3.5 shrink-0', isLightTheme ? 'text-emerald-600' : 'text-emerald-400')} />
+              <CheckCircle2 className={cn('h-3.5 w-3.5 shrink-0', 'text-emerald-400')} />
             ) : (
-              <XCircle className={cn('h-3.5 w-3.5 shrink-0', isLightTheme ? 'text-red-600' : 'text-red-400')} />
+              <XCircle className={cn('h-3.5 w-3.5 shrink-0', 'text-red-400')} />
             )}
             <button onClick={onLoad} className="min-w-0 flex-1 text-left" aria-label="Load query in editor">
               <code className={cn(
                 'block font-mono text-[12px] leading-relaxed',
-                isLightTheme ? 'text-slate-900' : 'text-zinc-300',
+                'text-foreground/80',
                 !isExpanded && 'line-clamp-2',
               )}>
                 {entry.query}
@@ -316,28 +316,28 @@ function HistoryEntryCard({
 
           {/* Meta row */}
           <div className="mt-1.5 flex items-center gap-3 pl-5">
-            <span className={cn('flex items-center gap-1 text-[10px]', isLightTheme ? 'text-slate-500' : 'text-zinc-600')}>
+            <span className={cn('flex items-center gap-1 text-[10px]', 'text-muted-foreground/60')}>
               <Clock className="h-2.5 w-2.5" />
               {new Date(entry.timestamp).toLocaleString()}
             </span>
             <span className={cn(
               'rounded px-1.5 py-0.5 text-[10px]',
-              isLightTheme ? 'bg-slate-100 text-slate-600' : 'bg-zinc-800/70 text-zinc-500',
+              'bg-muted/70 text-muted-foreground/80',
             )}>
               {database}
             </span>
             {entry.result && (
               <>
-                <span className={cn('text-[10px]', isLightTheme ? 'text-slate-300' : 'text-zinc-700')}>·</span>
-                <span className={cn('text-[10px]', isLightTheme ? 'text-slate-500' : 'text-zinc-600')}>
+                <span className={cn('text-[10px]', 'text-muted-foreground/80')}>·</span>
+                <span className={cn('text-[10px]', 'text-muted-foreground/60')}>
                   {entry.result.executionTimeMs.toFixed(1)}ms
                 </span>
               </>
             )}
             {hasResult && (
               <>
-                <span className={cn('text-[10px]', isLightTheme ? 'text-slate-300' : 'text-zinc-700')}>·</span>
-                <span className={cn('text-[10px]', isLightTheme ? 'text-slate-500' : 'text-zinc-600')}>
+                <span className={cn('text-[10px]', 'text-muted-foreground/80')}>·</span>
+                <span className={cn('text-[10px]', 'text-muted-foreground/60')}>
                   {entry.result.rowCount} row{entry.result.rowCount !== 1 ? 's' : ''}
                 </span>
               </>
@@ -352,12 +352,12 @@ function HistoryEntryCard({
             className={cn(
               'flex h-7 w-7 items-center justify-center rounded-md transition-colors',
               isLightTheme
-                ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-                : 'text-zinc-600 hover:bg-zinc-800/60 hover:text-zinc-300',
+                ? 'text-primary-foreground0 hover:bg-muted/80 hover:text-foreground/90'
+                : 'text-muted-foreground/60 hover:bg-muted/60 hover:text-foreground/80',
             )}
             aria-label="Copy query"
           >
-            {isCopied ? <Check className={cn('h-3.5 w-3.5', isLightTheme ? 'text-emerald-600' : 'text-emerald-400')} /> : <Copy className="h-3.5 w-3.5" />}
+            {isCopied ? <Check className={cn('h-3.5 w-3.5', 'text-emerald-400')} /> : <Copy className="h-3.5 w-3.5" />}
           </button>
           <Link
             href="/sandbox"
@@ -365,8 +365,8 @@ function HistoryEntryCard({
             className={cn(
               'flex h-7 w-7 items-center justify-center rounded-md transition-colors',
               isLightTheme
-                ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-                : 'text-zinc-600 hover:bg-zinc-800/60 hover:text-zinc-300',
+                ? 'text-primary-foreground0 hover:bg-muted/80 hover:text-foreground/90'
+                : 'text-muted-foreground/60 hover:bg-muted/60 hover:text-foreground/80',
             )}
             aria-label="Load query in editor"
           >
@@ -382,15 +382,15 @@ function HistoryEntryCard({
             {/* Full query */}
             <div className={cn(
               'rounded-lg border p-4',
-              isLightTheme ? 'border-slate-200 bg-slate-50' : 'border-zinc-800/60 bg-zinc-950/50',
+              'border-border/60 bg-card/50',
             )}>
               <div className="mb-2 flex items-center gap-1.5">
-                <CornerDownLeft className={cn('h-3 w-3', isLightTheme ? 'text-slate-500' : 'text-violet-400')} />
-                <span className={cn('text-[10px] font-semibold uppercase tracking-wider', isLightTheme ? 'text-slate-500' : 'text-zinc-600')}>
+                <CornerDownLeft className={cn('h-3 w-3', 'text-violet-400')} />
+                <span className={cn('text-[10px] font-semibold uppercase tracking-wider', 'text-muted-foreground/60')}>
                   Full Query
                 </span>
               </div>
-              <pre className={cn('overflow-x-auto whitespace-pre-wrap font-mono text-[12px] leading-relaxed', isLightTheme ? 'text-slate-800' : 'text-zinc-300')}>
+              <pre className={cn('overflow-x-auto whitespace-pre-wrap font-mono text-[12px] leading-relaxed', 'text-foreground/80')}>
                 {entry.query}
               </pre>
             </div>
@@ -412,12 +412,12 @@ function StatementTabs({ statementResults, isLightTheme }: { statementResults: H
   return (
     <div className={cn(
       'overflow-hidden rounded-lg border',
-      isLightTheme ? 'border-slate-200' : 'border-zinc-800/60',
+      'border-border/60',
     )}>
       {statementResults.length > 1 && (
         <div className={cn(
           'flex items-center gap-1 overflow-x-auto border-b px-2 py-1.5',
-          isLightTheme ? 'border-slate-200 bg-slate-50' : 'border-zinc-800/50 bg-zinc-900/60',
+          'border-border/50 bg-muted/60',
         )}>
           {statementResults.map((statement, idx) => (
             <button
@@ -427,11 +427,11 @@ function StatementTabs({ statementResults, isLightTheme }: { statementResults: H
                 'shrink-0 rounded-md border px-2 py-1 text-[10px] font-medium transition-colors',
                 isLightTheme
                   ? idx === activeIndex
-                    ? 'border-slate-700 bg-slate-700 text-white'
-                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                    ? 'border-primary bg-primary text-white'
+                    : 'border-border bg-card text-primary-foreground0 hover:border-border hover:text-foreground/80'
                   : idx === activeIndex
                     ? 'border-violet-500/40 bg-violet-500/15 text-violet-300'
-                    : 'border-zinc-700/60 bg-zinc-800/50 text-zinc-500 hover:text-zinc-300',
+                    : 'border-border/60 bg-muted/50 text-muted-foreground/80 hover:text-foreground/80',
               )}
             >
               S{idx + 1}
@@ -442,14 +442,14 @@ function StatementTabs({ statementResults, isLightTheme }: { statementResults: H
 
       <div className={cn(
         'border-b px-3 py-2',
-        isLightTheme ? 'border-slate-200 bg-slate-50' : 'border-zinc-800/50 bg-zinc-800/20',
+        'border-border/50 bg-muted/20',
       )}>
         <div className="flex items-center gap-1.5">
-          <Table2 className={cn('h-3 w-3', isLightTheme ? 'text-slate-600' : 'text-emerald-400')} />
-          <span className={cn('text-[10px] font-semibold uppercase tracking-wider', isLightTheme ? 'text-slate-500' : 'text-zinc-600')}>
+          <Table2 className={cn('h-3 w-3', 'text-emerald-400')} />
+          <span className={cn('text-[10px] font-semibold uppercase tracking-wider', 'text-muted-foreground/60')}>
             {statementResults.length > 1 ? `Statement ${activeIndex + 1}` : 'Result'}
           </span>
-          <span className={cn('ml-auto text-[10px]', isLightTheme ? 'text-slate-500' : 'text-zinc-600')}>
+          <span className={cn('ml-auto text-[10px]', 'text-muted-foreground/60')}>
             {active.executionTimeMs.toFixed(1)}ms
           </span>
         </div>
@@ -469,14 +469,14 @@ function StatementTabs({ statementResults, isLightTheme }: { statementResults: H
             <thead>
               <tr className={cn(
                 'border-b',
-                isLightTheme ? 'border-slate-200 bg-slate-50' : 'border-zinc-800/50 bg-zinc-900/50',
+                'border-border/50 bg-muted/50',
               )}>
                 {active.columns.map((col) => (
                   <th
                     key={col}
                     className={cn(
                       'whitespace-nowrap px-3 py-2 text-left font-mono text-[10px] font-semibold uppercase tracking-wider',
-                      isLightTheme ? 'text-slate-500' : 'text-zinc-500',
+                      'text-muted-foreground/80',
                     )}
                   >
                     {col}
@@ -490,7 +490,7 @@ function StatementTabs({ statementResults, isLightTheme }: { statementResults: H
                   key={ri}
                   className={cn(
                     'border-b last:border-0 transition-colors',
-                    isLightTheme ? 'border-slate-200 hover:bg-slate-50' : 'border-zinc-800/30 hover:bg-zinc-800/20',
+                    'border-border/30 hover:bg-muted/20',
                   )}
                 >
                   {active.columns.map((col) => (
@@ -498,11 +498,11 @@ function StatementTabs({ statementResults, isLightTheme }: { statementResults: H
                       key={col}
                       className={cn(
                         'whitespace-nowrap px-3 py-1.5 font-mono',
-                        isLightTheme ? 'text-slate-800' : 'text-zinc-300',
+                        'text-foreground/80',
                       )}
                     >
                       {row[col] === null || row[col] === undefined ? (
-                        <span className={cn('italic', isLightTheme ? 'text-slate-400' : 'text-zinc-700')}>NULL</span>
+                        <span className={cn('italic', 'text-muted-foreground/80')}>NULL</span>
                       ) : (
                         String(row[col])
                       )}
@@ -516,10 +516,10 @@ function StatementTabs({ statementResults, isLightTheme }: { statementResults: H
       ) : (
         <div className={cn(
           'flex items-center gap-2 rounded-b-lg border-t px-4 py-3',
-          isLightTheme ? 'border-slate-200 bg-emerald-50' : 'border-zinc-800/60 bg-emerald-500/5',
+          'border-border/60 bg-emerald-500/5',
         )}>
-          <CheckCircle2 className={cn('h-3.5 w-3.5 shrink-0', isLightTheme ? 'text-emerald-700' : 'text-emerald-400')} />
-          <span className={cn('text-[11px]', isLightTheme ? 'text-emerald-700' : 'text-emerald-400')}>
+          <CheckCircle2 className={cn('h-3.5 w-3.5 shrink-0', 'text-emerald-400')} />
+          <span className={cn('text-[11px]', 'text-emerald-400')}>
             {active.rowCount > 0 ? `${active.rowCount} row(s) affected` : 'Query executed successfully'}
           </span>
         </div>

@@ -171,15 +171,15 @@ export default function GeneratorPage() {
             <Sparkles className="h-5 w-5 text-violet-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-zinc-100">Table Generator</h1>
-            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-500">
+            <h1 className="text-xl font-bold tracking-tight text-foreground">Table Generator</h1>
+            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground/80">
               <span className="flex items-center gap-1">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-violet-400" />
                 {store.tables.length} table{store.tables.length !== 1 ? 's' : ''}
               </span>
-              <span className="text-zinc-700">&middot;</span>
+              <span className="text-muted-foreground/80">&middot;</span>
               <span>{store.tables.reduce((a, t) => a + t.columns.length, 0)} columns</span>
-              <span className="text-zinc-700">&middot;</span>
+              <span className="text-muted-foreground/80">&middot;</span>
               <span>Smart data generation</span>
             </div>
           </div>
@@ -208,7 +208,7 @@ export default function GeneratorPage() {
             className={cn(
               'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors',
               isLightTheme
-                ? 'border-red-200 bg-white text-red-600 hover:border-red-300 hover:bg-red-50'
+                ? 'border-red-200 bg-card text-red-600 hover:border-red-300 hover:bg-red-50'
                 : 'border-red-500/20 text-red-400/80 hover:border-red-500/40 hover:bg-red-500/10',
             )}
           >
@@ -220,14 +220,14 @@ export default function GeneratorPage() {
 
       {/* Templates */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-zinc-500">Quick Start:</span>
+        <span className="text-xs font-medium text-muted-foreground/80">Quick Start:</span>
         {TABLE_TEMPLATES.map((tmpl) => {
           const Icon = TEMPLATE_ICONS[tmpl.name] || Database;
           return (
             <button
               key={tmpl.name}
               onClick={() => handleLoadTemplate(tmpl)}
-              className="group inline-flex items-center gap-1.5 rounded-lg border border-zinc-800/60 bg-zinc-900/60 px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition-all hover:border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
+              className="group inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/60 px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-all hover:border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
               title={tmpl.description}
             >
               <Icon className="h-3.5 w-3.5" />
@@ -244,13 +244,13 @@ export default function GeneratorPage() {
             return (
               <div
                 key={ti}
-                className="rounded-xl border border-zinc-800/60 bg-zinc-900/80 backdrop-blur-sm"
+                className="rounded-xl border border-border/60 bg-muted/80 backdrop-blur-sm"
               >
                 {/* Table Header */}
                 <div className="flex items-center gap-3 px-4 py-3">
                   <button
                     onClick={() => toggleTable(ti)}
-                    className="flex h-6 w-6 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+                    className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground/80 transition-colors hover:bg-muted hover:text-foreground/80"
                   >
                     {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                   </button>
@@ -261,12 +261,12 @@ export default function GeneratorPage() {
                     type="text"
                     value={table.name}
                     onChange={(e) => store.updateTableName(ti, e.target.value)}
-                    className="flex-1 bg-transparent font-mono text-sm font-semibold text-zinc-200 outline-none placeholder:text-zinc-600 focus:text-violet-300"
+                    className="flex-1 bg-transparent font-mono text-sm font-semibold text-foreground/90 outline-none placeholder:text-muted-foreground/60 focus:text-violet-300"
                     placeholder="table_name"
                   />
 
                   <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                    <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
                       Rows:
                       <input
                         type="number"
@@ -274,13 +274,13 @@ export default function GeneratorPage() {
                         max={1000}
                         value={table.rowCount}
                         onChange={(e) => store.updateTableRowCount(ti, Number(e.target.value))}
-                        className="w-16 rounded-lg border border-zinc-700/50 bg-zinc-950/60 px-2 py-1 text-center text-xs text-zinc-200 outline-none focus:border-violet-500/50"
+                        className="w-16 rounded-lg border border-border/50 bg-card/60 px-2 py-1 text-center text-xs text-foreground/90 outline-none focus:border-violet-500/50"
                       />
                     </label>
                     {store.tables.length > 1 && (
                       <button
                         onClick={() => store.removeTable(ti)}
-                        className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-600 transition-all hover:bg-red-500/10 hover:text-red-400"
+                        className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/60 transition-all hover:bg-red-500/10 hover:text-red-400"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -290,9 +290,9 @@ export default function GeneratorPage() {
 
                 {/* Table Columns */}
                 {isExpanded && (
-                  <div className="border-t border-zinc-800/40 px-4 py-3">
+                  <div className="border-t border-border/40 px-4 py-3">
                     {/* Column headers */}
-                    <div className="mb-2 grid grid-cols-[1fr_90px_120px_40px_28px] gap-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                    <div className="mb-2 grid grid-cols-[1fr_90px_120px_40px_28px] gap-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
                       <span>Column Name</span>
                       <span>Type</span>
                       <span>Data Pattern</span>
@@ -315,14 +315,14 @@ export default function GeneratorPage() {
                         return (
                           <div
                             key={ci}
-                            className="group grid grid-cols-[1fr_90px_120px_40px_28px] items-center gap-2 rounded-lg border border-zinc-800/40 bg-zinc-800/20 px-2 py-1.5 transition-colors hover:border-zinc-700/60"
+                            className="group grid grid-cols-[1fr_90px_120px_40px_28px] items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-2 py-1.5 transition-colors hover:border-border/60"
                           >
                             {/* Name */}
                             <input
                               type="text"
                               value={col.name}
                               onChange={(e) => store.updateColumn(ti, ci, { name: e.target.value })}
-                              className="w-full bg-transparent font-mono text-sm text-zinc-200 outline-none placeholder:text-zinc-600"
+                              className="w-full bg-transparent font-mono text-sm text-foreground/90 outline-none placeholder:text-muted-foreground/60"
                               placeholder="column_name"
                             />
 
@@ -340,15 +340,15 @@ export default function GeneratorPage() {
                                 className={cn(
                                   'flex w-full items-center justify-between rounded-lg px-2 py-1 text-[11px] font-semibold outline-none transition-colors',
                                   isLightTheme
-                                    ? 'border border-slate-300 bg-slate-100 text-slate-700 hover:border-slate-400 hover:bg-slate-50'
-                                    : typeOpt?.color || 'bg-zinc-800 text-zinc-400',
+                                    ? 'border border-border bg-muted/80 text-foreground/80 hover:border-border/80 hover:bg-muted'
+                                    : typeOpt?.color || 'bg-muted text-muted-foreground',
                                 )}
                               >
                                 <span>{typeOpt?.label ?? 'TEXT'}</span>
                                 <ChevronDown
                                   className={cn(
                                     'h-3 w-3 transition-transform',
-                                    isLightTheme ? 'text-slate-500' : 'text-zinc-500',
+                                    'text-muted-foreground/80',
                                     isTypeOpen && 'rotate-180',
                                   )}
                                 />
@@ -358,8 +358,8 @@ export default function GeneratorPage() {
                                   className={cn(
                                     'absolute left-0 top-[calc(100%+6px)] z-30 w-44 overflow-hidden rounded-xl p-1 backdrop-blur-sm',
                                     isLightTheme
-                                      ? 'border border-slate-200 bg-white shadow-xl shadow-slate-900/10'
-                                      : 'border border-zinc-700/60 bg-zinc-900/95 shadow-2xl',
+                                      ? 'border border-border bg-card shadow-xl shadow-slate-900/10'
+                                      : 'border border-border/60 bg-muted/95 shadow-2xl',
                                   )}
                                 >
                                   {TYPE_OPTIONS.map((t) => (
@@ -374,16 +374,16 @@ export default function GeneratorPage() {
                                         'flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors',
                                         isLightTheme
                                           ? col.type === t.value
-                                            ? 'bg-slate-700 text-white'
-                                            : 'text-slate-700 hover:bg-slate-100'
+                                            ? 'bg-primary text-white'
+                                            : 'text-foreground/80 hover:bg-muted/80'
                                           : col.type === t.value
                                             ? 'bg-violet-500/15 text-violet-200'
-                                            : 'text-zinc-300 hover:bg-zinc-800/80',
+                                            : 'text-foreground/80 hover:bg-muted/80',
                                       )}
                                     >
                                       <span>{t.label}</span>
                                       {col.type === t.value && (
-                                        <Check className={cn('h-3 w-3', isLightTheme ? 'text-white' : 'text-violet-300')} />
+                                        <Check className={cn('h-3 w-3', 'text-violet-300')} />
                                       )}
                                     </button>
                                   ))}
@@ -402,16 +402,16 @@ export default function GeneratorPage() {
                                       : { kind: 'hint', tableIndex: ti, colIndex: ci },
                                   )
                                 }
-                                className="flex w-full items-center justify-between rounded-lg border border-zinc-700/40 bg-zinc-800/70 px-2 py-1 text-[11px] text-zinc-300 outline-none transition-colors hover:border-zinc-600/60"
+                                className="flex w-full items-center justify-between rounded-lg border border-border/40 bg-muted/70 px-2 py-1 text-[11px] text-foreground/80 outline-none transition-colors hover:border-zinc-600/60"
                               >
                                 <span className="truncate">{hintOpt?.label ?? 'Auto-detect'}</span>
-                                <ChevronDown className={cn('h-3 w-3 shrink-0 text-zinc-500 transition-transform', isHintOpen && 'rotate-180')} />
+                                <ChevronDown className={cn('h-3 w-3 shrink-0 text-muted-foreground/80 transition-transform', isHintOpen && 'rotate-180')} />
                               </button>
                               {isHintOpen && (
-                                <div className="absolute left-0 top-[calc(100%+6px)] z-30 max-h-64 w-60 overflow-auto rounded-xl border border-zinc-700/60 bg-zinc-900/95 p-1 shadow-2xl backdrop-blur-sm">
+                                <div className="absolute left-0 top-[calc(100%+6px)] z-30 max-h-64 w-60 overflow-auto rounded-xl border border-border/60 bg-muted/95 p-1 shadow-2xl backdrop-blur-sm">
                                   {groupedHints.map(([group, hints]) => (
                                     <div key={group} className="pb-1">
-                                      <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                                      <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
                                         {group}
                                       </p>
                                       {hints.map((h) => (
@@ -426,7 +426,7 @@ export default function GeneratorPage() {
                                             'flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] transition-colors',
                                             col.hint === h.value
                                               ? 'bg-violet-500/15 font-medium text-violet-200'
-                                              : 'text-zinc-300 hover:bg-zinc-800/80',
+                                              : 'text-foreground/80 hover:bg-muted/80',
                                           )}
                                         >
                                           <span>{h.label}</span>
@@ -453,7 +453,7 @@ export default function GeneratorPage() {
                             {table.columns.length > 1 && (
                               <button
                                 onClick={() => store.removeColumn(ti, ci)}
-                                className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-600 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                                className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
                               >
                                 <Trash2 className="h-2.5 w-2.5" />
                               </button>
@@ -465,7 +465,7 @@ export default function GeneratorPage() {
 
                     <button
                       onClick={() => store.addColumn(ti)}
-                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-500 transition-all hover:bg-zinc-800/50 hover:text-violet-300"
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground/80 transition-all hover:bg-muted/50 hover:text-violet-300"
                     >
                       <Plus className="h-3 w-3" /> Add Column
                     </button>
@@ -478,17 +478,17 @@ export default function GeneratorPage() {
           {/* Add table button */}
           <button
             onClick={handleAddTable}
-            className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-700/50 py-3 text-sm text-zinc-500 transition-all hover:border-violet-500/30 hover:bg-violet-500/5 hover:text-violet-300"
+            className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border/50 py-3 text-sm text-muted-foreground/80 transition-all hover:border-violet-500/30 hover:bg-violet-500/5 hover:text-violet-300"
           >
             <Plus className="h-4 w-4" />
             Add Table
           </button>
           {store.generatedSQL && (
-            <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/70 p-4">
+            <div className="rounded-xl border border-border/60 bg-muted/70 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <Database className="h-4 w-4 text-violet-400" />
-                  <p className="text-sm font-semibold text-zinc-200">SQL generated successfully</p>
+                  <p className="text-sm font-semibold text-foreground/90">SQL generated successfully</p>
                   <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
                     {store.generatedSQL.split('\n').length} lines
                   </span>
@@ -496,7 +496,7 @@ export default function GeneratorPage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleCopy}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700/50 px-3 py-1.5 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-600 hover:bg-zinc-800/60 hover:text-zinc-100"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-1.5 text-[11px] font-medium text-foreground/80 transition-all hover:border-zinc-600 hover:bg-muted/60 hover:text-foreground"
                     title="Copy SQL to clipboard"
                   >
                     {copied ? (
@@ -520,7 +520,7 @@ export default function GeneratorPage() {
                   </button>
                 </div>
               </div>
-              <p className="mt-2 text-[11px] text-zinc-500">
+              <p className="mt-2 text-[11px] text-muted-foreground/80">
                 Preview is moved to a modal to keep the editor area uncluttered.
               </p>
             </div>
@@ -529,16 +529,16 @@ export default function GeneratorPage() {
 
       {showSqlModal && store.generatedSQL && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="flex h-[85vh] w-full max-w-5xl flex-col rounded-2xl border border-zinc-700/60 bg-zinc-950 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-zinc-800/50 px-5 py-3">
+          <div className="flex h-[85vh] w-full max-w-5xl flex-col rounded-2xl border border-border/60 bg-card shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border/50 px-5 py-3">
               <div className="flex items-center gap-2.5">
                 <Database className="h-4 w-4 text-violet-400" />
-                <h2 className="text-sm font-semibold text-zinc-200">Generated SQL</h2>
+                <h2 className="text-sm font-semibold text-foreground/90">Generated SQL</h2>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleCopy}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700/50 px-3 py-1.5 text-[11px] font-medium text-zinc-300 transition-all hover:border-zinc-600 hover:bg-zinc-800/60"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-1.5 text-[11px] font-medium text-foreground/80 transition-all hover:border-zinc-600 hover:bg-muted/60"
                 >
                   {copied ? (
                     <>
@@ -554,7 +554,7 @@ export default function GeneratorPage() {
                 </button>
                 <button
                   onClick={() => setShowSqlModal(false)}
-                  className="rounded-lg border border-zinc-700/50 p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+                  className="rounded-lg border border-border/50 p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground/90"
                   title="Close"
                 >
                   <X className="h-4 w-4" />
@@ -562,7 +562,7 @@ export default function GeneratorPage() {
               </div>
             </div>
             <div className="flex-1 overflow-auto p-5">
-              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-zinc-300 selection:bg-violet-500/30">
+              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground/80 selection:bg-violet-500/30">
                 {store.generatedSQL}
               </pre>
             </div>

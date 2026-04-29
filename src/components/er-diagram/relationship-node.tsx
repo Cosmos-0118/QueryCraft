@@ -44,7 +44,7 @@ export const RelationshipNode = memo(function RelationshipNode({ data, selected 
 
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center gap-0.5 px-4">
-        <span className="max-w-[100px] truncate text-center text-[11px] font-semibold leading-tight text-slate-700">{label}</span>
+        <span className="max-w-[100px] truncate text-center text-[11px] font-semibold leading-tight text-foreground/80">{label}</span>
         <span className="rounded-sm border border-violet-300/60 bg-violet-100 px-1.5 py-px text-[9px] font-bold leading-none text-violet-700">
           {cardinality}
         </span>

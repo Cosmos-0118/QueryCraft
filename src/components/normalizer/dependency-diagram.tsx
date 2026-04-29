@@ -22,26 +22,26 @@ const FD_THEMES = [
 export function DependencyDiagram({ columns, fds, className }: DependencyDiagramProps) {
   if (columns.length === 0) {
     return (
-      <div className={cn('rounded-xl border border-zinc-700/50 bg-zinc-900/60', className)}>
-        <div className="flex items-center gap-2 border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-2.5">
+      <div className={cn('rounded-xl border border-border/80/50 bg-muted/60', className)}>
+        <div className="flex items-center gap-2 border-b border-border/80/40 bg-muted/80/30 px-4 py-2.5">
           <GitBranch className="h-3.5 w-3.5 text-violet-400" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
             Dependency Diagram
           </span>
         </div>
         <div className="flex items-center justify-center px-4 py-12">
-          <p className="text-xs text-zinc-600">Enter attributes to see the dependency graph</p>
+          <p className="text-xs text-muted-foreground">Enter attributes to see the dependency graph</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={cn('rounded-xl border border-zinc-700/50 bg-zinc-900/60', className)}>
+    <div className={cn('rounded-xl border border-border/80/50 bg-muted/60', className)}>
       {/* Header */}
-      <div className="flex items-center gap-2 border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-2.5">
+      <div className="flex items-center gap-2 border-b border-border/80/40 bg-muted/80/30 px-4 py-2.5">
         <GitBranch className="h-3.5 w-3.5 text-violet-400" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
           Dependency Diagram
         </span>
         {fds.length > 0 && (
@@ -54,7 +54,7 @@ export function DependencyDiagram({ columns, fds, className }: DependencyDiagram
       <div className="space-y-3 p-4">
         {/* ── All‑attributes bar ──────────────────────── */}
         <div>
-          <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+          <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             All Attributes
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -70,8 +70,8 @@ export function DependencyDiagram({ columns, fds, className }: DependencyDiagram
                   className={cn(
                     'rounded-md border px-2.5 py-1 font-mono text-[11px] font-semibold transition-colors',
                     theme
-                      ? 'border-zinc-700/40 bg-zinc-800/60 text-zinc-300'
-                      : 'border-zinc-800/40 bg-zinc-800/30 text-zinc-500',
+                      ? 'border-border/80/40 bg-muted/80/60 text-foreground/80'
+                      : 'border-border/40 bg-muted/80/30 text-muted-foreground/80',
                   )}
                 >
                   {col}
@@ -101,12 +101,12 @@ export function DependencyDiagram({ columns, fds, className }: DependencyDiagram
 
         {/* ── FD cards ────────────────────────────────── */}
         {fds.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-zinc-800/50 px-4 py-6 text-center">
-            <p className="text-xs text-zinc-600">Functional dependencies are inferred automatically from your current rows.</p>
+          <div className="rounded-lg border border-dashed border-border/50 px-4 py-6 text-center">
+            <p className="text-xs text-muted-foreground">Functional dependencies are inferred automatically from your current rows.</p>
           </div>
         ) : (
           <div className="space-y-2">
-            <div className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+            <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               Functional Dependencies
             </div>
             {fds.map((fd, i) => {
@@ -135,7 +135,7 @@ export function DependencyDiagram({ columns, fds, className }: DependencyDiagram
                     {fd.determinant.map((col, ci) => (
                       <span key={col} className="flex items-center gap-1">
                         {ci > 0 && (
-                          <span className="text-[10px] text-zinc-600">,</span>
+                          <span className="text-[10px] text-muted-foreground">,</span>
                         )}
                         <span
                           className={cn(
@@ -160,7 +160,7 @@ export function DependencyDiagram({ columns, fds, className }: DependencyDiagram
                     {fd.dependent.map((col, ci) => (
                       <span key={col} className="flex items-center gap-1">
                         {ci > 0 && (
-                          <span className="text-[10px] text-zinc-600">,</span>
+                          <span className="text-[10px] text-muted-foreground">,</span>
                         )}
                         <span
                           className={cn(
@@ -182,14 +182,14 @@ export function DependencyDiagram({ columns, fds, className }: DependencyDiagram
         {/* ── Grid view: which columns belong to which FDs ── */}
         {fds.length > 0 && columns.length > 0 && (
           <div>
-            <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+            <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               Attribute × FD Matrix
             </div>
-            <div className="overflow-x-auto rounded-lg border border-zinc-800/50">
+            <div className="overflow-x-auto rounded-lg border border-border/50">
               <table className="w-full min-w-[300px] text-[11px]">
                 <thead>
-                  <tr className="border-b border-zinc-800/50 bg-zinc-800/20">
-                    <th className="px-3 py-1.5 text-left font-semibold uppercase tracking-wider text-zinc-600">
+                  <tr className="border-b border-border/50 bg-muted/80/20">
+                    <th className="px-3 py-1.5 text-left font-semibold uppercase tracking-wider text-muted-foreground">
                       Attr
                     </th>
                     {fds.map((_, i) => {
@@ -208,9 +208,9 @@ export function DependencyDiagram({ columns, fds, className }: DependencyDiagram
                   {columns.map((col) => (
                     <tr
                       key={col}
-                      className="border-b border-zinc-800/30 last:border-0 transition-colors hover:bg-zinc-800/15"
+                      className="border-b border-border/30 last:border-0 transition-colors hover:bg-muted/80/15"
                     >
-                      <td className="px-3 py-1.5 font-mono font-semibold text-zinc-400">
+                      <td className="px-3 py-1.5 font-mono font-semibold text-muted-foreground">
                         {col}
                       </td>
                       {fds.map((fd, fi) => {
@@ -240,7 +240,7 @@ export function DependencyDiagram({ columns, fds, className }: DependencyDiagram
                               </span>
                             )}
                             {!isDet && !isDep && (
-                              <span className="text-zinc-800">—</span>
+                              <span className="text-foreground/80">—</span>
                             )}
                           </td>
                         );

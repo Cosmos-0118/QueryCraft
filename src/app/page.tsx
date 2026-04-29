@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import TileWaveCanvas from '@/components/visual/TileWaveCanvas';
+import { useAuth } from '@/hooks/use-auth';
 import {
   ArrowRight,
   BookOpen,
@@ -13,7 +15,7 @@ import {
   Sparkles,
   Terminal,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 const tools: { title: string; description: string; href: string; icon: ReactNode }[] = [
   { title: 'Guided Learn', description: 'Structured DBMS lessons with visual walkthroughs and 86+ copyable references.', href: '/learn', icon: <BookOpen size={16} suppressHydrationWarning /> },
@@ -48,13 +50,12 @@ const shouldUseLiteMode = () => {
   const navigatorHints = window.navigator as NavigatorWithHints;
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const saveData = navigatorHints.connection?.saveData ?? false;
-  const lowCoreCount = (navigatorHints.hardwareConcurrency ?? 8) <= 4;
-  const lowMemory = typeof navigatorHints.deviceMemory === 'number' && navigatorHints.deviceMemory <= 4;
 
-  return prefersReducedMotion || saveData || lowCoreCount || lowMemory;
+  return prefersReducedMotion || saveData;
 };
 
 export default function Home() {
+  const { isAuthenticated } = useAuth();
   const [clickBursts, setClickBursts] = useState<ClickBurst[]>([]);
   const TRAIL_SEGMENTS = 7;
   const ringRef = useRef<HTMLDivElement | null>(null);
@@ -93,16 +94,7 @@ export default function Home() {
     () => false
   );
 
-  const backgroundTiles = useMemo(() => {
-    const tileCount = liteMode ? 160 : 720;
-    const maxDurationSteps = liteMode ? 4 : 8;
 
-    return Array.from({ length: tileCount }, (_, i) => ({
-      id: i,
-      delay: ((i * 37) % 100) / 18,
-      duration: 4.8 + (i % maxDurationSteps) * 0.45,
-    }));
-  }, [liteMode]);
 
   useEffect(() => {
     if (!showMouseFx) return;
@@ -224,19 +216,8 @@ export default function Home() {
       className={`relative min-h-[100svh] w-full overflow-x-hidden bg-[#050810] text-slate-100 ${liteMode ? 'qc-lite-mode' : ''}`}
       style={{ fontFamily: "'Inter', 'Geist', system-ui, sans-serif" }}
     >
-      {/* Animated tile background */}
-      <div className="pointer-events-none fixed inset-0">
-        <div className="absolute inset-0 bg-[#050810]" />
-        <div className="qc-tile-grid absolute inset-0 opacity-70">
-          {backgroundTiles.map((tile) => (
-            <span
-              key={tile.id}
-              className="qc-bg-tile"
-              style={{ animationDelay: `${tile.delay}s`, animationDuration: `${tile.duration}s` }}
-            />
-          ))}
-        </div>
-      </div>
+      {/* Animated tile background — canvas-based for performance */}
+      {!liteMode && <TileWaveCanvas />}
 
       {showMouseFx && (
         <>
@@ -280,7 +261,7 @@ export default function Home() {
         </>
       )}
 
-      <div className="pointer-events-none fixed inset-0 z-[1] bg-[rgba(0,0,0,0.15)]" />
+
 
       <div className="relative z-10">
         {/* Header */}
@@ -295,7 +276,7 @@ export default function Home() {
               </span>
             </div>
             <Link
-              href="/login"
+              href={isAuthenticated ? "/dashboard" : "/login"}
               className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-white/[0.13]"
             >
               Launch App <ArrowRight size={11} suppressHydrationWarning />
@@ -311,25 +292,36 @@ export default function Home() {
               initial="hidden"
               animate="show"
               transition={{ duration: 0.5, ease: 'easeOut' }}
+              className="relative"
             >
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-400">Database Learning Studio</p>
-              <h1 className="mt-4 max-w-3xl text-4xl font-black leading-[1.08] tracking-[-0.03em] text-white sm:text-5xl lg:text-6xl">
+              {/* Soft glass backdrop behind text for readability */}
+              <div
+                className="pointer-events-none absolute -inset-x-8 -inset-y-6 -z-10 rounded-3xl"
+                style={{
+                  background: 'radial-gradient(ellipse 120% 100% at 0% 50%, rgba(5,8,16,0.6) 0%, rgba(5,8,16,0.25) 60%, transparent 100%)',
+                }}
+              />
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-400" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.6)' }}>Database Learning Studio</p>
+              <h1
+                className="mt-4 max-w-3xl text-4xl font-black leading-[1.08] tracking-[-0.03em] text-white sm:text-5xl lg:text-6xl"
+                style={{ textShadow: '0 2px 20px rgba(0,0,0,0.7), 0 0px 4px rgba(0,0,0,0.5)' }}
+              >
                 Master SQL.<br />
-                <span className="text-zinc-400">Understand the theory.</span>
+                <span className="text-zinc-400" style={{ textShadow: '0 2px 16px rgba(0,0,0,0.6)' }}>Understand the theory.</span>
               </h1>
-              <p className="mt-5 max-w-xl text-base leading-relaxed text-zinc-400">
+              <p className="mt-5 max-w-xl text-base leading-relaxed text-zinc-400" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}>
                 One workspace for SQL, relational algebra, ER diagrams, and normalization — so every concept reinforces the next.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link
-                  href="/login"
-                  className="inline-flex items-center gap-2 rounded-full bg-teal-400 px-6 py-2.5 text-sm font-bold text-black transition hover:bg-teal-300"
+                  href={isAuthenticated ? "/dashboard" : "/login"}
+                  className="inline-flex items-center gap-2 rounded-full bg-teal-400 px-6 py-2.5 text-sm font-bold text-black shadow-lg shadow-teal-400/20 transition hover:bg-teal-300 hover:shadow-teal-300/30"
                 >
                   Get Started <ArrowRight size={13} suppressHydrationWarning />
                 </Link>
                 <Link
-                  href="/login?next=%2Flearn"
-                  className="inline-flex items-center gap-2 rounded-full border border-white/10 px-6 py-2.5 text-sm font-medium text-zinc-300 transition hover:border-white/20 hover:text-white"
+                  href={isAuthenticated ? "/learn" : "/login?next=%2Flearn"}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-6 py-2.5 text-sm font-medium text-zinc-300 backdrop-blur-sm transition hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
                 >
                   Browse SQL Reference
                 </Link>
@@ -361,7 +353,7 @@ export default function Home() {
                     transition={{ duration: 0.3, delay: i * 0.05 }}
                   >
                     <Link
-                      href={`/login?next=${encodeURIComponent(tool.href)}`}
+                      href={isAuthenticated ? tool.href : `/login?next=${encodeURIComponent(tool.href)}`}
                       className="group relative flex h-full min-h-[220px] flex-col rounded-2xl border border-white/10 bg-[#0b1222] p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset] transition duration-200 hover:border-teal-400/35 hover:shadow-[0_18px_45px_-28px_rgba(45,212,191,0.5)]"
                     >
                       <div className="absolute left-5 right-5 top-0 h-px bg-white/20 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
@@ -394,7 +386,7 @@ export default function Home() {
               <p className="text-lg font-bold text-white">Ready to build real database intuition?</p>
               <p className="mt-1 text-sm text-zinc-400">Free to use. No credit card required.</p>
               <Link
-                href="/login"
+                href={isAuthenticated ? "/dashboard" : "/login"}
                 className="mt-6 inline-flex items-center gap-2 rounded-full bg-teal-400 px-7 py-2.5 text-sm font-bold text-black transition hover:bg-teal-300"
               >
                 Start Learning <ArrowRight size={13} suppressHydrationWarning />
@@ -407,7 +399,7 @@ export default function Home() {
         <footer className="relative z-10 border-t border-white/[0.05] px-6 py-6">
           <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between lg:px-4">
             <span className="text-xs font-bold text-zinc-600">Query<span className="text-teal-500">Craft</span></span>
-            <p className="text-xs text-zinc-600">© 2025 QueryCraft</p>
+            <p className="text-xs text-zinc-600">© 2026 QueryCraft</p>
           </div>
         </footer>
       </div>

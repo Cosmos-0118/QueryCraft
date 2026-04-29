@@ -68,7 +68,7 @@ export function SymbolPalette({ onInsert }: SymbolPaletteProps) {
     <div className="flex items-center gap-3">
       {SYMBOL_GROUPS.map((group) => (
         <div key={group.title} className="flex items-center gap-0.5">
-          <span className="mr-1 text-[9px] font-medium uppercase tracking-wider text-zinc-600">
+          <span className="mr-1 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
             {group.title}
           </span>
           {group.symbols.map((s) => (
@@ -76,7 +76,7 @@ export function SymbolPalette({ onInsert }: SymbolPaletteProps) {
               key={s.symbol}
               onClick={() => onInsert(s.template)}
               title={`${s.label} — ${s.desc}${s.key ? `\n${mod}${keyLabel(s.key)}` : ''}`}
-              className="group relative flex h-7 w-7 items-center justify-center rounded-md border border-zinc-700/40 text-sm font-bold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-violet-300 hover:shadow-sm hover:shadow-violet-500/10"
+              className="group relative flex h-7 w-7 items-center justify-center rounded-md border border-border/80/40 text-sm font-bold text-foreground/80 transition-all hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-violet-300 hover:shadow-sm hover:shadow-violet-500/10"
             >
               {s.symbol}
             </button>

@@ -34,7 +34,7 @@ export const EntityNode = memo(function EntityNode({ data, selected }: NodeProps
             ? isWeak
               ? 'border-amber-400/50 shadow-lg shadow-amber-500/10'
               : 'border-violet-400/50 shadow-lg shadow-violet-500/10'
-            : 'border-slate-300 bg-white shadow-sm shadow-slate-300/40 hover:shadow-md hover:shadow-slate-300/60'
+            : 'border-border bg-card shadow-sm shadow-black/10 hover:shadow-md hover:shadow-black/20'
         }`}
       >
         {/* Header */}
@@ -57,8 +57,8 @@ export const EntityNode = memo(function EntityNode({ data, selected }: NodeProps
         <div className={`h-px ${isWeak ? 'bg-amber-500/20' : 'bg-violet-500/20'}`} />
 
         {/* Body */}
-        <div className="bg-white px-4 py-3">
-          <span className="text-sm font-semibold tracking-wide text-slate-900">{label}</span>
+        <div className="bg-card px-4 py-3">
+          <span className="text-sm font-semibold tracking-wide text-foreground">{label}</span>
         </div>
       </div>
 

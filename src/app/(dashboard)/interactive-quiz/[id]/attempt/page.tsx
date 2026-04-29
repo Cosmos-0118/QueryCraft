@@ -792,7 +792,7 @@ export default function InteractiveQuizAttemptPage() {
 
       {tabSwitchPopup && (
         <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-amber-500/35 bg-zinc-950/95 p-6 shadow-2xl shadow-black/50 backdrop-blur">
+          <div className="w-full max-w-md rounded-2xl border border-amber-500/35 bg-card/95 p-6 shadow-2xl shadow-black/50 backdrop-blur">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-amber-500/35 bg-amber-500/15 text-amber-200">
               {tabSwitchPopup.step === 1 ? <ShieldAlert size={22} /> : <AlertTriangle size={22} />}
             </div>

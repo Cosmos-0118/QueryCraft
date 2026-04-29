@@ -190,7 +190,7 @@ export default function ERBuilderPage() {
       return [{ label: 'FK', className: 'bg-sky-500/12 text-sky-300' }];
     }
 
-    return [{ label: 'Attr', className: 'bg-zinc-800/70 text-zinc-500' }];
+    return [{ label: 'Attr', className: 'bg-muted/70 text-muted-foreground/80' }];
   };
 
   const getColumnReferenceLabel = (column: NonNullable<typeof activeTable>['columns'][number]) => {
@@ -211,15 +211,15 @@ export default function ERBuilderPage() {
               <Database className="h-5 w-5 text-violet-400" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-zinc-100">ER Diagram Builder</h1>
-              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-500">
+              <h1 className="text-xl font-bold tracking-tight text-foreground">ER Diagram Builder</h1>
+              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground/80">
                 <span className="flex items-center gap-1">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-violet-400" />
                   {entityCount} entities
                 </span>
-                <span className="text-zinc-700">&middot;</span>
+                <span className="text-muted-foreground/80">&middot;</span>
                 <span>{attrCount} attributes</span>
-                <span className="text-zinc-700">&middot;</span>
+                <span className="text-muted-foreground/80">&middot;</span>
                 <span>{relCount} relationships</span>
               </div>
             </div>
@@ -227,10 +227,10 @@ export default function ERBuilderPage() {
 
           <div className="flex items-center gap-2">
             {/* Presets */}
-            <div className="flex items-center gap-0.5 rounded-xl border border-zinc-800/60 bg-zinc-900/60 p-1 backdrop-blur-sm">
+            <div className="flex items-center gap-0.5 rounded-xl border border-border/60 bg-muted/60 p-1 backdrop-blur-sm">
               <button
                 onClick={() => store.loadDiagram(UNIVERSITY_DIAGRAM)}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition-all duration-150 hover:bg-zinc-800/60 hover:text-zinc-200"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-all duration-150 hover:bg-muted/60 hover:text-foreground/90"
                 title="Load University preset"
               >
                 <GraduationCap className="h-3.5 w-3.5" />
@@ -238,7 +238,7 @@ export default function ERBuilderPage() {
               </button>
               <button
                 onClick={() => store.loadDiagram(BANKING_DIAGRAM)}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition-all duration-150 hover:bg-zinc-800/60 hover:text-zinc-200"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-all duration-150 hover:bg-muted/60 hover:text-foreground/90"
                 title="Load Banking preset"
               >
                 <Landmark className="h-3.5 w-3.5" />
@@ -246,7 +246,7 @@ export default function ERBuilderPage() {
               </button>
               <button
                 onClick={() => store.loadDiagram(CREDENTIA_DIAGRAM)}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition-all duration-150 hover:bg-zinc-800/60 hover:text-zinc-200"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-all duration-150 hover:bg-muted/60 hover:text-foreground/90"
                 title="Load Credentia preset"
               >
                 <School className="h-3.5 w-3.5" />
@@ -257,7 +257,7 @@ export default function ERBuilderPage() {
             {/* Toggle panel */}
             <button
               onClick={() => setShowPanel(!showPanel)}
-              className="rounded-xl border border-zinc-800/60 bg-zinc-900/60 p-2.5 text-zinc-400 transition-all duration-150 hover:bg-zinc-800/60 hover:text-zinc-200"
+              className="rounded-xl border border-border/60 bg-muted/60 p-2.5 text-muted-foreground transition-all duration-150 hover:bg-muted/60 hover:text-foreground/90"
               title={showPanel ? 'Hide properties' : 'Show properties'}
             >
               {showPanel ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
@@ -292,7 +292,7 @@ export default function ERBuilderPage() {
 
           {/* Properties panel */}
           {showPanel && (
-            <div className="w-72 shrink-0 overflow-hidden rounded-xl border border-slate-300 bg-white">
+            <div className="w-72 shrink-0 overflow-hidden rounded-xl border border-border bg-card">
               <PropertiesPanel />
             </div>
           )}
@@ -300,14 +300,14 @@ export default function ERBuilderPage() {
 
         {/* Generated Schema */}
         {store.generatedTables.length > 0 && (
-          <div ref={schemaSectionRef} className="rounded-xl border border-slate-300 bg-white backdrop-blur-sm">
+          <div ref={schemaSectionRef} className="rounded-xl border border-border bg-card backdrop-blur-sm">
             <button
               onClick={() => setShowSchema(!showSchema)}
-              className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-slate-50"
+              className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-muted"
             >
               <div className="flex items-center gap-2.5">
                 <Database className="h-4 w-4 text-violet-500" />
-                <h2 className="text-sm font-semibold text-slate-900">
+                <h2 className="text-sm font-semibold text-foreground">
                   Generated Schema
                 </h2>
                 <span className="rounded-md bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
@@ -315,36 +315,36 @@ export default function ERBuilderPage() {
                 </span>
               </div>
               {showSchema ? (
-                <ChevronUp className="h-4 w-4 text-slate-500" />
+                <ChevronUp className="h-4 w-4 text-primary-foreground0" />
               ) : (
-                <ChevronDown className="h-4 w-4 text-slate-500" />
+                <ChevronDown className="h-4 w-4 text-primary-foreground0" />
               )}
             </button>
 
             {showSchema && (
-              <div className="space-y-4 border-t border-slate-200 p-5">
+              <div className="space-y-4 border-t border-border p-5">
                 {/* SQL */}
                 <div className="relative">
                   <button
                     onClick={handleCopySQL}
-                    className="absolute right-3 top-3 rounded-lg border border-slate-300 bg-white p-2 text-slate-500 transition-all duration-150 hover:bg-slate-100 hover:text-slate-700"
+                    className="absolute right-3 top-3 rounded-lg border border-border bg-card p-2 text-primary-foreground0 transition-all duration-150 hover:bg-muted/80 hover:text-foreground/80"
                     title="Copy SQL"
                   >
                     {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
                   </button>
-                  <pre className="overflow-auto rounded-xl border border-slate-300 bg-slate-50 p-5 pr-14 font-mono text-xs leading-relaxed text-slate-700">
+                  <pre className="overflow-auto rounded-xl border border-border bg-muted p-5 pr-14 font-mono text-xs leading-relaxed text-foreground/80">
                     {schemasToSQL(store.generatedTables)}
                   </pre>
                 </div>
 
                 {/* Tables */}
                 <div className="grid gap-5 xl:grid-cols-[260px_minmax(0,1fr)]">
-                  <aside className="rounded-2xl border border-zinc-800/60 bg-zinc-950/35 p-3">
+                  <aside className="rounded-2xl border border-border/60 bg-card/35 p-3">
                     <div className="px-2 pb-3 pt-1">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/80">
                         Tables
                       </p>
-                      <p className="mt-1 text-sm text-zinc-400">
+                      <p className="mt-1 text-sm text-muted-foreground">
                         Review the generated schema one table at a time.
                       </p>
                     </div>
@@ -361,25 +361,25 @@ export default function ERBuilderPage() {
                             className={`w-full rounded-xl border px-3 py-3 text-left transition-all duration-200 ${
                               index === safeActiveTableIndex
                                 ? 'border-violet-500/40 bg-violet-500/10 shadow-[0_0_0_1px_rgba(139,92,246,0.18)]'
-                                : 'border-zinc-800/60 bg-zinc-900/45 hover:border-zinc-700 hover:bg-zinc-900/80'
+                                : 'border-border/60 bg-muted/45 hover:border-border hover:bg-muted/80'
                             }`}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-zinc-100">{table.name}</p>
-                                <p className="mt-1 text-xs text-zinc-500">
+                                <p className="truncate text-sm font-semibold text-foreground">{table.name}</p>
+                                <p className="mt-1 text-xs text-muted-foreground/80">
                                   {table.columns.length} columns
                                 </p>
                               </div>
-                              <span className="rounded-full border border-zinc-800/80 px-2 py-1 text-[10px] font-bold text-zinc-400">
+                              <span className="rounded-full border border-border/80 px-2 py-1 text-[10px] font-bold text-muted-foreground">
                                 {index + 1}
                               </span>
                             </div>
-                            <div className="mt-3 flex items-center gap-2 text-[11px] text-zinc-500">
-                              <span className="rounded-full bg-zinc-800/80 px-2 py-1">
+                            <div className="mt-3 flex items-center gap-2 text-[11px] text-muted-foreground/80">
+                              <span className="rounded-full bg-muted/80 px-2 py-1">
                                 {primaryKeyCount} PK
                               </span>
-                              <span className="rounded-full bg-zinc-800/80 px-2 py-1">
+                              <span className="rounded-full bg-muted/80 px-2 py-1">
                                 {foreignKeyCount} FK
                               </span>
                             </div>
@@ -390,8 +390,8 @@ export default function ERBuilderPage() {
                   </aside>
 
                   {activeTable && (
-                    <section className="overflow-hidden rounded-[1.35rem] border border-zinc-800/60 bg-[linear-gradient(180deg,rgba(24,24,27,0.96),rgba(16,16,20,0.98))] shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
-                      <div className="border-b border-zinc-800/60 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.14),transparent_38%),linear-gradient(180deg,rgba(39,39,42,0.55),rgba(24,24,27,0.2))] px-5 py-5">
+                    <section className="overflow-hidden rounded-[1.35rem] border border-border/60 bg-[linear-gradient(180deg,rgba(24,24,27,0.96),rgba(16,16,20,0.98))] shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+                      <div className="border-b border-border/60 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.14),transparent_38%),linear-gradient(180deg,rgba(39,39,42,0.55),rgba(24,24,27,0.2))] px-5 py-5">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
                             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-300/80">
@@ -399,7 +399,7 @@ export default function ERBuilderPage() {
                               Table {safeActiveTableIndex + 1} of {store.generatedTables.length}
                             </div>
                             <h3 className="mt-3 text-2xl font-bold tracking-tight text-zinc-50">{activeTable.name}</h3>
-                            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+                            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                               Inspect each generated relation before moving to the next one. Primary keys, foreign keys, and required columns are highlighted in a cleaner schema layout.
                             </p>
                           </div>
@@ -408,7 +408,7 @@ export default function ERBuilderPage() {
                             <button
                               onClick={() => setActiveTableIndex((current) => Math.max(0, current - 1))}
                               disabled={safeActiveTableIndex === 0}
-                              className="inline-flex items-center gap-2 rounded-xl border border-zinc-800/70 bg-zinc-950/40 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card/40 px-3 py-2 text-sm text-foreground/80 transition hover:border-border hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               <ChevronLeft className="h-4 w-4" />
                               Previous
@@ -425,23 +425,23 @@ export default function ERBuilderPage() {
                         </div>
 
                         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                          <div className="rounded-2xl border border-zinc-800/70 bg-zinc-950/35 px-4 py-3">
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Columns</p>
+                          <div className="rounded-2xl border border-border/70 bg-card/35 px-4 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80">Columns</p>
                             <p className="mt-2 text-2xl font-bold text-zinc-50">{activeTable.columns.length}</p>
                           </div>
-                          <div className="rounded-2xl border border-zinc-800/70 bg-zinc-950/35 px-4 py-3">
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Primary Keys</p>
+                          <div className="rounded-2xl border border-border/70 bg-card/35 px-4 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80">Primary Keys</p>
                             <p className="mt-2 text-2xl font-bold text-zinc-50">{activePrimaryKeyCount}</p>
                           </div>
-                          <div className="rounded-2xl border border-zinc-800/70 bg-zinc-950/35 px-4 py-3">
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Foreign Keys</p>
+                          <div className="rounded-2xl border border-border/70 bg-card/35 px-4 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80">Foreign Keys</p>
                             <p className="mt-2 text-2xl font-bold text-zinc-50">{activeForeignKeyCount}</p>
                           </div>
                         </div>
                       </div>
 
                       <div className="p-5">
-                        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-300">
                             {activeRequiredCount} required
                           </span>
@@ -453,7 +453,7 @@ export default function ERBuilderPage() {
                           </span>
                         </div>
 
-                        <div className="overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-950/30">
+                        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card/30">
                           <div className="hidden md:block">
                             <table className="w-full table-fixed border-collapse">
                               <colgroup>
@@ -464,7 +464,7 @@ export default function ERBuilderPage() {
                                 <col className="w-[18%]" />
                               </colgroup>
                               <thead>
-                                <tr className="border-b border-zinc-800/60 bg-zinc-900/70 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                                <tr className="border-b border-border/60 bg-muted/70 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
                                   <th className="px-6 py-3 text-left">Column</th>
                                   <th className="px-6 py-3 text-center">Type</th>
                                   <th className="px-6 py-3 text-left">Key</th>
@@ -474,17 +474,17 @@ export default function ERBuilderPage() {
                               </thead>
                               <tbody>
                                 {activeTable.columns.map((column) => (
-                                  <tr key={column.name} className="border-b border-zinc-800/60 last:border-b-0 align-middle">
+                                  <tr key={column.name} className="border-b border-border/60 last:border-b-0 align-middle">
                                     <td className="px-6 py-4 align-middle">
                                       <div className="flex min-h-14 items-center">
-                                        <p className="truncate text-sm font-semibold tracking-tight text-zinc-100">
+                                        <p className="truncate text-sm font-semibold tracking-tight text-foreground">
                                           {column.name}
                                         </p>
                                       </div>
                                     </td>
                                     <td className="px-6 py-4 align-middle">
                                       <div className="flex min-h-14 items-center justify-center">
-                                        <span className="inline-flex min-w-[104px] items-center justify-center rounded-full border border-zinc-800/80 bg-zinc-900/90 px-3 py-1.5 text-xs font-semibold text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                                        <span className="inline-flex min-w-[104px] items-center justify-center rounded-full border border-border/80 bg-muted/90 px-3 py-1.5 text-xs font-semibold text-foreground/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                                           {column.type}
                                         </span>
                                       </div>
@@ -503,17 +503,17 @@ export default function ERBuilderPage() {
                                     <td className="px-6 py-4 align-middle">
                                       <div className="flex min-h-14 items-center">
                                         {getColumnReferenceLabel(column) ? (
-                                          <span className="truncate text-sm text-zinc-400">
+                                          <span className="truncate text-sm text-muted-foreground">
                                             {getColumnReferenceLabel(column)}
                                           </span>
                                         ) : (
-                                          <span className="text-sm text-zinc-600">No reference</span>
+                                          <span className="text-sm text-muted-foreground/60">No reference</span>
                                         )}
                                       </div>
                                     </td>
                                     <td className="px-6 py-4 align-middle">
                                       <div className="flex min-h-14 items-center justify-center">
-                                        <span className={`inline-flex min-w-[112px] items-center justify-center rounded-full px-3 py-1.5 text-xs font-semibold ${column.nullable ? 'border border-zinc-800/80 bg-zinc-900/85 text-zinc-400' : 'border border-emerald-500/15 bg-emerald-500/12 text-emerald-300'}`}>
+                                        <span className={`inline-flex min-w-[112px] items-center justify-center rounded-full px-3 py-1.5 text-xs font-semibold ${column.nullable ? 'border border-border/80 bg-muted/85 text-muted-foreground' : 'border border-emerald-500/15 bg-emerald-500/12 text-emerald-300'}`}>
                                           {column.nullable ? 'Optional' : 'Required'}
                                         </span>
                                       </div>
@@ -530,10 +530,10 @@ export default function ERBuilderPage() {
                                 <div className="space-y-3 px-4 py-4 md:hidden">
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                      <p className="text-sm font-semibold tracking-tight text-zinc-100">{column.name}</p>
-                                      <p className="mt-1 text-xs text-zinc-500">{column.type}</p>
+                                      <p className="text-sm font-semibold tracking-tight text-foreground">{column.name}</p>
+                                      <p className="mt-1 text-xs text-muted-foreground/80">{column.type}</p>
                                     </div>
-                                    <div className="inline-flex flex-wrap justify-end gap-1.5 rounded-full border border-zinc-800/80 bg-zinc-950/70 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                                    <div className="inline-flex flex-wrap justify-end gap-1.5 rounded-full border border-border/80 bg-card/70 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                                       {getColumnKeyBadges(column).map((badge) => (
                                         <span key={badge.label} className={`inline-flex min-w-[42px] items-center justify-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${badge.className}`}>
                                           {badge.label}
@@ -542,7 +542,7 @@ export default function ERBuilderPage() {
                                     </div>
                                   </div>
                                   <div className="flex flex-wrap gap-2 text-xs">
-                                    <span className={`inline-flex items-center rounded-full px-3 py-1.5 font-medium ${column.nullable ? 'border border-zinc-800/80 bg-zinc-900/85 text-zinc-400' : 'border border-emerald-500/15 bg-emerald-500/12 text-emerald-300'}`}>
+                                    <span className={`inline-flex items-center rounded-full px-3 py-1.5 font-medium ${column.nullable ? 'border border-border/80 bg-muted/85 text-muted-foreground' : 'border border-emerald-500/15 bg-emerald-500/12 text-emerald-300'}`}>
                                       {column.nullable ? 'Optional' : 'Required'}
                                     </span>
                                     {column.foreignKey && (

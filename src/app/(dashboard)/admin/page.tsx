@@ -515,7 +515,7 @@ export default function AdminUsersPage() {
                     className={`inline-flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 font-semibold ${
                       account.is_active
                         ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                        : 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300'
+                        : 'border-zinc-500/30 bg-muted/80/10 text-foreground/80'
                     }`}
                   >
                     {account.is_active ? <CheckCircle2 size={11} /> : <AlertTriangle size={11} />}

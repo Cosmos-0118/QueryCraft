@@ -408,20 +408,20 @@ export function TupleCalculusInput({
     operator: 'bg-blue-500/15 text-blue-400',
     table: 'bg-emerald-500/15 text-emerald-400',
     column: 'bg-violet-500/15 text-violet-400',
-    template: 'bg-slate-200 text-slate-700',
+    template: 'bg-muted/60 text-foreground/80',
   };
 
   return (
     <div
-      className={`rounded-xl border border-slate-300 bg-white ${executionFeedback === 'success'
+      className={`rounded-xl border border-border bg-card ${executionFeedback === 'success'
           ? 'execute-feedback-success'
           : executionFeedback === 'error'
             ? 'execute-feedback-error'
             : ''
         }`}
     >
-      <div className="flex items-center justify-between rounded-t-xl border-b border-slate-300 bg-slate-200/70 px-4 py-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">TRC Expression</span>
+      <div className="flex items-center justify-between rounded-t-xl border-b border-border bg-muted/60/70 px-4 py-2.5">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">TRC Expression</span>
         <div className="flex items-center gap-1.5">
           {[
             { label: '∃', insert: '∃' },
@@ -448,7 +448,7 @@ export function TupleCalculusInput({
                   el.setSelectionRange(pos, pos);
                 });
               }}
-              className="rounded-md border border-slate-400 bg-slate-50 px-2 py-0.5 font-mono text-xs text-slate-700 transition-colors hover:border-slate-500 hover:bg-slate-100"
+              className="rounded-md border border-border/80 bg-muted px-2 py-0.5 font-mono text-xs text-foreground/80 transition-colors hover:border-border/80 hover:bg-muted/80"
             >
               {token.label}
             </button>
@@ -463,7 +463,7 @@ export function TupleCalculusInput({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={4}
-          className="w-full resize-none rounded-lg border border-slate-400 bg-white p-3 font-mono text-sm text-slate-900 outline-none placeholder:text-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-400"
+          className="w-full resize-none rounded-lg border border-border/80 bg-card p-3 font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground/80 focus:border-primary focus:ring-1 focus:ring-primary/30"
           placeholder="{ <t.name, t.gpa> | students(t) ∧ t.gpa > 3.5 }"
           autoComplete="off"
           spellCheck={false}
@@ -474,7 +474,7 @@ export function TupleCalculusInput({
         {showComplete && completions.length > 0 && (
           <div
             ref={dropdownRef}
-            className="absolute left-3 top-[calc(100%-8px)] z-50 max-h-52 w-[min(92vw,36rem)] overflow-y-auto rounded-lg border border-slate-300 bg-white shadow-lg shadow-slate-400/20"
+            className="absolute left-3 top-[calc(100%-8px)] z-50 max-h-52 w-[min(92vw,36rem)] overflow-y-auto rounded-lg border border-border bg-card shadow-lg shadow-black/10"
             style={{ left: dropdownPos.left, top: dropdownPos.top }}
           >
             {completions.map((item, i) => (
@@ -485,14 +485,14 @@ export function TupleCalculusInput({
                   applyCompletion(item);
                 }}
                 onMouseEnter={() => setSelectedIdx(i)}
-                className={`flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors ${i === selectedIdx ? 'bg-slate-200' : 'hover:bg-slate-100'
+                className={`flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors ${i === selectedIdx ? 'bg-muted/60' : 'hover:bg-muted/80'
                   }`}
               >
                 <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${kindBadge[item.kind]}`}>
                   {item.kind.slice(0, 3)}
                 </span>
-                <span className="font-mono text-[13px] text-slate-900">{item.label}</span>
-                <span className="ml-auto hidden max-w-[45%] truncate text-[10px] text-slate-500 md:block">{item.detail}</span>
+                <span className="font-mono text-[13px] text-foreground">{item.label}</span>
+                <span className="ml-auto hidden max-w-[45%] truncate text-[10px] text-muted-foreground/80 md:block">{item.detail}</span>
               </button>
             ))}
           </div>
@@ -500,21 +500,21 @@ export function TupleCalculusInput({
 
         <div className="mt-2.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-600">
-              <kbd className="rounded border border-slate-400 bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-100">
+            <span className="text-xs text-muted-foreground">
+              <kbd className="rounded border border-border/80 bg-muted px-1.5 py-0.5 font-mono text-[10px] text-primary-foreground/90">
                 {isMac ? '⌘' : 'Ctrl'} Enter
               </kbd>{' '}
               evaluate
             </span>
-            <span className="text-xs text-slate-600">
-              <kbd className="rounded border border-slate-400 bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-100">
+            <span className="text-xs text-muted-foreground">
+              <kbd className="rounded border border-border/80 bg-muted px-1.5 py-0.5 font-mono text-[10px] text-primary-foreground/90">
                 {isMac ? '⌘' : 'Ctrl'} Space
               </kbd>{' '}
               suggestions
             </span>
             <button
               onClick={() => setShowHelp((prev) => !prev)}
-              className="flex items-center gap-1 text-[11px] text-slate-600 transition-colors hover:text-slate-800"
+              className="flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground/90"
             >
               <Keyboard className="h-3 w-3" />
               Help
@@ -522,7 +522,7 @@ export function TupleCalculusInput({
           </div>
           <button
             onClick={onEvaluate}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-4 py-1.5 text-sm font-semibold text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:border-border hover:bg-muted"
           >
             <Play className="h-3.5 w-3.5" />
             Evaluate TRC
@@ -530,10 +530,10 @@ export function TupleCalculusInput({
         </div>
 
         {showHelp && (
-          <div className="mt-3 rounded-lg border border-slate-300 bg-slate-100 p-3 text-xs text-slate-600">
-            Use TRC set form: <span className="font-mono text-slate-800">{`{ target | formula }`}</span>. Relation predicates use
-            <span className="font-mono text-slate-800"> relation(t)</span>. Quantifiers: <span className="font-mono text-slate-800">∃</span>,
-            <span className="font-mono text-slate-800"> ∀</span>. Attributes: <span className="font-mono text-slate-800">t.column</span>.
+          <div className="mt-3 rounded-lg border border-border bg-muted/80 p-3 text-xs text-muted-foreground">
+            Use TRC set form: <span className="font-mono text-foreground/90">{`{ target | formula }`}</span>. Relation predicates use
+            <span className="font-mono text-foreground/90"> relation(t)</span>. Quantifiers: <span className="font-mono text-foreground/90">∃</span>,
+            <span className="font-mono text-foreground/90"> ∀</span>. Attributes: <span className="font-mono text-foreground/90">t.column</span>.
           </div>
         )}
       </div>

@@ -19,11 +19,11 @@ const kindConfig: Record<AttributeKind, {
 }> = {
   regular: {
     gradient: 'linear-gradient(135deg, rgba(148,163,184,0.16) 0%, rgba(148,163,184,0.06) 100%)',
-    border: 'border-slate-300',
-    dot: 'bg-zinc-500',
+    border: 'border-border',
+    dot: 'bg-muted/80',
     glow: '',
     badgeLabel: '',
-    textClass: 'text-slate-700',
+    textClass: 'text-foreground/80',
   },
   key: {
     gradient: 'linear-gradient(135deg, rgba(234,179,8,0.2) 0%, rgba(234,179,8,0.07) 100%)',
@@ -43,11 +43,11 @@ const kindConfig: Record<AttributeKind, {
   },
   derived: {
     gradient: 'linear-gradient(135deg, rgba(148,163,184,0.14) 0%, rgba(148,163,184,0.05) 100%)',
-    border: 'border-dashed border-slate-400',
-    dot: 'bg-zinc-500',
+    border: 'border-dashed border-border/80',
+    dot: 'bg-muted/80',
     glow: '',
     badgeLabel: 'D',
-    textClass: 'text-slate-500 italic',
+    textClass: 'text-muted-foreground/80 italic',
   },
   composite: {
     gradient: 'linear-gradient(135deg, rgba(34,197,94,0.18) 0%, rgba(34,197,94,0.06) 100%)',
@@ -80,7 +80,7 @@ export const AttributeNode = memo(function AttributeNode({ data, selected }: Nod
 
         {/* Badge */}
         {c.badgeLabel && (
-          <span className="rounded-sm bg-slate-100 px-1 py-px text-[8px] font-bold uppercase leading-none tracking-wider text-slate-500">
+          <span className="rounded-sm bg-muted/80 px-1 py-px text-[8px] font-bold uppercase leading-none tracking-wider text-muted-foreground/80">
             {c.badgeLabel}
           </span>
         )}

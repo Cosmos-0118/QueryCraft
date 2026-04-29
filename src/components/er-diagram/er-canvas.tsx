@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useEffect } from 'react';
+import { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -31,6 +31,7 @@ const edgeTypes = {
 export function ERCanvas() {
   const store = useERStore();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState<Record<string, { width?: number; height?: number }>>({});
 
   // Keyboard shortcuts for undo/redo
   useEffect(() => {
@@ -55,6 +56,7 @@ export function ERCanvas() {
         id: e.id,
         type: 'entity',
         position: e.position,
+        measured: dimensions[e.id],
         data: { label: e.name, isWeak: e.isWeak },
         selected: store.selectedId === e.id,
       });
@@ -64,6 +66,7 @@ export function ERCanvas() {
         id: a.id,
         type: 'attribute',
         position: a.position,
+        measured: dimensions[a.id],
         data: { label: a.name, kind: a.kind },
         selected: store.selectedId === a.id,
       });
@@ -73,12 +76,13 @@ export function ERCanvas() {
         id: r.id,
         type: 'relationship',
         position: r.position,
+        measured: dimensions[r.id],
         data: { label: r.name, cardinality: r.cardinality },
         selected: store.selectedId === r.id,
       });
     }
     return n;
-  }, [store.entities, store.attributes, store.relationships, store.selectedId]);
+  }, [store.entities, store.attributes, store.relationships, store.selectedId, dimensions]);
 
   const edges = useMemo<Edge[]>(() => {
     const e: Edge[] = [];
@@ -138,6 +142,10 @@ export function ERCanvas() {
             store.updateRelationshipPos(id, change.position);
           }
         }
+        if (change.type === 'dimensions' && change.dimensions) {
+          const dim = change.dimensions;
+          setDimensions((prev) => ({ ...prev, [change.id]: dim }));
+        }
         if (change.type === 'select') {
           if (change.selected) store.setSelectedId(change.id);
           else if (store.selectedId === change.id) store.setSelectedId(null);
@@ -150,8 +158,7 @@ export function ERCanvas() {
   return (
     <div
       ref={wrapperRef}
-      className="er-canvas-wrapper h-full w-full overflow-hidden rounded-xl border border-slate-300"
-      style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)' }}
+      className="er-canvas-wrapper h-full w-full overflow-hidden rounded-xl border border-border bg-card"
     >
       {/* Hide React Flow's default node selection outlines / bounding boxes */}
       <style>{`
@@ -190,12 +197,12 @@ export function ERCanvas() {
           variant={BackgroundVariant.Dots}
           gap={24}
           size={1}
-          color="rgba(148,163,184,0.24)"
+          color="var(--border)"
           style={{ background: 'transparent' }}
         />
         <Controls
           showInteractive={false}
-          className="!rounded-xl !border !border-slate-300 !bg-white/95 !shadow-lg !shadow-slate-300/30 !backdrop-blur-sm [&>button]:!border-slate-200 [&>button]:!bg-transparent [&>button]:!text-slate-600 [&>button:hover]:!bg-slate-100"
+          className="!rounded-xl !border !border-border !bg-card/95 !shadow-lg !shadow-slate-300/30 !backdrop-blur-sm [&>button]:!border-border [&>button]:!bg-transparent [&>button]:!text-muted-foreground [&>button:hover]:!bg-muted/80"
         />
       </ReactFlow>
     </div>

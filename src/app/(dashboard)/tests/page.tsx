@@ -77,7 +77,7 @@ function getStatusClasses(status: string) {
     case 'published':
       return 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/12 dark:text-emerald-300';
     case 'draft':
-      return 'border-slate-300 bg-slate-100 text-slate-700 dark:border-zinc-600 dark:bg-zinc-800/70 dark:text-zinc-200';
+      return 'border-border bg-muted/80 text-foreground/80 dark:border-zinc-600 dark:bg-muted/70 dark:text-foreground/90';
     default:
       return 'border-border/70 bg-muted/40 text-muted-foreground';
   }
@@ -1004,7 +1004,7 @@ export default function TestsPage() {
 
                     {isTeacher && (
                       <button
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700 dark:border-border/80 dark:bg-background/70 dark:text-muted-foreground dark:hover:border-cyan-500/30 dark:hover:bg-cyan-500/10 dark:hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground/80 transition-colors hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700 dark:border-border/80 dark:bg-background/70 dark:text-muted-foreground dark:hover:border-cyan-500/30 dark:hover:bg-cyan-500/10 dark:hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => handleEdit(test)}
                         disabled={isPublished}
                       >
@@ -1016,7 +1016,7 @@ export default function TestsPage() {
                     {isTeacher && isPublished && (
                       <Link
                         href={`/tests/${test.id}/review`}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 dark:border-border/80 dark:bg-background/70 dark:text-muted-foreground dark:hover:border-violet-500/30 dark:hover:bg-violet-500/10 dark:hover:text-violet-200"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground/80 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 dark:border-border/80 dark:bg-background/70 dark:text-muted-foreground dark:hover:border-violet-500/30 dark:hover:bg-violet-500/10 dark:hover:text-violet-200"
                       >
                         <ClipboardList size={13} />
                         Review Submissions

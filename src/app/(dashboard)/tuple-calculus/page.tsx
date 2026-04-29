@@ -300,8 +300,8 @@ export default function TupleCalculusPage() {
               <FunctionSquare className="h-5 w-5 text-cyan-300" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Tuple Relational Calculus</h1>
-              <p className="mt-0.5 text-sm text-zinc-500">Write TRC expressions and execute them via SQL translation</p>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">Tuple Relational Calculus</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">Write TRC expressions and execute them via SQL translation</p>
             </div>
           </div>
 
@@ -310,19 +310,19 @@ export default function TupleCalculusPage() {
               <button
                 onClick={() => setShowGroups((v) => !v)}
                 disabled={!isReady}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-700 px-3 py-2 text-[11px] font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 disabled:opacity-40"
+                className="inline-flex items-center gap-2 rounded-xl border border-border bg-primary px-3 py-2 text-[11px] font-medium text-primary-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary/90 disabled:opacity-40"
               >
-                <Database className="h-3.5 w-3.5 text-slate-200" />
+                <Database className="h-3.5 w-3.5 text-primary-foreground/80" />
                 Groups
-                <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
+                <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-primary-foreground/60">
                   {activeDatabase}
                 </span>
-                <ChevronDown className="h-3.5 w-3.5 text-slate-300" />
+                <ChevronDown className="h-3.5 w-3.5 text-primary-foreground/60" />
               </button>
 
               {showGroups && (
-                <div className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-zinc-800/70 bg-zinc-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-md">
-                  <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                <div className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-border bg-card p-2 shadow-2xl shadow-black/40 backdrop-blur-md">
+                  <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
                     Table groups
                   </div>
                   <button
@@ -353,8 +353,8 @@ export default function TupleCalculusPage() {
                                 ? 'border-sky-500/35 bg-sky-500/12 text-sky-100'
                                 : 'border-cyan-500/35 bg-cyan-500/14 text-cyan-100'
                               : isSystem
-                                ? 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-sky-500/25 hover:bg-sky-500/8'
-                                : 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-cyan-500/25 hover:bg-cyan-500/8',
+                                ? 'border-border bg-muted text-foreground/90 hover:border-sky-500/25 hover:bg-sky-500/8'
+                                : 'border-border bg-muted text-foreground/90 hover:border-cyan-500/25 hover:bg-cyan-500/8',
                           )}
                         >
                           <span className="truncate font-medium">{groupName}</span>
@@ -374,12 +374,12 @@ export default function TupleCalculusPage() {
               )}
             </div>
 
-            <div className="mx-1 h-5 w-px bg-slate-500/70" />
+            <div className="mx-1 h-5 w-px bg-muted0/70" />
 
             <button
               onClick={() => setCreateOpen(true)}
               disabled={!isReady}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary/90 disabled:opacity-40"
             >
               <Plus className="h-3.5 w-3.5" />
               Create Table
@@ -388,7 +388,7 @@ export default function TupleCalculusPage() {
             <button
               onClick={() => setShowImport(!showImport)}
               disabled={!isReady}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary/90 disabled:opacity-40"
             >
               <ClipboardPaste className="h-3.5 w-3.5" />
               Import SQL
@@ -397,7 +397,7 @@ export default function TupleCalculusPage() {
             <button
               onClick={() => setBrowserOpen(true)}
               disabled={tables.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary/90 disabled:opacity-40"
             >
               <Database className="h-3.5 w-3.5" />
               Browse Tables
@@ -405,14 +405,14 @@ export default function TupleCalculusPage() {
 
             <button
               onClick={handleClearInputOutput}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 active:scale-95"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary/90 active:scale-95"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Clear
             </button>
             <button
               onClick={handleResetWorkspace}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 active:scale-95"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary/90 active:scale-95"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Reset
@@ -427,10 +427,10 @@ export default function TupleCalculusPage() {
         )}
 
         {showImport && (
-          <div className="rounded-xl border border-cyan-500/30 bg-zinc-900/80 p-4 backdrop-blur-sm">
+          <div className="rounded-xl border border-cyan-500/30 bg-card/90 p-4 backdrop-blur-sm">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-zinc-200">Import SQL</h3>
-              <p className="text-[11px] text-zinc-500">Paste CREATE TABLE / INSERT statements</p>
+              <h3 className="text-sm font-semibold text-foreground">Import SQL</h3>
+              <p className="text-[11px] text-muted-foreground">Paste CREATE TABLE / INSERT statements</p>
             </div>
             <textarea
               value={importSql}
@@ -440,7 +440,7 @@ export default function TupleCalculusPage() {
               }}
               rows={6}
               placeholder={'-- Paste your SQL here\nCREATE TABLE "students" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);'}
-              className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/60 px-4 py-3 font-mono text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/15"
+              className="w-full rounded-xl border border-border bg-card px-4 py-3 font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/15"
             />
             {importError && (
               <p className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
@@ -462,7 +462,7 @@ export default function TupleCalculusPage() {
                   setImportSql('');
                   setImportError(null);
                 }}
-                className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                className="rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 Cancel
               </button>
@@ -473,27 +473,27 @@ export default function TupleCalculusPage() {
         {store.history.length > 0 && (
           <Link
             href="/tuple-calculus/history"
-            className="flex items-center gap-2.5 rounded-xl border border-zinc-700/50 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-cyan-500/30 hover:bg-zinc-800/40"
+            className="flex items-center gap-2.5 rounded-xl border border-border bg-muted px-4 py-3 transition-colors hover:border-cyan-500/30 hover:bg-muted/50"
           >
             <History className="h-4 w-4 text-cyan-300" />
             <div className="min-w-0 flex-1">
-              <span className="text-sm font-medium text-zinc-200">TRC History</span>
-              <p className="text-[11px] text-zinc-500">{store.history.length} expression{store.history.length === 1 ? '' : 's'} evaluated</p>
+              <span className="text-sm font-medium text-foreground">TRC History</span>
+              <p className="text-[11px] text-muted-foreground">{store.history.length} expression{store.history.length === 1 ? '' : 's'} evaluated</p>
             </div>
             <span className="rounded-md bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-bold text-cyan-300">{store.history.length}</span>
           </Link>
         )}
 
         {!isReady && (
-          <div className="flex items-center gap-3 rounded-xl border border-zinc-700/50 bg-zinc-800/40 px-4 py-3">
+          <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/50 px-4 py-3">
             <div className="h-2 w-2 animate-pulse rounded-full bg-cyan-300" />
-            <span className="text-sm text-zinc-400">Initializing SQL engine...</span>
+            <span className="text-sm text-muted-foreground">Initializing SQL engine...</span>
           </div>
         )}
 
         {tables.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-zinc-500">Tables:</span>
+            <span className="text-xs font-medium text-muted-foreground">Tables:</span>
             {tables.map((t) => (
               <button
                 key={t.name}
@@ -501,9 +501,9 @@ export default function TupleCalculusPage() {
                   store.setExpression(`{ t | ${t.name}(t) }`);
                   setInputFocusRequestKey((key) => key + 1);
                 }}
-                className="group inline-flex items-center gap-1 rounded-md border border-zinc-700/40 bg-zinc-800/50 px-2.5 py-1 font-mono text-xs text-zinc-300 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/10 hover:text-cyan-200"
+                className="group inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2.5 py-1 font-mono text-xs text-foreground/90 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/10 hover:text-cyan-200"
               >
-                <Table2 className="h-3 w-3 text-zinc-500 transition-colors group-hover:text-cyan-300" />
+                <Table2 className="h-3 w-3 text-muted-foreground transition-colors group-hover:text-cyan-300" />
                 {t.name}
               </button>
             ))}
@@ -512,13 +512,13 @@ export default function TupleCalculusPage() {
 
         {tables.length > 0 && !store.expression && (
           <div className="flex flex-wrap items-center gap-2">
-            <BookOpen className="h-3.5 w-3.5 text-zinc-600" />
-            <span className="text-xs text-zinc-600">Try:</span>
+            <BookOpen className="h-3.5 w-3.5 text-muted-foreground/70" />
+            <span className="text-xs text-muted-foreground/70">Try:</span>
             {examples.map((example) => (
               <button
                 key={example.label}
                 onClick={() => store.setExpression(example.expr)}
-                className="rounded-md border border-dashed border-zinc-700/40 px-2.5 py-1 text-xs text-zinc-500 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/5 hover:text-cyan-300"
+                className="rounded-md border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground transition-all hover:border-cyan-500/30 hover:bg-cyan-500/5 hover:text-cyan-300"
               >
                 {example.label}
               </button>

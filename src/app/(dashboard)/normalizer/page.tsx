@@ -331,19 +331,19 @@ export default function NormalizerPage() {
             <Layers className="h-5 w-5 text-cyan-300" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Normalizer Studio</h1>
-            <p className="mt-0.5 text-sm text-zinc-500">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Normalizer Studio</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground/80">
               Build a custom UNF relation, load seeded datasets, and switch between normalization forms instantly.
             </p>
-            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/80">
               <span>{store.columns.length} attributes</span>
-              <span className="text-zinc-700">·</span>
+              <span className="text-muted-foreground/80">·</span>
               <span>{store.rows.length} rows</span>
-              <span className="text-zinc-700">·</span>
+              <span className="text-muted-foreground/80">·</span>
               <span>{effectiveFDs.length} FD{effectiveFDs.length !== 1 ? 's' : ''}</span>
               {store.currentNF && (
                 <>
-                  <span className="text-zinc-700">·</span>
+                  <span className="text-muted-foreground/80">·</span>
                   <NormalFormBadge nf={store.currentNF} size="sm" />
                 </>
               )}
@@ -360,10 +360,10 @@ export default function NormalizerPage() {
         </button>
       </div>
 
-      <div className="rounded-2xl border border-zinc-700/50 bg-zinc-900/60 p-4 sm:p-5">
+      <div className="rounded-2xl border border-border/50 bg-muted/60 p-4 sm:p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700/60 bg-zinc-800/40 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            <div className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
               <Database className="h-3.5 w-3.5 text-cyan-300" />
               Seed Databases
             </div>
@@ -375,7 +375,7 @@ export default function NormalizerPage() {
                   'rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-all',
                   selectedDataset === datasetName
                     ? 'border-cyan-500/35 bg-cyan-500/15 text-cyan-200'
-                    : 'border-zinc-700/50 bg-zinc-800/35 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200',
+                    : 'border-border/50 bg-muted/35 text-muted-foreground hover:border-zinc-600 hover:text-foreground/90',
                 )}
               >
                 {toTitle(datasetName)}
@@ -388,7 +388,7 @@ export default function NormalizerPage() {
               value={selectedTable}
               onChange={(event) => setSelectedTable(event.target.value)}
               disabled={availableTables.length === 0}
-              className="rounded-lg border border-zinc-700/60 bg-zinc-800/50 px-3 py-1.5 text-xs text-zinc-300 outline-none transition-colors focus:border-cyan-500/40"
+              className="rounded-lg border border-border/60 bg-muted/50 px-3 py-1.5 text-xs text-foreground/80 outline-none transition-colors focus:border-cyan-500/40"
             >
               {availableTables.length === 0 ? (
                 <option value="">No tables found</option>
@@ -404,7 +404,7 @@ export default function NormalizerPage() {
             <button
               onClick={handleLoadDatasetTable}
               disabled={isSeedLoading || !activeDataset || !selectedTable}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/25 bg-cyan-500/12 px-3 py-1.5 text-[11px] font-semibold text-cyan-200 transition-all hover:border-cyan-500/45 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-zinc-700/50 disabled:bg-zinc-800/30 disabled:text-zinc-600"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/25 bg-cyan-500/12 px-3 py-1.5 text-[11px] font-semibold text-cyan-200 transition-all hover:border-cyan-500/45 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-border/50 disabled:bg-muted/30 disabled:text-muted-foreground/60"
             >
               <Upload className="h-3.5 w-3.5" />
               Load Table
@@ -413,7 +413,7 @@ export default function NormalizerPage() {
         </div>
 
         {(seedError || isSeedLoading) && (
-          <p className="mt-2.5 text-xs text-zinc-500">
+          <p className="mt-2.5 text-xs text-muted-foreground/80">
             {isSeedLoading ? 'Loading seed datasets...' : seedError}
           </p>
         )}
@@ -441,10 +441,10 @@ export default function NormalizerPage() {
 
       <DependencyDiagram columns={store.columns} fds={effectiveFDs} />
 
-      <div className="rounded-2xl border border-zinc-700/50 bg-zinc-900/60 px-4 py-4 sm:px-5">
+      <div className="rounded-2xl border border-border/50 bg-muted/60 px-4 py-4 sm:px-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-h-8 flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
               <KeyRound className="h-3.5 w-3.5 text-cyan-300" />
               Candidate Keys
             </div>
@@ -458,7 +458,7 @@ export default function NormalizerPage() {
                 </span>
               ))
             ) : (
-              <span className="text-xs text-zinc-500">Add attributes to compute keys.</span>
+              <span className="text-xs text-muted-foreground/80">Add attributes to compute keys.</span>
             )}
           </div>
 
@@ -469,7 +469,7 @@ export default function NormalizerPage() {
               'inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold tracking-wide transition-all duration-200',
               canNormalize
                 ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40'
-                : 'cursor-not-allowed bg-zinc-800/50 text-zinc-600',
+                : 'cursor-not-allowed bg-muted/50 text-muted-foreground/60',
             )}
           >
             <RefreshCw className="h-3.5 w-3.5" />
@@ -477,8 +477,8 @@ export default function NormalizerPage() {
           </button>
         </div>
 
-        <div className="mt-4 border-t border-zinc-800/70 pt-4">
-          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+        <div className="mt-4 border-t border-border/70 pt-4">
+          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
             <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
             Normal Form Navigator
           </div>
@@ -492,15 +492,15 @@ export default function NormalizerPage() {
                   'rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-all',
                   store.selectedForm === form
                     ? 'border-cyan-500/35 bg-cyan-500/15 text-cyan-200'
-                    : 'border-zinc-700/60 bg-zinc-800/40 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200',
-                  !canNormalize && 'cursor-not-allowed border-zinc-800/60 text-zinc-600 hover:text-zinc-600',
+                    : 'border-border/60 bg-muted/40 text-muted-foreground hover:border-zinc-600 hover:text-foreground/90',
+                  !canNormalize && 'cursor-not-allowed border-border/60 text-muted-foreground/60 hover:text-muted-foreground/60',
                 )}
               >
                 {form}
               </button>
             ))}
           </div>
-          <p className="mt-2 text-xs text-zinc-500">
+          <p className="mt-2 text-xs text-muted-foreground/80">
             Click any form to generate and jump to that normalized view.
           </p>
         </div>

@@ -543,12 +543,12 @@ const COLOR_MAP: Record<string, ColorStyles> = {
 };
 
 const LIGHT_COLOR_STYLE: ColorStyles = {
-  pill: 'text-slate-700',
-  pillBg: 'bg-slate-200 border-slate-300',
-  border: 'border-slate-200',
-  badge: 'bg-slate-700 text-white border-slate-700',
+  pill: 'text-foreground/80',
+  pillBg: 'bg-muted/60 border-border',
+  border: 'border-border',
+  badge: 'bg-primary text-white border-primary',
   glow: 'shadow-slate-900/5',
-  codeText: 'text-slate-200',
+  codeText: 'text-primary-foreground/90',
 };
 
 const resolveColorStyles = (color: string, isLightTheme: boolean) =>
@@ -651,14 +651,14 @@ function CopyButton({ text, isLightTheme }: { text: string; isLightTheme: boolea
       className={cn(
         'absolute right-2.5 top-2.5 rounded-md p-1.5 opacity-0 backdrop-blur transition-all group-hover/code:opacity-100',
         isLightTheme
-          ? 'border border-slate-300 bg-white/90 hover:bg-slate-100'
-          : 'border border-white/[0.08] bg-white/[0.06] hover:bg-white/[0.12]',
+          ? 'border border-border bg-card/90 hover:bg-muted/80'
+          : 'border border-white/[0.08] bg-card/[0.06] hover:bg-card/[0.12]',
       )}
       title="Copy"
     >
       {copied
-        ? <Check size={11} className={isLightTheme ? 'text-emerald-600' : 'text-emerald-400'} />
-        : <Copy size={11} className={isLightTheme ? 'text-slate-500' : 'text-white/50'} />
+        ? <Check size={11} className={'text-emerald-400'} />
+        : <Copy size={11} className={'text-white/50'} />
       }
     </button>
   );
@@ -677,7 +677,7 @@ function CommandCard({ cmd, section, isLightTheme }: { cmd: CommandEntry; sectio
       className={`group relative overflow-hidden rounded-xl border border-border/60 bg-card transition-all duration-200 hover:-translate-y-0.5 hover:border-border hover:shadow-lg ${colors.glow}`}
     >
       {/* Gradient top line */}
-      <div className={`h-[2px] w-full bg-gradient-to-r ${isLightTheme ? 'from-slate-500 to-slate-600' : section.gradient} opacity-70`} />
+      <div className={`h-[2px] w-full bg-gradient-to-r ${section.gradient} opacity-70`} />
 
       <div className="p-4">
         {/* Command badge + description */}
@@ -692,7 +692,7 @@ function CommandCard({ cmd, section, isLightTheme }: { cmd: CommandEntry; sectio
         <div className="group/code relative">
           <pre className={cn(
             'overflow-x-auto rounded-lg border px-4 py-3 font-mono text-xs leading-relaxed',
-            isLightTheme ? 'border-slate-200 bg-slate-950' : 'border-white/[0.07] bg-[#0d0f1a]',
+            'border-white/[0.07] bg-[#0d0f1a]',
           )}>
             <code className={`${colors.codeText}`}>{cmd.example}</code>
           </pre>
@@ -770,7 +770,7 @@ export default function LearnPage() {
       <div
         className={cn(
           'relative shrink-0 border-b backdrop-blur-xl',
-          isLightTheme ? 'border-slate-200 bg-white/80' : 'border-border/50 bg-card/60',
+          'border-border/50 bg-card/60',
         )}
       >
         <div className="mx-auto max-w-6xl px-4 pb-0 pt-5 sm:px-6">
@@ -781,7 +781,7 @@ export default function LearnPage() {
               <div
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-widest',
-                  isLightTheme ? 'border-slate-300 bg-slate-100 text-slate-700' : 'border-primary/20 bg-primary/10 text-primary',
+                  'border-primary/20 bg-primary/10 text-primary',
                 )}
               >
                 <Sparkles size={11} />
@@ -820,7 +820,7 @@ export default function LearnPage() {
               className={cn(
                 'rounded-2xl border p-2',
                 isLightTheme
-                  ? 'border-slate-200 bg-white shadow-sm'
+                  ? 'border-border bg-card shadow-sm'
                   : 'border-border/60 bg-gradient-to-br from-background via-background to-muted/40 shadow-[0_14px_35px_-22px_rgba(2,6,23,0.55)]',
               )}
             >
@@ -831,7 +831,7 @@ export default function LearnPage() {
                 <span
                   className={cn(
                     'rounded-full border px-2 py-0.5 text-[10px] font-semibold',
-                    isLightTheme ? 'border-slate-300 bg-slate-100 text-slate-700' : 'border-primary/20 bg-primary/10 text-primary',
+                    'border-primary/20 bg-primary/10 text-primary',
                   )}
                 >
                   All Categories
@@ -847,7 +847,7 @@ export default function LearnPage() {
                   className={cn(
                     'h-12 w-full rounded-xl border py-2 pl-9 pr-9 text-sm outline-none transition-all',
                     isLightTheme
-                      ? 'border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:border-slate-500 focus:ring-4 focus:ring-slate-200'
+                      ? 'border-border bg-card text-foreground/90 placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-4 focus:ring-slate-200'
                       : 'border-border/70 bg-background/95 text-foreground placeholder:text-muted-foreground/55 focus:border-primary/50 focus:ring-4 focus:ring-primary/10',
                   )}
                 />
@@ -890,7 +890,7 @@ export default function LearnPage() {
                     <span
                       className={cn(
                         'ml-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-bold',
-                        isLightTheme ? 'border-slate-300 bg-slate-100 text-slate-600' : 'border-white/10 bg-white/10 text-zinc-200',
+                        'border-white/10 bg-card/10 text-foreground/90',
                       )}
                     >
                       {searchHits.filter((hit) => hit.section.id === section.id).length}
@@ -913,7 +913,7 @@ export default function LearnPage() {
               <div
                 className={cn(
                   'rounded-lg p-2 shadow-md',
-                  isLightTheme ? 'bg-gradient-to-br from-slate-700 to-slate-600 text-white shadow-slate-900/10' : `bg-gradient-to-br ${activeSection.gradient} text-black`,
+                  `bg-gradient-to-br ${activeSection.gradient} text-black`,
                 )}
               >
                 {activeSection.icon}
@@ -929,7 +929,7 @@ export default function LearnPage() {
             <span
               className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${query
                 ? isLightTheme
-                  ? 'border-slate-700 bg-slate-700 text-white'
+                  ? 'border-primary bg-primary text-white'
                   : 'border-primary/25 bg-primary/10 text-primary'
                 : colors.badge}`}
             >

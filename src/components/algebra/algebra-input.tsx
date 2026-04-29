@@ -489,15 +489,15 @@ export function AlgebraInput({
 
   return (
     <div
-      className={`rounded-xl border border-slate-300 bg-white ${executionFeedback === 'success'
+      className={`rounded-xl border border-border bg-card ${executionFeedback === 'success'
           ? 'execute-feedback-success'
           : executionFeedback === 'error'
             ? 'execute-feedback-error'
             : ''
         }`}
     >
-      <div className="flex items-center justify-between rounded-t-xl border-b border-slate-300 bg-slate-200/70 px-4 py-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+      <div className="flex items-center justify-between rounded-t-xl border-b border-border bg-muted/60/70 px-4 py-2.5">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Expression
         </span>
         <SymbolPalette onInsert={handleInsert} />
@@ -510,7 +510,7 @@ export function AlgebraInput({
           onKeyDown={handleKeyDown}
           placeholder="e.g. π[name, gpa](σ[gpa > 3.5](students))  —  Start typing or use shortcuts"
           rows={3}
-          className="w-full resize-none rounded-lg border border-slate-400 bg-white p-3 font-mono text-sm text-slate-900 outline-none placeholder:text-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-400"
+          className="w-full resize-none rounded-lg border border-border/80 bg-card p-3 font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground/80 focus:border-primary focus:ring-1 focus:ring-primary/30"
           autoComplete="off"
           spellCheck={false}
           onClick={() => updateCompletions(showComplete)}
@@ -520,7 +520,7 @@ export function AlgebraInput({
         {showComplete && completions.length > 0 && (
           <div
             ref={dropdownRef}
-            className="absolute left-3 top-[calc(100%-8px)] z-50 max-h-52 w-[min(92vw,36rem)] overflow-y-auto rounded-lg border border-slate-300 bg-white shadow-lg shadow-slate-400/20 backdrop-blur-sm"
+            className="absolute left-3 top-[calc(100%-8px)] z-50 max-h-52 w-[min(92vw,36rem)] overflow-y-auto rounded-lg border border-border bg-card shadow-lg shadow-black/10 backdrop-blur-sm"
             style={{ left: dropdownPos.left, top: dropdownPos.top }}
           >
             {completions.map((item, i) => (
@@ -531,7 +531,7 @@ export function AlgebraInput({
                   applyCompletion(item);
                 }}
                 onMouseEnter={() => setSelectedIdx(i)}
-                className={`flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors ${i === selectedIdx ? 'bg-slate-200' : 'hover:bg-slate-100'
+                className={`flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors ${i === selectedIdx ? 'bg-muted/60' : 'hover:bg-muted/80'
                   }`}
               >
                 <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${kindBg[item.kind]}`}>
@@ -540,29 +540,29 @@ export function AlgebraInput({
                 <span className={`font-mono text-[13px] font-semibold ${kindColors[item.kind]}`}>
                   {item.label}
                 </span>
-                <span className="ml-auto hidden max-w-[45%] truncate text-[10px] text-slate-500 md:block">{item.detail}</span>
+                <span className="ml-auto hidden max-w-[45%] truncate text-[10px] text-muted-foreground/80 md:block">{item.detail}</span>
               </button>
             ))}
           </div>
         )}
         <div className="mt-2.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-600">
+            <span className="text-xs text-muted-foreground">
               Press{' '}
-              <kbd className="rounded border border-slate-400 bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-100">
+              <kbd className="rounded border border-border/80 bg-muted px-1.5 py-0.5 font-mono text-[10px] text-primary-foreground/90">
                 {isMac ? '⌘' : 'Ctrl'} Enter
               </kbd>{' '}
               to evaluate
             </span>
-            <span className="text-xs text-slate-600">
-              <kbd className="rounded border border-slate-400 bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-100">
+            <span className="text-xs text-muted-foreground">
+              <kbd className="rounded border border-border/80 bg-muted px-1.5 py-0.5 font-mono text-[10px] text-primary-foreground/90">
                 {isMac ? '⌘' : 'Ctrl'} Space
               </kbd>{' '}
               suggestions
             </span>
             <button
               onClick={() => setShowShortcuts(!showShortcuts)}
-              className="flex items-center gap-1 text-[11px] text-slate-600 transition-colors hover:text-slate-800"
+              className="flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground/90"
             >
               <Keyboard className="h-3 w-3" />
               Shortcuts
@@ -570,7 +570,7 @@ export function AlgebraInput({
           </div>
           <button
             onClick={onEvaluate}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-4 py-1.5 text-sm font-semibold text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 active:scale-[0.98]"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:border-border hover:bg-muted active:scale-[0.98]"
           >
             <Play className="h-3.5 w-3.5" />
             Evaluate
@@ -578,23 +578,23 @@ export function AlgebraInput({
         </div>
         {/* ── Keyboard shortcuts panel ── */}
         {showShortcuts && (
-          <div className="mt-3 rounded-lg border border-slate-300 bg-slate-100 p-3">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-600">
+          <div className="mt-3 rounded-lg border border-border bg-muted/80 p-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Keyboard Shortcuts — hold {isMac ? '⌥ Option' : 'Alt'} + key
             </p>
             <div className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
               {ALL_SYMBOLS.filter((s) => s.key).map((s) => (
                 <div key={s.symbol} className="flex items-center gap-2 text-xs">
-                  <kbd className="inline-flex h-5 min-w-[3rem] items-center justify-center rounded border border-slate-300 bg-white px-1.5 font-mono text-[10px] text-slate-600">
+                  <kbd className="inline-flex h-5 min-w-[3rem] items-center justify-center rounded border border-border bg-card px-1.5 font-mono text-[10px] text-muted-foreground">
                     {isMac ? '⌥' : 'Alt+'}{s.key.replace('Key', '')}
                   </kbd>
                   <span className="font-mono text-sm text-violet-400">{s.symbol}</span>
-                  <span className="text-slate-600">{s.label}</span>
+                  <span className="text-muted-foreground">{s.label}</span>
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-[10px] text-slate-600">
-              You can also type text aliases: <code className="text-slate-800">sigma</code>, <code className="text-slate-800">pi</code>, <code className="text-slate-800">intersect</code>, <code className="text-slate-800">join</code>, <code className="text-slate-800">gamma</code>, <code className="text-slate-800">tau</code>, etc.
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              You can also type text aliases: <code className="text-foreground/90">sigma</code>, <code className="text-foreground/90">pi</code>, <code className="text-foreground/90">intersect</code>, <code className="text-foreground/90">join</code>, <code className="text-foreground/90">gamma</code>, <code className="text-foreground/90">tau</code>, etc.
             </p>
           </div>
         )}

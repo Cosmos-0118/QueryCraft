@@ -553,7 +553,7 @@ export default function SandboxPage() {
   const historyCount = store.queryHistory.length;
   const isLightTheme = theme === 'light';
   const lightToolbarActionButtonClass =
-    'inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-700 px-3 py-1.5 text-[11px] font-medium text-slate-50 shadow-sm transition-colors hover:border-slate-800 hover:bg-slate-800 disabled:opacity-40';
+    'inline-flex items-center gap-1.5 rounded-lg border border-border bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary/90 disabled:opacity-40';
   const lightToolbarDangerButtonClass =
     'inline-flex items-center gap-1.5 rounded-lg border border-rose-700 bg-rose-700 px-3 py-1.5 text-[11px] font-medium text-rose-50 shadow-sm transition-colors hover:border-rose-800 hover:bg-rose-800 active:scale-95';
   const statementResults: StatementQueryResult[] = result
@@ -581,7 +581,7 @@ export default function SandboxPage() {
             <div
               className={cn(
                 'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1',
-                isLightTheme ? 'bg-slate-100 ring-slate-300/80' : 'ring-emerald-500/25',
+                'ring-emerald-500/25',
               )}
               style={
                 isLightTheme
@@ -589,7 +589,7 @@ export default function SandboxPage() {
                   : { background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.04) 100%)' }
               }
             >
-              <Terminal className={cn('h-5 w-5', isLightTheme ? 'text-slate-700' : 'text-emerald-400')} />
+              <Terminal className={cn('h-5 w-5', 'text-emerald-400')} />
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-foreground">SQL Sandbox</h1>
@@ -702,7 +702,7 @@ export default function SandboxPage() {
                     <span
                       className={
                         isLightTheme
-                          ? 'rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
+                          ? 'rounded-full bg-card/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
                           : 'rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-200'
                       }
                     >
@@ -732,7 +732,7 @@ export default function SandboxPage() {
                     <span
                       className={
                         isLightTheme
-                          ? 'rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
+                          ? 'rounded-full bg-card/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
                           : 'rounded-full bg-fuchsia-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-200'
                       }
                     >
@@ -762,7 +762,7 @@ export default function SandboxPage() {
                     <span
                       className={
                         isLightTheme
-                          ? 'rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
+                          ? 'rounded-full bg-card/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
                           : 'rounded-full bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-sky-200'
                       }
                     >
@@ -823,10 +823,10 @@ export default function SandboxPage() {
 
         {/* Import SQL Panel */}
         {showImport && (
-          <div className="rounded-xl border border-violet-500/30 bg-zinc-900/80 p-4 backdrop-blur-sm">
+          <div className="rounded-xl border border-violet-500/30 bg-card/90 p-4 backdrop-blur-sm">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-zinc-200">Import SQL</h3>
-              <p className="text-[11px] text-zinc-500">Paste CREATE TABLE / INSERT statements from Table Generator</p>
+              <h3 className="text-sm font-semibold text-foreground">Import SQL</h3>
+              <p className="text-[11px] text-muted-foreground">Paste CREATE TABLE / INSERT statements from Table Generator</p>
             </div>
             <textarea
               value={importSql}
@@ -835,7 +835,7 @@ export default function SandboxPage() {
                 if (importErrorResult) setImportErrorResult(null);
               }}
               placeholder={'-- Paste your SQL here\nCREATE TABLE "students" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);'}
-              className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/60 px-4 py-3 font-mono text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
+              className="w-full rounded-xl border border-border bg-card px-4 py-3 font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
               rows={6}
             />
             {importErrorResult?.error && (
@@ -861,7 +861,7 @@ export default function SandboxPage() {
                   setImportSql('');
                   setImportErrorResult(null);
                 }}
-                className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                className="rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 Cancel
               </button>
@@ -871,16 +871,16 @@ export default function SandboxPage() {
 
         {/* Engine Status */}
         {!isReady && (
-          <div className="flex items-center gap-3 rounded-xl border border-zinc-700/50 bg-zinc-800/40 px-4 py-3">
+          <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/50 px-4 py-3">
             <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-            <span className="text-sm text-zinc-400">Initializing SQL engine…</span>
+            <span className="text-sm text-muted-foreground">Initializing SQL engine…</span>
           </div>
         )}
 
         {/* Available Tables */}
         {tables.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-zinc-500">Tables:</span>
+            <span className="text-xs font-medium text-muted-foreground">Tables:</span>
             {tables.map((t) => (
               <button
                 key={t.name}
@@ -889,9 +889,9 @@ export default function SandboxPage() {
                   setEditorFocusRequestKey((key) => key + 1);
                 }}
                 title={`Query "${t.name}"`}
-                className="group inline-flex items-center gap-1 rounded-md border border-zinc-700/40 bg-zinc-800/50 px-2.5 py-1 font-mono text-xs text-zinc-300 transition-all hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300"
+                className="group inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2.5 py-1 font-mono text-xs text-foreground/90 transition-all hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300"
               >
-                <Table2 className="h-3 w-3 text-zinc-500 transition-colors group-hover:text-emerald-400" />
+                <Table2 className="h-3 w-3 text-muted-foreground transition-colors group-hover:text-emerald-400" />
                 {t.name}
               </button>
             ))}
@@ -931,7 +931,7 @@ export default function SandboxPage() {
               {result && result.columns.length > 0 && (
                 <button
                   onClick={handleExportCSV}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-700/50 px-4 py-2 text-sm font-medium text-zinc-400 transition-all hover:border-zinc-600 hover:bg-zinc-800/60 hover:text-zinc-200"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-all hover:border-zinc-600 hover:bg-muted/60 hover:text-foreground"
                 >
                   <Download className="h-3.5 w-3.5" />
                   Export CSV
@@ -952,7 +952,7 @@ export default function SandboxPage() {
                 if (entry.columns.length > 0) {
                   return (
                     <div key={`${statementLabel}-${index}`} className="space-y-1.5">
-                      <p className="px-1 text-[11px] font-medium text-zinc-500">
+                      <p className="px-1 text-[11px] font-medium text-muted-foreground">
                         {statementLabel}
                       </p>
                       <ResultPanel
@@ -989,17 +989,17 @@ export default function SandboxPage() {
               className={cn(
                 'flex items-center gap-2.5 rounded-xl px-4 py-3 transition-colors',
                 isLightTheme
-                  ? 'border border-border/85 bg-card shadow-sm hover:border-slate-300 hover:bg-slate-50'
-                  : 'border border-zinc-700/50 bg-zinc-900/60 hover:border-violet-500/30 hover:bg-zinc-800/40',
+                  ? 'border border-border/85 bg-card shadow-sm hover:border-border hover:bg-muted'
+                  : 'border border-border bg-muted hover:border-violet-500/30 hover:bg-muted/50',
               )}
             >
-              <History className={cn('h-4 w-4', isLightTheme ? 'text-slate-700' : 'text-violet-400')} />
+              <History className={cn('h-4 w-4', 'text-violet-400')} />
               <div className="min-w-0 flex-1">
-                <span className={cn('text-sm font-medium', isLightTheme ? 'text-slate-900' : 'text-zinc-200')}>
+                <span className={cn('text-sm font-medium', 'text-foreground')}>
                   Query History
                 </span>
                 {historyCount > 0 && (
-                  <p className={cn('text-[11px]', isLightTheme ? 'text-slate-500' : 'text-zinc-500')}>
+                  <p className={cn('text-[11px]', 'text-muted-foreground')}>
                     {historyCount} quer{historyCount === 1 ? 'y' : 'ies'} recorded
                   </p>
                 )}
@@ -1007,7 +1007,7 @@ export default function SandboxPage() {
               <span
                 className={cn(
                   'rounded-md px-1.5 py-0.5 text-[10px] font-bold',
-                  isLightTheme ? 'bg-slate-700 text-white' : 'bg-violet-500/10 text-violet-400',
+                  'bg-violet-500/10 text-violet-400',
                 )}
               >
                 {historyCount}
@@ -1033,7 +1033,7 @@ export default function SandboxPage() {
             onClick={() => setShowTriggersPanel(false)}
           />
 
-          <div className="relative z-10 w-full max-w-4xl rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-cyan-500/10 via-zinc-900/95 to-zinc-950 p-4 shadow-2xl shadow-black/60 sm:p-5">
+          <div className="relative z-10 w-full max-w-4xl rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-cyan-500/10 via-muted/95 to-background p-4 shadow-2xl shadow-black/60 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold text-cyan-100">Trigger Inspector</h3>
@@ -1051,7 +1051,7 @@ export default function SandboxPage() {
                 </button>
                 <button
                   onClick={() => setShowTriggersPanel(false)}
-                  className="rounded-lg border border-zinc-700/70 bg-zinc-900/60 p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                  className="rounded-lg border border-border/70 bg-muted p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                   aria-label="Close trigger inspector"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -1062,7 +1062,7 @@ export default function SandboxPage() {
             {triggerQueryError ? (
               <SqlErrorAlert error={triggerQueryError} compact />
             ) : triggerRows.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-cyan-500/25 bg-zinc-950/50 px-4 py-6 text-center text-sm text-zinc-400">
+              <div className="rounded-xl border border-dashed border-cyan-500/25 bg-card/50 px-4 py-6 text-center text-sm text-muted-foreground">
                 No triggers found in this database.
               </div>
             ) : (
@@ -1070,18 +1070,18 @@ export default function SandboxPage() {
                 {triggerRows.map((trigger) => (
                   <div
                     key={`${trigger.Trigger}-${trigger.Table}`}
-                    className="rounded-xl border border-cyan-500/20 bg-zinc-950/60 p-3"
+                    className="rounded-xl border border-cyan-500/20 bg-card p-3"
                   >
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
                         {trigger.Trigger}
                       </span>
-                      <span className="text-[11px] text-zinc-400">on table</span>
-                      <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 font-mono text-[10px] text-zinc-200">
+                      <span className="text-[11px] text-muted-foreground">on table</span>
+                      <span className="rounded-full bg-muted/80 px-2 py-0.5 font-mono text-[10px] text-foreground">
                         {trigger.Table}
                       </span>
                     </div>
-                    <pre className="overflow-x-auto rounded-lg border border-zinc-800/80 bg-zinc-950/80 p-2 font-mono text-[11px] leading-relaxed text-zinc-300">
+                    <pre className="overflow-x-auto rounded-lg border border-border/80 bg-card/80 p-2 font-mono text-[11px] leading-relaxed text-foreground/90">
                       {trigger.Statement}
                     </pre>
                   </div>
@@ -1096,7 +1096,7 @@ export default function SandboxPage() {
         ? createPortal(
           <div
             ref={dbMenuPanelRef}
-            className="fixed z-[120] overflow-hidden rounded-xl border border-zinc-800/70 bg-zinc-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-md"
+            className="fixed z-[120] overflow-hidden rounded-xl border border-border bg-card p-2 shadow-2xl shadow-black/40 backdrop-blur-md"
             style={{
               top: dbMenuPosition.top,
               left: dbMenuPosition.left,
@@ -1104,7 +1104,7 @@ export default function SandboxPage() {
               maxHeight: dbMenuPosition.maxHeight,
             }}
           >
-            <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+            <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
               Available databases
             </div>
             <div className="space-y-1 overflow-y-auto" style={{ maxHeight: dbMenuPosition.maxHeight - 34 }}>
@@ -1128,8 +1128,8 @@ export default function SandboxPage() {
                           ? 'border-sky-500/35 bg-sky-500/12 text-sky-100'
                           : 'border-violet-500/35 bg-violet-500/14 text-violet-100'
                         : isSystemDb
-                          ? 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-sky-500/25 hover:bg-sky-500/8'
-                          : 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-violet-500/25 hover:bg-violet-500/8',
+                          ? 'border-border bg-muted text-foreground/90 hover:border-sky-500/25 hover:bg-sky-500/8'
+                          : 'border-border bg-muted text-foreground/90 hover:border-violet-500/25 hover:bg-violet-500/8',
                     )}
                   >
                     <span className="truncate font-medium">{dbName}</span>
@@ -1154,7 +1154,7 @@ export default function SandboxPage() {
         ? createPortal(
           <div
             ref={userMenuPanelRef}
-            className="fixed z-[120] overflow-hidden rounded-xl border border-zinc-800/70 bg-zinc-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-md"
+            className="fixed z-[120] overflow-hidden rounded-xl border border-border bg-card p-2 shadow-2xl shadow-black/40 backdrop-blur-md"
             style={{
               top: userMenuPosition.top,
               left: userMenuPosition.left,
@@ -1162,7 +1162,7 @@ export default function SandboxPage() {
               maxHeight: userMenuPosition.maxHeight,
             }}
           >
-            <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+            <div className="mb-2 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
               Available users
             </div>
             <div className="space-y-1 overflow-y-auto" style={{ maxHeight: userMenuPosition.maxHeight - 34 }}>
@@ -1186,8 +1186,8 @@ export default function SandboxPage() {
                           ? 'border-amber-500/35 bg-amber-500/12 text-amber-100'
                           : 'border-teal-500/35 bg-teal-500/14 text-teal-100'
                         : isAdmin
-                          ? 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-amber-500/25 hover:bg-amber-500/8'
-                          : 'border-zinc-800/70 bg-zinc-900/60 text-zinc-300 hover:border-teal-500/25 hover:bg-teal-500/8',
+                          ? 'border-border bg-muted text-foreground/90 hover:border-amber-500/25 hover:bg-amber-500/8'
+                          : 'border-border bg-muted text-foreground/90 hover:border-teal-500/25 hover:bg-teal-500/8',
                     )}
                   >
                     <span className="truncate font-medium">{userName}</span>
@@ -1216,7 +1216,7 @@ export default function SandboxPage() {
             onClick={() => setShowProceduresPanel(false)}
           />
 
-          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-fuchsia-500/25 bg-gradient-to-br from-fuchsia-500/10 via-zinc-900/95 to-zinc-950 p-4 shadow-2xl shadow-black/60 sm:p-5">
+          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-fuchsia-500/25 bg-gradient-to-br from-fuchsia-500/10 via-muted/95 to-background p-4 shadow-2xl shadow-black/60 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold text-fuchsia-100">Procedure Inspector</h3>
@@ -1234,7 +1234,7 @@ export default function SandboxPage() {
                 </button>
                 <button
                   onClick={() => setShowProceduresPanel(false)}
-                  className="rounded-lg border border-zinc-700/70 bg-zinc-900/60 p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                  className="rounded-lg border border-border/70 bg-muted p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                   aria-label="Close procedure inspector"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -1245,13 +1245,13 @@ export default function SandboxPage() {
             {procedureQueryError ? (
               <SqlErrorAlert error={procedureQueryError} compact />
             ) : procedureRows.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-fuchsia-500/25 bg-zinc-950/50 px-4 py-6 text-center text-sm text-zinc-400">
+              <div className="rounded-xl border border-dashed border-fuchsia-500/25 bg-card/50 px-4 py-6 text-center text-sm text-muted-foreground">
                 No procedures found.
               </div>
             ) : (
               <div className="grid max-h-[65vh] grid-cols-1 gap-3 overflow-hidden lg:grid-cols-3">
-                <div className="overflow-y-auto rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-2 lg:col-span-1">
-                  <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Procedures</div>
+                <div className="overflow-y-auto rounded-xl border border-border/80 bg-card p-2 lg:col-span-1">
+                  <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Procedures</div>
                   <div className="space-y-1">
                     {procedureRows.map((proc) => {
                       const qualifiedName = `${proc.Db}.${proc.Name}`;
@@ -1264,29 +1264,29 @@ export default function SandboxPage() {
                             'w-full rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
                             isSelected
                               ? 'border-fuchsia-500/35 bg-fuchsia-500/15 text-fuchsia-100'
-                              : 'border-zinc-800/80 bg-zinc-900/70 text-zinc-300 hover:border-fuchsia-500/25 hover:bg-fuchsia-500/10',
+                              : 'border-border/80 bg-muted/70 text-foreground/90 hover:border-fuchsia-500/25 hover:bg-fuchsia-500/10',
                           )}
                         >
                           <div className="truncate font-medium">{proc.Name}</div>
-                          <div className="mt-0.5 text-[10px] text-zinc-500">{proc.Db}</div>
+                          <div className="mt-0.5 text-[10px] text-muted-foreground">{proc.Db}</div>
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3 lg:col-span-2">
+                <div className="rounded-xl border border-border/80 bg-card p-3 lg:col-span-2">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <div className="text-[11px] text-zinc-400">
+                    <div className="text-[11px] text-muted-foreground">
                       {selectedProcedureName ? `Definition: ${selectedProcedureName}` : 'Select a procedure to view definition'}
                     </div>
                   </div>
                   {selectedProcedureSql ? (
-                    <pre className="max-h-[48vh] overflow-auto rounded-lg border border-zinc-800/80 bg-zinc-950/90 p-2 font-mono text-[11px] leading-relaxed text-zinc-300">
+                    <pre className="max-h-[48vh] overflow-auto rounded-lg border border-border/80 bg-card/90 p-2 font-mono text-[11px] leading-relaxed text-foreground/90">
                       {selectedProcedureSql}
                     </pre>
                   ) : (
-                    <div className="rounded-lg border border-dashed border-zinc-700/70 bg-zinc-900/50 px-4 py-6 text-center text-sm text-zinc-500">
+                    <div className="rounded-lg border border-dashed border-border/70 bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
                       Pick a procedure from the left.
                     </div>
                   )}
@@ -1305,7 +1305,7 @@ export default function SandboxPage() {
             onClick={() => setShowCursorsPanel(false)}
           />
 
-          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-sky-500/25 bg-gradient-to-br from-sky-500/10 via-zinc-900/95 to-zinc-950 p-4 shadow-2xl shadow-black/60 sm:p-5">
+          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-sky-500/25 bg-gradient-to-br from-sky-500/10 via-muted/95 to-background p-4 shadow-2xl shadow-black/60 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold text-sky-100">Cursor Inspector</h3>
@@ -1323,7 +1323,7 @@ export default function SandboxPage() {
                 </button>
                 <button
                   onClick={() => setShowCursorsPanel(false)}
-                  className="rounded-lg border border-zinc-700/70 bg-zinc-900/60 p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                  className="rounded-lg border border-border/70 bg-muted p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                   aria-label="Close cursor inspector"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -1334,13 +1334,13 @@ export default function SandboxPage() {
             {cursorQueryError ? (
               <SqlErrorAlert error={cursorQueryError} compact />
             ) : cursorRows.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-sky-500/25 bg-zinc-950/50 px-4 py-6 text-center text-sm text-zinc-400">
+              <div className="rounded-xl border border-dashed border-sky-500/25 bg-card/50 px-4 py-6 text-center text-sm text-muted-foreground">
                 No cursors found in stored procedures.
               </div>
             ) : (
               <div className="grid max-h-[65vh] grid-cols-1 gap-3 overflow-hidden lg:grid-cols-3">
-                <div className="overflow-y-auto rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-2 lg:col-span-1">
-                  <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Cursors</div>
+                <div className="overflow-y-auto rounded-xl border border-border/80 bg-card p-2 lg:col-span-1">
+                  <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Cursors</div>
                   <div className="space-y-1">
                     {cursorRows.map((cursor) => {
                       const qualifiedName = `${cursor.Procedure}.${cursor.Cursor}`;
@@ -1353,39 +1353,39 @@ export default function SandboxPage() {
                             'w-full rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
                             isSelected
                               ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
-                              : 'border-zinc-800/80 bg-zinc-900/70 text-zinc-300 hover:border-sky-500/25 hover:bg-sky-500/10',
+                              : 'border-border/80 bg-muted/70 text-foreground/90 hover:border-sky-500/25 hover:bg-sky-500/10',
                           )}
                         >
                           <div className="truncate font-medium">{cursor.Cursor}</div>
-                          <div className="mt-0.5 text-[10px] text-zinc-500">{cursor.Procedure}</div>
+                          <div className="mt-0.5 text-[10px] text-muted-foreground">{cursor.Procedure}</div>
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3 lg:col-span-2">
+                <div className="rounded-xl border border-border/80 bg-card p-3 lg:col-span-2">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <div className="text-[11px] text-zinc-400">
+                    <div className="text-[11px] text-muted-foreground">
                       {selectedCursorName ? `Definition: ${selectedCursorName}` : 'Select a cursor to view declaration'}
                     </div>
                   </div>
                   {selectedCursorSql ? (
                     <div className="space-y-3">
-                      <pre className="max-h-[30vh] overflow-auto rounded-lg border border-zinc-800/80 bg-zinc-950/90 p-2 font-mono text-[11px] leading-relaxed text-zinc-300">
+                      <pre className="max-h-[30vh] overflow-auto rounded-lg border border-border/80 bg-card/90 p-2 font-mono text-[11px] leading-relaxed text-foreground/90">
                         {selectedCursorSql}
                       </pre>
                       {cursorRows.find((cursor) => `${cursor.Procedure}.${cursor.Cursor}` === selectedCursorName)?.Query && (
                         <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3">
                           <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-300/80">Resolved query</div>
-                          <pre className="overflow-auto font-mono text-[11px] leading-relaxed text-zinc-300">
+                          <pre className="overflow-auto font-mono text-[11px] leading-relaxed text-foreground/90">
                             {cursorRows.find((cursor) => `${cursor.Procedure}.${cursor.Cursor}` === selectedCursorName)?.Query}
                           </pre>
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="rounded-lg border border-dashed border-zinc-700/70 bg-zinc-900/50 px-4 py-6 text-center text-sm text-zinc-500">
+                    <div className="rounded-lg border border-dashed border-border/70 bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
                       Pick a cursor from the left.
                     </div>
                   )}
@@ -1404,7 +1404,7 @@ export default function SandboxPage() {
             onClick={() => setShowSecurityPanel(false)}
           />
 
-          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-500/10 via-zinc-900/95 to-zinc-950 p-4 shadow-2xl shadow-black/60 sm:p-5">
+          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-500/10 via-muted/95 to-background p-4 shadow-2xl shadow-black/60 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold text-amber-100">Security Inspector</h3>
@@ -1415,7 +1415,7 @@ export default function SandboxPage() {
               </div>
               <button
                 onClick={() => setShowSecurityPanel(false)}
-                className="rounded-lg border border-zinc-700/70 bg-zinc-900/60 p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                className="rounded-lg border border-border/70 bg-muted p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 aria-label="Close security inspector"
               >
                 <X className="h-3.5 w-3.5" />
@@ -1423,8 +1423,8 @@ export default function SandboxPage() {
             </div>
 
             <div className="grid max-h-[65vh] grid-cols-1 gap-3 overflow-hidden lg:grid-cols-3">
-              <div className="overflow-y-auto rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-2 lg:col-span-1">
-                <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Users</div>
+              <div className="overflow-y-auto rounded-xl border border-border/80 bg-card p-2 lg:col-span-1">
+                <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Users</div>
                 <div className="space-y-1">
                   {users.map((userName) => {
                     const normalizedUser = userName.toLowerCase();
@@ -1441,26 +1441,26 @@ export default function SandboxPage() {
                           'w-full rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
                           isSelected
                             ? 'border-amber-500/35 bg-amber-500/15 text-amber-100'
-                            : 'border-zinc-800/80 bg-zinc-900/70 text-zinc-300 hover:border-amber-500/25 hover:bg-amber-500/10',
+                            : 'border-border/80 bg-muted/70 text-foreground/90 hover:border-amber-500/25 hover:bg-amber-500/10',
                         )}
                       >
                         <div className="truncate font-medium">{userName}</div>
-                        <div className="mt-0.5 text-[10px] text-zinc-500">{isActive ? 'current session user' : 'available user'}</div>
+                        <div className="mt-0.5 text-[10px] text-muted-foreground">{isActive ? 'current session user' : 'available user'}</div>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              <div className="overflow-y-auto rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3 lg:col-span-2">
-                <div className="mb-2 text-[11px] text-zinc-400">
+              <div className="overflow-y-auto rounded-xl border border-border/80 bg-card p-3 lg:col-span-2">
+                <div className="mb-2 text-[11px] text-muted-foreground">
                   {selectedSecurityUser ? `Grants for ${selectedSecurityUser}` : 'Select a user to inspect grants'}
                 </div>
 
                 {grantsQueryError ? (
                   <SqlErrorAlert error={grantsQueryError} compact />
                 ) : grantsRows.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-zinc-700/70 bg-zinc-900/50 px-4 py-6 text-center text-sm text-zinc-500">
+                  <div className="rounded-lg border border-dashed border-border/70 bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
                     No grants to show.
                   </div>
                 ) : (
@@ -1468,7 +1468,7 @@ export default function SandboxPage() {
                     {grantsRows.map((grant, index) => (
                       <pre
                         key={`${grant}-${index}`}
-                        className="overflow-x-auto rounded-lg border border-zinc-800/80 bg-zinc-950/90 p-2 font-mono text-[11px] leading-relaxed text-zinc-300"
+                        className="overflow-x-auto rounded-lg border border-border/80 bg-card/90 p-2 font-mono text-[11px] leading-relaxed text-foreground/90"
                       >
                         {grant}
                       </pre>

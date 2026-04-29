@@ -1017,7 +1017,7 @@ export function SqlEditor({
   return (
     <div className={`min-h-0 ${className ?? ''}`}>
       <div
-        className={`overflow-hidden rounded-xl border border-zinc-700/50 transition-[height] duration-200 ${hasOutput ? 'h-[clamp(220px,36vh,420px)]' : 'h-[clamp(300px,58vh,680px)]'
+        className={`overflow-hidden rounded-xl border border-border/80/50 transition-[height] duration-200 ${hasOutput ? 'h-[clamp(220px,36vh,420px)]' : 'h-[clamp(300px,58vh,680px)]'
           } ${executionFeedback === 'success'
             ? 'execute-feedback-success'
             : executionFeedback === 'error'
@@ -1027,8 +1027,8 @@ export function SqlEditor({
         style={{ background: 'linear-gradient(180deg, rgba(24,24,27,0.95) 0%, rgba(18,18,21,0.98) 100%)' }}
         ref={editorRef}
       />
-      <p className="mt-1.5 text-right text-[11px] text-zinc-600">
-        Press <kbd className="rounded-md border border-zinc-700/50 bg-zinc-800/60 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">{isMac ? '⌘' : 'Ctrl'} Enter</kbd> to execute
+      <p className="mt-1.5 text-right text-[11px] text-muted-foreground">
+        Press <kbd className="rounded-md border border-border/80/50 bg-muted/80/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{isMac ? '⌘' : 'Ctrl'} Enter</kbd> to execute
       </p>
     </div>
   );

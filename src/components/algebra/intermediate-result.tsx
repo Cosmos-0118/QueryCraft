@@ -18,14 +18,14 @@ export function IntermediateResult({ steps, activeIndex, onSelect, className }: 
   const active = steps[activeIndex] ?? steps[steps.length - 1];
 
   return (
-    <div className={cn('overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-900/60', className)}>
-      <div className="flex items-center gap-2 border-b border-zinc-700/40 bg-zinc-800/30 px-4 py-2.5">
+    <div className={cn('overflow-hidden rounded-xl border border-border/80/50 bg-muted/60', className)}>
+      <div className="flex items-center gap-2 border-b border-border/80/40 bg-muted/80/30 px-4 py-2.5">
         <Layers className="h-3.5 w-3.5 text-violet-400" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
           Step-by-Step Results
         </span>
       </div>
-      <div className="flex gap-1.5 overflow-x-auto border-b border-zinc-700/40 px-4 py-2">
+      <div className="flex gap-1.5 overflow-x-auto border-b border-border/80/40 px-4 py-2">
         {steps.map((step, i) => (
           <button
             key={i}
@@ -34,7 +34,7 @@ export function IntermediateResult({ steps, activeIndex, onSelect, className }: 
               'shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-all',
               i === activeIndex
                 ? 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/30'
-                : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300',
+                : 'text-muted-foreground/80 hover:bg-muted/80 hover:text-foreground/80',
             )}
           >
             {i + 1}. {step.node.label.length > 14 ? step.node.label.slice(0, 13) + '…' : step.node.label}
@@ -44,7 +44,7 @@ export function IntermediateResult({ steps, activeIndex, onSelect, className }: 
       <div className="p-4">
         <div className="mb-3 flex items-center gap-2">
           <span className="font-semibold text-violet-300">{active.node.label}</span>
-          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">
+          <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] text-muted-foreground/80">
             {active.result.rows.length} row{active.result.rows.length !== 1 ? 's' : ''}
           </span>
         </div>

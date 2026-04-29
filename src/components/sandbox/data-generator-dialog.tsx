@@ -67,23 +67,23 @@ export function DataGeneratorDialog({ open, onClose, onGenerate }: DataGenerator
       onClick={onClose}
     >
       <div
-        className="relative flex w-[95vw] max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-700/50 bg-zinc-900 shadow-2xl shadow-violet-500/5"
+        className="relative flex w-[95vw] max-w-lg flex-col overflow-hidden rounded-2xl border border-border/80/50 bg-muted shadow-2xl shadow-violet-500/5"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-700/40 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border/80/40 px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 ring-1 ring-violet-500/25">
               <Sparkles className="h-4 w-4 text-violet-400" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-zinc-100">Generate Data</h2>
-              <p className="text-xs text-zinc-500">Define columns and auto-generate random rows</p>
+              <h2 className="text-base font-semibold text-foreground">Generate Data</h2>
+              <p className="text-xs text-muted-foreground/80">Define columns and auto-generate random rows</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/80 transition-colors hover:bg-muted/80 hover:text-foreground/80"
           >
             <X className="h-4 w-4" />
           </button>
@@ -94,18 +94,18 @@ export function DataGeneratorDialog({ open, onClose, onGenerate }: DataGenerator
           {/* Table Name + Row Count */}
           <div className="mb-5 flex gap-3">
             <div className="flex-1">
-              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 Table Name
               </label>
               <input
                 type="text"
                 value={tableName}
                 onChange={(e) => setTableName(e.target.value)}
-                className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/60 px-4 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
+                className="w-full rounded-xl border border-border/80/50 bg-card/60 px-4 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
               />
             </div>
             <div className="w-24">
-              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 Rows
               </label>
               <input
@@ -114,14 +114,14 @@ export function DataGeneratorDialog({ open, onClose, onGenerate }: DataGenerator
                 max={1000}
                 value={rowCount}
                 onChange={(e) => setRowCount(Math.min(1000, Math.max(1, Number(e.target.value))))}
-                className="w-full rounded-xl border border-zinc-700/50 bg-zinc-950/60 px-4 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
+                className="w-full rounded-xl border border-border/80/50 bg-card/60 px-4 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
               />
             </div>
           </div>
 
           {/* Columns */}
           <div>
-            <label className="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+            <label className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Hash className="h-3 w-3" /> Columns
             </label>
             <div className="max-h-48 space-y-2 overflow-y-auto">
@@ -130,13 +130,13 @@ export function DataGeneratorDialog({ open, onClose, onGenerate }: DataGenerator
                 return (
                   <div
                     key={i}
-                    className="group flex items-center gap-2 rounded-xl border border-zinc-800/60 bg-zinc-800/20 px-3 py-2 transition-colors hover:border-zinc-700/60"
+                    className="group flex items-center gap-2 rounded-xl border border-border/60 bg-muted/80/20 px-3 py-2 transition-colors hover:border-border/80/60"
                   >
                     <input
                       type="text"
                       value={col.name}
                       onChange={(e) => updateColumn(i, { name: e.target.value })}
-                      className="flex-1 bg-transparent font-mono text-sm text-zinc-200 outline-none placeholder:text-zinc-600"
+                      className="flex-1 bg-transparent font-mono text-sm text-foreground/90 outline-none placeholder:text-muted-foreground"
                       placeholder="Column name"
                     />
                     <button
@@ -150,7 +150,7 @@ export function DataGeneratorDialog({ open, onClose, onGenerate }: DataGenerator
                       {col.type.toUpperCase()}
                       <ChevronDown className="h-2.5 w-2.5 opacity-50" />
                     </button>
-                    <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+                    <label className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
                       <input
                         type="checkbox"
                         checked={col.primaryKey}
@@ -162,7 +162,7 @@ export function DataGeneratorDialog({ open, onClose, onGenerate }: DataGenerator
                     {columns.length > 1 && (
                       <button
                         onClick={() => removeColumn(i)}
-                        className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-600 opacity-0 transition-all hover:bg-zinc-800 hover:text-red-400 group-hover:opacity-100"
+                        className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-muted/80 hover:text-red-400 group-hover:opacity-100"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -173,7 +173,7 @@ export function DataGeneratorDialog({ open, onClose, onGenerate }: DataGenerator
             </div>
             <button
               onClick={addColumn}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-500 transition-all hover:bg-zinc-800/50 hover:text-violet-300"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground/80 transition-all hover:bg-muted/80/50 hover:text-violet-300"
             >
               <Plus className="h-3 w-3" /> Add Column
             </button>
@@ -181,10 +181,10 @@ export function DataGeneratorDialog({ open, onClose, onGenerate }: DataGenerator
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-zinc-700/40 px-6 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-border/80/40 px-6 py-4">
           <button
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground/90"
           >
             Cancel
           </button>
