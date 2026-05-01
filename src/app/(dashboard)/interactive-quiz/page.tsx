@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
 import {
-  AlertTriangle,
   ArrowLeft,
   Clock3,
   Loader2,
@@ -406,6 +405,23 @@ export default function InteractiveQuizPage() {
     [tests],
   );
 
+  const interactiveStats = useMemo(() => {
+    const published = interactiveTests.filter((test) => test.status.toLowerCase() === 'published').length;
+    const latestUpdatedAt = interactiveTests.length > 0
+      ? interactiveTests
+          .map((test) => new Date(test.updated_at).getTime())
+          .filter((value) => !Number.isNaN(value))
+          .sort((left, right) => right - left)[0]
+      : null;
+
+    return {
+      total: interactiveTests.length,
+      published,
+      drafts: interactiveTests.length - published,
+      latestUpdatedAt,
+    };
+  }, [interactiveTests]);
+
   const handlePublish = async (testId: string, alreadyPublished: boolean) => {
     if (!isTeacher || alreadyPublished) {
       return;
@@ -472,30 +488,56 @@ export default function InteractiveQuizPage() {
 
   return (
     <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.12),transparent_45%),radial-gradient(circle_at_top_right,rgba(249,115,22,0.1),transparent_40%)]" />
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.16),transparent_40%),radial-gradient(circle_at_top_right,rgba(249,115,22,0.12),transparent_40%)]" />
 
-      <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <Link
-            href="/tests?chooser=1"
-            className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+      <div className="mb-6 overflow-hidden rounded-[2rem] border border-orange-300/10 bg-card/85 p-5 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-7">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <Link
+              href="/tests?chooser=1"
+              className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            >
+              <ArrowLeft size={13} />
+              Back to Module Selection
+            </Link>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Interactive Quizzes</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+              Create timed MCQ rounds with speed-based scoring, clear publishing, and leaderboard-ready results.
+            </p>
+          </div>
+
+          <button
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-amber-300 to-orange-400 px-5 text-sm font-semibold text-zinc-950 shadow-lg shadow-orange-500/25 transition hover:brightness-110"
+            onClick={() => setShowCreateModal(true)}
           >
-            <ArrowLeft size={13} />
-            Back to Module Selection
-          </Link>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Wayground-Style Interactive Quizzes</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            Instant right/wrong feedback, speed-based points, and live leaderboard-ready scoring.
+            <Plus size={16} />
+            Create Quiz
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="rounded-2xl border border-white/10 bg-card/75 p-4 shadow-lg shadow-black/10">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Quizzes</p>
+          <p className="mt-2 text-2xl font-bold text-foreground">{interactiveStats.total}</p>
+        </div>
+        <div className="rounded-2xl border border-emerald-400/15 bg-emerald-500/[0.06] p-4 shadow-lg shadow-black/10">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-300/80">Published</p>
+          <p className="mt-2 text-2xl font-bold text-emerald-200">{interactiveStats.published}</p>
+        </div>
+        <div className="rounded-2xl border border-amber-400/15 bg-amber-500/[0.06] p-4 shadow-lg shadow-black/10">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-300/80">Drafts</p>
+          <p className="mt-2 text-2xl font-bold text-amber-200">{interactiveStats.drafts}</p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-card/75 p-4 shadow-lg shadow-black/10">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Recent Activity</p>
+          <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Clock3 size={12} />
+            {interactiveStats.latestUpdatedAt
+              ? `Last update ${new Date(interactiveStats.latestUpdatedAt).toLocaleString()}`
+              : 'No quizzes yet'}
           </p>
         </div>
-
-        <button
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-300 to-orange-400 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-orange-500/25 transition hover:brightness-110"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <Plus size={16} />
-          Create Interactive Quiz
-        </button>
       </div>
 
       <CreateInteractiveQuizModal
@@ -525,12 +567,12 @@ export default function InteractiveQuizPage() {
       )}
 
       {!loading && interactiveTests.length === 0 && (
-        <div className="rounded-2xl border border-border/70 bg-card/80 p-10 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-border/70 bg-background/60 text-muted-foreground">
+        <div className="rounded-[1.75rem] border border-white/10 bg-card/85 p-10 text-center shadow-2xl shadow-black/20">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-500/10 text-orange-200">
             <Trophy size={20} />
           </div>
-          <h2 className="mt-4 text-lg font-semibold tracking-tight">No interactive quizzes yet</h2>
-          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+          <h2 className="mt-5 text-xl font-semibold tracking-tight">No interactive quizzes yet</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
             Create your first interactive quiz with MCQ-only speed scoring and leaderboard support.
           </p>
           <button
@@ -544,77 +586,68 @@ export default function InteractiveQuizPage() {
       )}
 
       {!loading && interactiveTests.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card/85 shadow-xl shadow-black/10">
-          <div className="hidden grid-cols-[minmax(220px,1.5fr)_120px_180px_220px_250px] gap-3 border-b border-border/70 bg-background/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground md:grid">
-            <span>Interactive Quiz</span>
-            <span>Status</span>
-            <span>Timing</span>
-            <span>Points & Difficulty</span>
-            <span>Actions</span>
-          </div>
-
+        <div className="grid gap-3">
           {interactiveTests.map((test) => {
             const settings = test.interactive_settings ?? DEFAULT_SETTINGS;
             const isPublished = test.status.toLowerCase() === 'published';
             const isPublishing = publishingId === test.id;
 
             return (
-              <div
+              <article
                 key={test.id}
-                className="border-t border-border/60 px-4 py-4 transition-colors first:border-t-0 hover:bg-muted/20"
+                className="group rounded-[1.5rem] border border-white/10 bg-card/85 p-4 shadow-xl shadow-black/10 transition duration-200 hover:-translate-y-0.5 hover:border-orange-300/25 hover:bg-card sm:p-5"
               >
-                <div className="grid gap-3 md:grid-cols-[minmax(220px,1.5fr)_120px_180px_220px_250px] md:items-center">
-                  <div>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/tests/${test.id}`}
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground transition-colors hover:text-primary"
+                        className="truncate text-base font-semibold text-foreground transition group-hover:text-orange-200"
                     >
                       {test.title}
                     </Link>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] ${getStatusClasses(test.status)}`}>
+                        {formatStatus(test.status)}
+                      </span>
+                    </div>
+
                     {isPublished && test.test_code && (
-                      <p className="mt-1 text-[11px] font-semibold tracking-[0.08em] text-amber-200">Code: {test.test_code}</p>
+                      <p className="mt-2 w-fit rounded-full border border-orange-300/20 bg-orange-400/10 px-2.5 py-1 text-[11px] font-semibold tracking-[0.08em] text-orange-200">
+                        Code: {test.test_code}
+                      </p>
                     )}
-                  </div>
 
-                  <div>
-                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(test.status)}`}>
-                      {formatStatus(test.status)}
-                    </span>
-                  </div>
-
-                  <div className="text-xs text-muted-foreground">
-                    <p className="inline-flex items-center gap-1.5">
-                      <Timer size={12} />
-                      {settings.question_timer_seconds}s per question
-                    </p>
-                    <p className="mt-1 inline-flex items-center gap-1.5">
-                      <Clock3 size={12} />
-                      Updated {new Date(test.updated_at).toLocaleString()}
-                    </p>
-                  </div>
-
-                  <div className="text-xs text-muted-foreground">
-                    <p className="inline-flex items-center gap-1.5">
-                      <Trophy size={12} />
-                      {settings.max_points_per_question} max points / correct
-                    </p>
-                    <p className="mt-1 inline-flex items-center gap-1.5">
-                      <Sparkles size={12} />
-                      Difficulty: {settings.difficulty_profile}
-                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1">
+                        <Timer size={12} />
+                        {settings.question_timer_seconds}s/question
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1">
+                        <Trophy size={12} />
+                        {settings.max_points_per_question} pts
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1">
+                        <Sparkles size={12} />
+                        {settings.difficulty_profile}
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1">
+                        <Clock3 size={12} />
+                        Updated {new Date(test.updated_at).toLocaleString()}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/tests/${test.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-border hover:text-foreground"
                     >
-                      Manage Questions
+                      Manage
                     </Link>
                     <button
                       onClick={() => handlePublish(test.id, isPublished)}
                       disabled={isPublished || isPublishing}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/12 px-2.5 py-1.5 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/12 px-3 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {isPublishing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                       {isPublished ? 'Published' : isPublishing ? 'Publishing...' : 'Publish'}
@@ -622,28 +655,18 @@ export default function InteractiveQuizPage() {
                     {isPublished && (
                       <Link
                         href={`/interactive-quiz/${test.id}/leaderboard`}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1.5 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+                        className="inline-flex h-9 items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
                       >
                         Leaderboard
                       </Link>
                     )}
                   </div>
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
       )}
-
-      <div className="mt-6 rounded-2xl border border-border/70 bg-card/80 p-4 text-xs text-muted-foreground">
-        <p className="inline-flex items-center gap-1.5 font-semibold text-foreground">
-          <AlertTriangle size={13} className="text-orange-200" />
-          Quiz Rules Applied
-        </p>
-        <p className="mt-1">
-          Interactive quizzes are MCQ-only, grant zero points for wrong answers, and award dynamic points based on speed and correctness.
-        </p>
-      </div>
     </div>
   );
 }

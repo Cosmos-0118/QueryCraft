@@ -469,7 +469,11 @@ export default function TestReviewPage() {
           <ReviewMetricCard label="Students" value={stats.total} helper="Assigned students" tone="primary" />
           <ReviewMetricCard label="Submitted" value={stats.submitted} helper="Ready to review" tone="success" />
           <ReviewMetricCard label="Pending" value={stats.pending} helper="Not submitted yet" tone="warning" />
-          <ReviewMetricCard label="Average Score" value={`${stats.avgScore}%`} helper="Submitted attempts" />
+          <ReviewMetricCard
+            label={isClassicTest ? 'Average Score' : 'Average Points'}
+            value={isClassicTest ? `${stats.avgScore}%` : stats.avgScore}
+            helper="Submitted attempts"
+          />
         </div>
       </div>
 
@@ -539,7 +543,13 @@ export default function TestReviewPage() {
                   <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     <div className="rounded-xl border border-border/70 bg-card/65 px-3 py-2">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Score</p>
-                      <p className="mt-1 text-sm font-bold text-foreground">{typeof submission.score === 'number' ? `${submission.score}%` : 'Not graded'}</p>
+                      <p className="mt-1 text-sm font-bold text-foreground">
+                        {typeof submission.score === 'number'
+                          ? isClassicTest
+                            ? `${submission.score}%`
+                            : String(Math.round(submission.score))
+                          : 'Not graded'}
+                      </p>
                     </div>
                     <div className="rounded-xl border border-border/70 bg-card/65 px-3 py-2">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Answers</p>

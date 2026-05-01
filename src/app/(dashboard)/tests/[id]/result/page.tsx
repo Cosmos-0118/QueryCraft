@@ -505,7 +505,10 @@ export default function TestResultPage() {
           Incorrect <span className="text-warning">{Math.max(0, totalQuestions - correctCount)}</span>
         </span>
         <span className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
-          Score <span className="text-primary">{scorePercent}%</span>
+          Score{' '}
+          <span className="text-primary">
+            {isClassicTest ? `${scorePercent}%` : Math.round(scorePercent)}
+          </span>
         </span>
         <span className="inline-flex w-full items-center gap-1.5 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-xs text-muted-foreground">
           <Clock3 size={12} />

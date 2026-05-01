@@ -22,8 +22,6 @@ import {
   Loader2,
   Send,
   ShieldAlert,
-  Sparkles,
-  Target,
 } from 'lucide-react';
 
 interface Test {
@@ -130,25 +128,6 @@ function randomizeQuestionsForAttempt(inputQuestions: Question[], attemptId: str
   });
 }
 
-function formatViolationEventType(eventType: ViolationEvent['event_type']) {
-  switch (eventType) {
-    case 'tab_switch':
-      return 'Tab switch';
-    case 'blur':
-      return 'Focus loss';
-    case 'copy':
-      return 'Copy';
-    case 'paste':
-      return 'Paste';
-    case 'cut':
-      return 'Cut';
-    case 'context_menu':
-      return 'Right-click blocked';
-    default:
-      return 'Violation';
-  }
-}
-
 export default function TestAttemptPage() {
   const router = useRouter();
   const params = useParams();
@@ -196,7 +175,7 @@ export default function TestAttemptPage() {
   const [submitted, setSubmitted] = useState(false);
   const [autoSubmitTriggered, setAutoSubmitTriggered] = useState(false);
   const [violationCount, setViolationCount] = useState(0);
-  const [violationTimeline, setViolationTimeline] = useState<ViolationEvent[]>([]);
+  const [, setViolationTimeline] = useState<ViolationEvent[]>([]);
   const [integrityNotice, setIntegrityNotice] = useState<string | null>(null);
   const [tabSwitchPopup, setTabSwitchPopup] = useState<TabSwitchPopupState | null>(null);
 
@@ -1184,47 +1163,55 @@ export default function TestAttemptPage() {
   }
 
   return (
-    <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
+    <div className="relative mx-auto flex min-h-full w-full max-w-5xl flex-col px-5 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.13),transparent_42%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.09),transparent_42%)]" />
 
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+      <div className="mb-5 overflow-hidden rounded-[2rem] border border-white/10 bg-card/85 p-5 shadow-2xl shadow-black/20 backdrop-blur-xl">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
           <Link
             href={`/tests/${test.id}`}
-            className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+              className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
           >
             <ArrowLeft size={13} />
             Back to Test
           </Link>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
-            <Sparkles size={11} />
-            Live Attempt
+            <h1 className="mt-3 truncate text-2xl font-bold tracking-tight sm:text-3xl">{test.title}</h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Answer each question, move through the set, and submit once.
+          </p>
+        </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="rounded-2xl border border-border/70 bg-background/60 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Time</p>
+              <p className="mt-1 flex items-center gap-1.5 text-xl font-bold tracking-tight">
+                <Clock3 size={16} className="text-teal-300" />
+                {formatTime(remainingSeconds)}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-border/70 bg-background/60 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Answered</p>
+              <p className="mt-1 text-xl font-bold tracking-tight">{answeredCount}/{questions.length}</p>
+            </div>
+            <div className="rounded-2xl border border-border/70 bg-background/60 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Integrity</p>
+              <p className="mt-1 text-xl font-bold tracking-tight">{violationCount}</p>
+            </div>
           </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">{test.title}</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            Stay focused, track progress, and submit when you are ready.
-          </p>
         </div>
 
-        <div className="rounded-2xl border border-border/70 bg-card/85 px-4 py-3 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Time Left</p>
-          <p className="mt-1 flex items-center gap-1.5 text-xl font-bold tracking-tight">
-            <Clock3 size={16} className="text-teal-300" />
-            {formatTime(remainingSeconds)}
-          </p>
+        <div className="mt-5">
+          <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+            <span>Progress</span>
+            <span>{progressPercent}%</span>
         </div>
-      </div>
-
-      <div className="mb-5 rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm">
-        <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-          <span>Progress</span>
-          <span>{answeredCount}/{questions.length} answered</span>
-        </div>
-        <div className="h-2.5 overflow-hidden rounded-full bg-background/80">
+          <div className="h-2.5 overflow-hidden rounded-full bg-background/80">
           <div
             className="h-full rounded-full bg-gradient-to-r from-teal-400 to-cyan-500 transition-all duration-300"
             style={{ width: `${progressPercent}%` }}
           />
+          </div>
         </div>
       </div>
 
@@ -1237,6 +1224,12 @@ export default function TestAttemptPage() {
       {integrityNotice && (
         <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
           {integrityNotice}
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          {error}
         </div>
       )}
 
@@ -1270,29 +1263,8 @@ export default function TestAttemptPage() {
         </div>
       )}
 
-      <div className="mb-4 rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Integrity Monitor</p>
-          <span className="rounded-full border border-border/70 bg-background/70 px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
-            Violations: {violationCount}
-          </span>
-        </div>
-
-        <div className="mt-2 space-y-1">
-          {violationTimeline.length === 0 && (
-            <p className="text-xs text-muted-foreground">No integrity events logged yet.</p>
-          )}
-
-          {violationTimeline.length > 0 && [...violationTimeline].slice(-4).reverse().map((event) => (
-            <p key={event.id} className="text-xs text-muted-foreground">
-              {new Date(event.occurred_at).toLocaleTimeString()} - {formatViolationEventType(event.event_type)} ({event.action_taken})
-            </p>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-border/70 bg-card/85 p-5 shadow-xl shadow-black/10">
-        <div className="mb-4 flex flex-wrap gap-2">
+      <div className="rounded-[1.75rem] border border-white/10 bg-card/85 p-5 shadow-2xl shadow-black/20 backdrop-blur sm:p-6">
+        <div className="mb-5 flex flex-wrap gap-2 border-b border-border/50 pb-4">
           {questions.map((question, index) => {
             const isActive = index === currentIndex;
             const isAnswered = (answers[question.id] ?? '').trim().length > 0;
@@ -1300,8 +1272,8 @@ export default function TestAttemptPage() {
               <button
                 key={question.id}
                 onClick={() => navigateToQuestion(index)}
-                className={`h-8 w-8 rounded-full border text-xs font-semibold transition ${isActive
-                  ? 'border-teal-400/50 bg-teal-400/15 text-teal-200'
+                className={`h-9 w-9 rounded-full border text-xs font-semibold transition ${isActive
+                  ? 'border-teal-400/60 bg-teal-400/15 text-teal-100 shadow-lg shadow-teal-500/10'
                   : isAnswered
                     ? 'border-emerald-500/40 bg-emerald-500/12 text-emerald-300'
                     : 'border-border/70 bg-background/50 text-muted-foreground hover:border-border hover:text-foreground'
@@ -1315,21 +1287,17 @@ export default function TestAttemptPage() {
 
         {currentQuestion ? (
           <>
-            <h2 className="text-lg font-semibold tracking-tight">Question {currentIndex + 1}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-foreground">{currentQuestion.text}</p>
-
-            <div className="mt-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold tracking-tight">Question {currentIndex + 1}</h2>
               <span className="inline-flex rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 {currentQuestion.question_type === 'mcq' ? 'MCQ' : 'SQL/TEXT'}
               </span>
             </div>
+            <p className="mt-3 text-base leading-7 text-foreground">{currentQuestion.text}</p>
 
-            <div className="mt-4 space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Your Answer
-              </label>
+            <div className="mt-6 space-y-3">
               {currentQuestion.question_type === 'mcq' && currentQuestion.options.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {currentQuestion.options.map((option) => {
                     const isSelected = (answers[currentQuestion.id] ?? '') === option.key;
                     return (
@@ -1345,12 +1313,13 @@ export default function TestAttemptPage() {
                           if (saveMessage) setSaveMessage(null);
                           scheduleAutoSave();
                         }}
-                        className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm transition ${isSelected
-                          ? 'border-teal-400/50 bg-teal-400/15 text-teal-100'
-                          : 'border-border/70 bg-background/70 text-foreground hover:border-border'
+                        className={`w-full rounded-2xl border px-4 py-3.5 text-left text-sm transition ${isSelected
+                          ? 'border-teal-400/60 bg-teal-400/15 text-teal-50 shadow-lg shadow-teal-500/10'
+                          : 'border-border/70 bg-background/70 text-foreground hover:border-primary/30 hover:bg-background/90'
                           }`}
                       >
-                        <span className="font-semibold">{option.key}.</span> {option.text}
+                        <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-background/70 text-[11px] font-bold">{option.key}</span>
+                        {option.text}
                       </button>
                     );
                   })}
@@ -1378,18 +1347,18 @@ export default function TestAttemptPage() {
                   autoCapitalize="off"
                   spellCheck={false}
                   rows={8}
-                  className="w-full resize-y rounded-xl border border-border bg-background/90 px-3.5 py-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                  className="w-full resize-y rounded-2xl border border-border bg-background/90 px-4 py-4 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                   placeholder="Write your answer here..."
                 />
               )}
             </div>
 
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+            <div className="mt-6 flex flex-col gap-3 border-t border-border/50 pt-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => navigateToQuestion(currentIndex - 1)}
                   disabled={currentIndex === 0}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-10 items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-4 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <ChevronLeft size={14} />
                   Previous
@@ -1397,14 +1366,14 @@ export default function TestAttemptPage() {
                 <button
                   onClick={() => navigateToQuestion(currentIndex + 1)}
                   disabled={currentIndex >= questions.length - 1}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-10 items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-4 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Next
                   <ChevronRight size={14} />
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
                 <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                   {autoSaveStatus === 'saving' ? (
                     <>
@@ -1423,7 +1392,7 @@ export default function TestAttemptPage() {
                 <button
                   onClick={handleSubmit}
                   disabled={submitting || questions.length === 0 || !attemptId}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-teal-400 to-cyan-500 px-5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                   {submitting ? 'Submitting...' : 'Submit Attempt'}
@@ -1438,27 +1407,6 @@ export default function TestAttemptPage() {
         )}
       </div>
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-border/70 bg-card/80 p-3">
-          <p className="text-xs text-muted-foreground">Question</p>
-          <p className="mt-1 text-lg font-bold tracking-tight">{currentIndex + 1} / {Math.max(questions.length, 1)}</p>
-        </div>
-        <div className="rounded-xl border border-border/70 bg-card/80 p-3">
-          <p className="text-xs text-muted-foreground">Answered</p>
-          <p className="mt-1 text-lg font-bold tracking-tight">{answeredCount}</p>
-        </div>
-        <div className="rounded-xl border border-border/70 bg-card/80 p-3">
-          <p className="text-xs text-muted-foreground">Completion</p>
-          <p className="mt-1 text-lg font-bold tracking-tight">{progressPercent}%</p>
-        </div>
-        <div className="rounded-xl border border-border/70 bg-card/80 p-3">
-          <p className="text-xs text-muted-foreground">Target</p>
-          <p className="mt-1 inline-flex items-center gap-1.5 text-lg font-bold tracking-tight">
-            <Target size={15} className="text-teal-300" />
-            Submit Once
-          </p>
-        </div>
-      </div>
     </div>
   );
 }

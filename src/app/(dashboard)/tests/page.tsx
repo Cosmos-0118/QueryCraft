@@ -363,14 +363,17 @@ function ChoiceCard({
   return (
     <button
       onClick={onClick}
-      className="group rounded-2xl border border-border/70 bg-card/85 p-5 text-left shadow-xl shadow-black/10 transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-card"
+      className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] p-6 text-left shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 hover:border-primary/35 hover:bg-white/[0.07]"
     >
-      <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border ${accentClass}`}>
+      <div className="pointer-events-none absolute inset-0 opacity-0 transition duration-300 group-hover:opacity-100">
+        <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
+      </div>
+      <div className={`relative inline-flex h-12 w-12 items-center justify-center rounded-2xl border ${accentClass}`}>
         {icon}
       </div>
-      <h2 className="mt-4 text-lg font-semibold tracking-tight text-foreground">{title}</h2>
-      <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>
-      <span className="mt-4 inline-flex items-center rounded-lg border border-border/70 bg-background/60 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground transition group-hover:border-primary/30 group-hover:text-foreground">
+      <h2 className="relative mt-5 text-xl font-semibold tracking-tight text-foreground">{title}</h2>
+      <p className="relative mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
+      <span className="relative mt-6 inline-flex items-center rounded-full border border-border/70 bg-background/70 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground transition group-hover:border-primary/30 group-hover:text-foreground">
         {actionLabel}
       </span>
     </button>
@@ -727,13 +730,13 @@ export default function TestsPage() {
 
   if (isTeacher && showTeacherModuleChooser) {
     return (
-      <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col items-center justify-center px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
-        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
-        <div className="w-full max-w-3xl rounded-2xl border border-border/70 bg-card/85 p-8 shadow-xl shadow-black/10 sm:p-10">
-          <div className="mb-5 flex justify-center">
+      <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col items-center justify-center px-5 py-10 sm:px-6 lg:px-8 lg:py-14">
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.16),transparent_38%),radial-gradient(ellipse_at_top_right,rgba(249,115,22,0.12),transparent_42%),linear-gradient(180deg,rgba(15,23,42,0.15),transparent)]" />
+        <div className="w-full max-w-4xl overflow-hidden rounded-[2rem] border border-white/10 bg-card/80 p-6 shadow-2xl shadow-black/25 backdrop-blur-xl sm:p-8 lg:p-10">
+          <div className="mb-8 flex justify-center">
             <button
               onClick={handleSignOut}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
             >
               <ArrowLeft size={13} />
               Sign out
@@ -741,30 +744,30 @@ export default function TestsPage() {
           </div>
 
           <div className="text-center">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.09] px-3.5 py-1.5 text-xs font-semibold text-primary">
               <Sparkles size={11} />
               Teacher Module Selection
             </div>
-            <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Choose Your Teaching Module</h1>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-            Select the module type you want to work with right now.
+            <h1 className="mx-auto mt-4 max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">Choose the assessment workspace</h1>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+              Start with classic tests for scheduled assessments, or use interactive quizzes for fast leaderboard-style practice.
             </p>
           </div>
 
-          <div className="mx-auto mt-7 grid max-w-2xl gap-3 sm:grid-cols-2">
+          <div className="mx-auto mt-9 grid max-w-3xl gap-4 sm:grid-cols-2">
             <ChoiceCard
               title="Normal Test"
-              description="Use the classic test workflow with draft/publish and test-code-based attempts."
+              description="Build structured assessments, publish a code, and review student submissions."
               icon={<ClipboardList size={17} className="text-teal-200" />}
-              actionLabel="Open"
+              actionLabel="Open tests"
               accentClass="border-teal-400/30 bg-teal-500/10"
               onClick={() => setShowTeacherModuleChooser(false)}
             />
             <ChoiceCard
               title="Interactive Quiz"
-              description="Create speed-based MCQ quizzes with per-question timer and leaderboard scoring."
+              description="Create timed MCQ rounds with instant scoring and leaderboard-ready results."
               icon={<Sparkles size={17} className="text-orange-200" />}
-              actionLabel="Open"
+              actionLabel="Open quizzes"
               accentClass="border-orange-400/30 bg-orange-500/10"
               onClick={() => {
                 setShowTeacherModuleChooser(false);
@@ -779,96 +782,103 @@ export default function TestsPage() {
 
   return (
     <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.14),transparent_40%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.1),transparent_42%)]" />
 
-      <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-6 overflow-hidden rounded-[2rem] border border-white/10 bg-card/80 p-5 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-7">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <button
             onClick={handleBackFromWorkspace}
-            className="mb-3 inline-flex items-center gap-2 rounded-full border border-teal-300/60 bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
+              className="mb-4 inline-flex items-center gap-2 rounded-full border border-teal-300/60 bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
           >
             <ArrowLeft size={13} />
             {isTeacher ? 'Back to Test Type' : 'Back'}
           </button>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Test Module - Assessment Studio</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            Create, manage, publish, and review assessments in one smooth workspace.
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              {isTeacher ? 'Normal Test Workspace' : 'Your Test Dashboard'}
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+              {isTeacher
+                ? 'Create reliable assessments, publish secure codes, and review submissions without clutter.'
+                : 'Join new tests with a code and review your submitted attempts in one clean place.'}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {isStudent && (
-            <>
-              <div className="rounded-xl border border-border/80 bg-card/80 px-3 py-2 text-right shadow-sm">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Total Tests</p>
-                <p className="text-sm font-semibold text-foreground">{studentPastTests.length}</p>
-              </div>
-              <div className="rounded-xl border border-border/80 bg-card/80 px-3 py-2 text-right shadow-sm">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Role</p>
-                <p className="text-sm font-semibold text-foreground">Student</p>
-              </div>
-            </>
-          )}
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {isTeacher && (
             <button
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
+                className="inline-flex h-11 items-center gap-2 rounded-full bg-gradient-to-r from-teal-400 to-cyan-500 px-5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
               onClick={() => setShowCreate(true)}
             >
               <Plus size={16} />
               Create Test
             </button>
           )}
+            {isStudent && (
+              <div className="rounded-2xl border border-border/70 bg-background/55 px-4 py-3 text-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Submitted Attempts</p>
+                <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">{studentPastTests.length}</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {isTeacher && (
-        <div className="mb-5 grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-2 rounded-2xl border border-border/80 bg-card/70 p-2.5">
-          <span className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
-            Total <span className="text-primary">{teacherStats.total}</span>
-          </span>
-          <span className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
-            Published <span className="text-emerald-300">{teacherStats.published}</span>
-          </span>
-          <span className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
-            Drafts <span className="text-amber-300">{teacherStats.drafts}</span>
-          </span>
-          <span className="inline-flex w-full items-center gap-1.5 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-xs text-muted-foreground">
+        <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="rounded-2xl border border-white/10 bg-card/75 p-4 shadow-lg shadow-black/10">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Total</p>
+            <p className="mt-2 text-2xl font-bold text-foreground">{teacherStats.total}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-400/15 bg-emerald-500/[0.06] p-4 shadow-lg shadow-black/10">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-300/80">Published</p>
+            <p className="mt-2 text-2xl font-bold text-emerald-200">{teacherStats.published}</p>
+          </div>
+          <div className="rounded-2xl border border-amber-400/15 bg-amber-500/[0.06] p-4 shadow-lg shadow-black/10">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-300/80">Drafts</p>
+            <p className="mt-2 text-2xl font-bold text-amber-200">{teacherStats.drafts}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-card/75 p-4 shadow-lg shadow-black/10">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Recent Activity</p>
+            <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             <Clock3 size={12} />
             {teacherStats.latestUpdatedAt
               ? `Last update ${new Date(teacherStats.latestUpdatedAt).toLocaleString()}`
               : 'No tests yet'}
-          </span>
+            </p>
+          </div>
         </div>
       )}
 
       {isStudent && (
-        <div className="mb-6 space-y-4">
+        <div className="mb-6 flex flex-col gap-4">
           <form
             onSubmit={handleJoinByCode}
-            className="rounded-2xl border border-border/90 bg-card/85 p-5 shadow-xl shadow-black/10"
+            className="relative w-full overflow-hidden rounded-[1.75rem] border border-teal-400/15 bg-card/85 p-5 shadow-2xl shadow-black/20 backdrop-blur sm:p-6"
           >
-            <div className="mb-3 flex items-center gap-2">
-              <div className="inline-flex rounded-lg border border-border/70 bg-background/60 p-2 text-muted-foreground">
-                <KeyRound size={14} />
+            <div className="pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-teal-400/10 blur-3xl" />
+            <div className="relative mb-5 flex items-start gap-3">
+              <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-teal-400/25 bg-teal-500/10 text-teal-200">
+                <KeyRound size={16} />
               </div>
               <div>
-                <h2 className="text-sm font-semibold tracking-tight">Enter Test Code</h2>
-                <p className="text-xs text-muted-foreground">Use the code shared by your teacher to start the test.</p>
+                <h2 className="text-lg font-semibold tracking-tight">Join a test</h2>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Enter the access code shared by your teacher. We will open the right test flow automatically.</p>
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
               <input
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                 placeholder="QC-START1"
-                className="h-11 flex-1 rounded-xl border border-border bg-background/90 px-3.5 text-sm uppercase tracking-[0.12em] outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                className="h-12 w-full flex-1 rounded-2xl border border-border bg-background/90 px-4 text-sm font-semibold uppercase tracking-[0.16em] outline-none transition focus:border-teal-300/60 focus:ring-2 focus:ring-teal-300/20"
                 maxLength={16}
               />
               <button
                 type="submit"
                 disabled={joinLoading || !joinCode.trim()}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-teal-400 to-cyan-500 px-6 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/25 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[11rem]"
               >
                 {joinLoading ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
                 {joinLoading ? 'Joining...' : 'Join Test'}
@@ -880,13 +890,13 @@ export default function TestsPage() {
             )}
           </form>
 
-          <section className="rounded-2xl border border-border/90 bg-card/85 p-5 shadow-xl shadow-black/10">
+          <section className="w-full rounded-[1.75rem] border border-white/10 bg-card/85 p-5 shadow-2xl shadow-black/20 backdrop-blur sm:p-6">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold tracking-tight">Past Tests</h2>
-                <p className="text-xs text-muted-foreground">Track your submitted attempts across normal and interactive modules.</p>
+                <h2 className="text-lg font-semibold tracking-tight">Submitted tests</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Your latest results and review pages.</p>
               </div>
-              <span className="rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs font-semibold text-muted-foreground">
                 {studentPastTests.length}
               </span>
             </div>
@@ -942,13 +952,13 @@ export default function TestsPage() {
                 {studentPastTests.map((row) => (
                   <article
                     key={`${row.testId}_${row.attemptId}`}
-                    className="group rounded-2xl border border-border/70 bg-background/55 px-4 py-3.5 transition hover:border-primary/35 hover:bg-background/70"
+                    className="group rounded-2xl border border-border/70 bg-background/55 px-4 py-3.5 transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-background/75"
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="truncate text-sm font-semibold text-foreground">{row.title}</p>
-                          <span className="rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          <span className="rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
                             {formatModuleTypeLabel(row.moduleType)}
                           </span>
                         </div>
@@ -959,14 +969,18 @@ export default function TestsPage() {
                             Submitted {formatSubmissionDateTime(row.submittedAt)}
                           </span>
                           <span className={`inline-flex items-center rounded-md border px-2 py-1 font-semibold ${getScoreBadgeClasses(row.score)}`}>
-                            {typeof row.score === 'number' ? `Score ${Math.round(row.score)}%` : 'Score Pending'}
+                            {typeof row.score === 'number'
+                              ? row.moduleType === 'interactive_quiz'
+                                ? `Score ${Math.round(row.score)}`
+                                : `Score ${Math.round(row.score)}%`
+                              : 'Score Pending'}
                           </span>
                         </div>
                       </div>
 
                       <Link
                         href={getPastTestResultPath(row)}
-                        className="inline-flex h-9 shrink-0 items-center gap-1.5 self-start rounded-lg border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition group-hover:border-primary/40 group-hover:text-foreground"
+                        className="inline-flex h-9 shrink-0 items-center gap-1.5 self-start rounded-full border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition group-hover:border-primary/40 group-hover:text-foreground"
                       >
                         <Eye size={13} />
                         View Details
@@ -1021,12 +1035,12 @@ export default function TestsPage() {
       )}
 
       {isTeacher && !loading && !error && teacherVisibleTests.length === 0 && (
-        <div className="rounded-2xl border border-border/90 bg-card/80 p-10 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-border/85 bg-background/60 text-muted-foreground">
+        <div className="rounded-[1.75rem] border border-white/10 bg-card/85 p-10 text-center shadow-2xl shadow-black/20">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-teal-400/20 bg-teal-500/10 text-teal-200">
             <ClipboardList size={20} />
           </div>
-          <h2 className="mt-4 text-lg font-semibold tracking-tight">No tests yet</h2>
-          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+          <h2 className="mt-5 text-xl font-semibold tracking-tight">No tests yet</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
             {isTeacher
               ? 'Create your first test to start assigning assessments to students.'
               : 'No published tests are available right now. Ask your teacher to publish one.'}
@@ -1052,18 +1066,18 @@ export default function TestsPage() {
             return (
               <article
                 key={test.id}
-                className="rounded-2xl border border-border/80 bg-card/85 p-4 shadow-lg shadow-black/10 transition hover:border-primary/30 hover:bg-card"
+                className="group rounded-[1.5rem] border border-white/10 bg-card/85 p-4 shadow-xl shadow-black/10 transition duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:bg-card sm:p-5"
               >
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={`/tests/${test.id}`}
-                        className="truncate text-base font-semibold tracking-tight text-foreground transition hover:text-primary"
+                        className="truncate text-base font-semibold tracking-tight text-foreground transition group-hover:text-primary"
                       >
                         {test.title}
                       </Link>
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(test.status)}`}>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] ${getStatusClasses(test.status)}`}>
                         {formatStatus(test.status)}
                       </span>
                     </div>
@@ -1090,14 +1104,14 @@ export default function TestsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/tests/${test.id}`}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-border hover:text-foreground"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-border hover:text-foreground"
                     >
                       <Eye size={13} />
                       Open
                     </Link>
 
                     <button
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-cyan-300/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-cyan-300/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
                       onClick={() => handleEdit(test)}
                       disabled={isPublished}
                     >
@@ -1108,7 +1122,7 @@ export default function TestsPage() {
                     {isPublished && (
                       <Link
                         href={`/tests/${test.id}/review`}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-violet-300/50 hover:text-foreground"
+                        className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-violet-300/50 hover:text-foreground"
                       >
                         <ClipboardList size={13} />
                         Submissions
@@ -1116,7 +1130,7 @@ export default function TestsPage() {
                     )}
 
                     <button
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:border-primary/60 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-full border border-primary/40 bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:border-primary/60 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => handlePublish(test)}
                       disabled={isPublished || isPublishing}
                     >
