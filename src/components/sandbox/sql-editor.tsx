@@ -926,20 +926,20 @@ export function SqlEditor({
             fontFamily: 'var(--font-mono), monospace',
           },
           '.cm-editor': { height: '100%' },
-          '.cm-gutters': { background: 'transparent', border: 'none', color: '#3f3f46' },
+          '.cm-gutters': { background: 'transparent', border: 'none', color: 'var(--sandbox-editor-gutter)' },
           '.cm-scroller': {
             borderRadius: '12px',
             overflow: 'auto',
             maxHeight: '100%',
           },
-          '.cm-activeLine': { backgroundColor: 'rgba(113,113,122,0.08)' },
+          '.cm-activeLine': { backgroundColor: 'var(--sandbox-editor-active-line)' },
           '.cm-activeLineGutter': { backgroundColor: 'transparent' },
           '.cm-tooltip-autocomplete': {
-            border: '1px solid rgba(63,63,70,0.6) !important',
+            border: '1px solid var(--sandbox-editor-tooltip-border) !important',
             borderRadius: '10px !important',
-            background: 'rgba(24,24,27,0.98) !important',
+            background: 'var(--sandbox-editor-tooltip-bg) !important',
             backdropFilter: 'blur(12px)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.4) !important',
+            boxShadow: '0 8px 32px color-mix(in oklab, var(--sandbox-border-strong) 34%, transparent) !important',
             overflow: 'hidden',
           },
           '.cm-tooltip-autocomplete ul': {
@@ -951,20 +951,20 @@ export function SqlEditor({
             borderRadius: '0 !important',
           },
           '.cm-tooltip-autocomplete li[aria-selected]': {
-            background: 'rgba(139,92,246,0.15) !important',
-            color: '#e4e4e7 !important',
+            background: 'var(--sandbox-editor-tooltip-selected) !important',
+            color: 'var(--sandbox-editor-tooltip-text) !important',
           },
           '.cm-completionLabel': {
-            color: '#d4d4d8',
+            color: 'var(--sandbox-editor-tooltip-text)',
           },
           '.cm-completionDetail': {
-            color: '#71717a',
+            color: 'var(--sandbox-editor-tooltip-muted)',
             fontStyle: 'normal !important',
             marginLeft: '8px',
             fontSize: '11px',
           },
           '.cm-completionMatchedText': {
-            color: '#a78bfa !important',
+            color: 'var(--sandbox-editor-tooltip-match) !important',
             textDecoration: 'none !important',
             fontWeight: '600',
           },
@@ -1017,18 +1017,17 @@ export function SqlEditor({
   return (
     <div className={`min-h-0 ${className ?? ''}`}>
       <div
-        className={`overflow-hidden rounded-xl border border-border/80/50 transition-[height] duration-200 ${hasOutput ? 'h-[clamp(220px,36vh,420px)]' : 'h-[clamp(300px,58vh,680px)]'
+        className={`qc-sandbox-editor-shell overflow-hidden rounded-xl transition-[height] duration-200 ${hasOutput ? 'h-[clamp(220px,36vh,420px)]' : 'h-[clamp(300px,58vh,680px)]'
           } ${executionFeedback === 'success'
             ? 'execute-feedback-success'
             : executionFeedback === 'error'
               ? 'execute-feedback-error'
               : ''
           }`}
-        style={{ background: 'linear-gradient(180deg, rgba(24,24,27,0.95) 0%, rgba(18,18,21,0.98) 100%)' }}
         ref={editorRef}
       />
       <p className="mt-1.5 text-right text-[11px] text-muted-foreground">
-        Press <kbd className="rounded-md border border-border/80/50 bg-muted/80/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{isMac ? '⌘' : 'Ctrl'} Enter</kbd> to execute
+        Press <kbd className="qc-sandbox-kbd rounded-md px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{isMac ? '⌘' : 'Ctrl'} Enter</kbd> to execute
       </p>
     </div>
   );

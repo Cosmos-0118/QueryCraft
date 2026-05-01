@@ -20,22 +20,39 @@ export function TableViewer({
   caption,
 }: TableViewerProps) {
   return (
-    <div className={cn('overflow-auto rounded-lg border border-border', className)}>
+    <div className={cn('qc-sandbox-code-block overflow-auto rounded-lg', className)}>
       <table className="w-full text-sm">
         {caption && (
-          <caption className="border-b border-border bg-muted px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <caption
+            className="border-b px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            style={{
+              borderColor: 'var(--sandbox-border-soft)',
+              background: 'color-mix(in oklab, var(--sandbox-surface-soft) 84%, transparent)',
+            }}
+          >
             {caption}
           </caption>
         )}
         <thead>
-          <tr className="border-b border-border bg-muted/50">
+          <tr
+            className="border-b"
+            style={{
+              borderColor: 'var(--sandbox-border-soft)',
+              background: 'color-mix(in oklab, var(--sandbox-surface-soft) 80%, transparent)',
+            }}
+          >
             {columns.map((col) => (
               <th
                 key={col}
-                className={cn(
-                  'px-4 py-2.5 text-left font-semibold',
-                  highlightColumns.includes(col) && 'bg-primary/15 text-primary',
-                )}
+                className="px-4 py-2.5 text-left font-semibold"
+                style={
+                  highlightColumns.includes(col)
+                    ? {
+                      background: 'color-mix(in oklab, var(--accent) 18%, transparent)',
+                      color: 'var(--accent)',
+                    }
+                    : undefined
+                }
               >
                 {col}
               </th>
@@ -53,18 +70,25 @@ export function TableViewer({
             rows.map((row, i) => (
               <tr
                 key={i}
-                className={cn(
-                  'border-b border-border last:border-0 transition-colors',
-                  highlightRows.includes(i) && 'bg-primary/10 animate-[highlight-flash_0.6s_ease-out]',
-                )}
+                className={cn('border-b last:border-0 transition-colors', highlightRows.includes(i) && 'animate-[highlight-flash_0.6s_ease-out]')}
+                style={{
+                  borderColor: 'var(--sandbox-border-soft)',
+                  background: highlightRows.includes(i)
+                    ? 'color-mix(in oklab, var(--accent) 12%, transparent)'
+                    : undefined,
+                }}
               >
                 {columns.map((col) => (
                   <td
                     key={col}
-                    className={cn(
-                      'px-4 py-2',
-                      highlightColumns.includes(col) && 'bg-primary/5 font-medium',
-                    )}
+                    className={cn('px-4 py-2', highlightColumns.includes(col) && 'font-medium')}
+                    style={
+                      highlightColumns.includes(col)
+                        ? {
+                          background: 'color-mix(in oklab, var(--accent) 8%, transparent)',
+                        }
+                        : undefined
+                    }
                   >
                     {String(row[col] ?? '')}
                   </td>

@@ -2,7 +2,6 @@
 
 import type { TableSchema } from '@/types/database';
 import { cn } from '@/lib/utils/helpers';
-import { useThemeStore } from '@/stores/theme-store';
 import { Database, KeyRound } from 'lucide-react';
 
 interface SchemaBrowserProps {
@@ -11,33 +10,24 @@ interface SchemaBrowserProps {
 }
 
 export function SchemaBrowser({ tables, className }: SchemaBrowserProps) {
-  const { theme } = useThemeStore();
-  const isLightTheme = theme === 'light';
-  const containerClass = cn(
-    'rounded-xl',
-    isLightTheme
-      ? 'border border-border bg-card shadow-sm'
-      : 'border border-border/80/50 bg-muted/60',
-    className,
-  );
-  const headerClass = isLightTheme
-    ? 'flex items-center gap-2 border-b border-border bg-muted px-4 py-2.5'
-    : 'flex items-center gap-2 border-b border-border/80/40 bg-muted/80/30 px-4 py-2.5';
-  const headerIconClass = isLightTheme ? 'h-3.5 w-3.5 text-foreground/80' : 'h-3.5 w-3.5 text-emerald-400';
-  const headerTitleClass = isLightTheme
-    ? 'text-xs font-semibold uppercase tracking-wider text-muted-foreground/80'
-    : 'text-xs font-semibold uppercase tracking-wider text-muted-foreground/80';
+  const containerClass = cn('qc-sandbox-surface-soft rounded-xl', className);
 
   if (tables.length === 0) {
     return (
       <div className={containerClass}>
-        <div className={headerClass}>
-          <Database className={headerIconClass} />
-          <span className={headerTitleClass}>
+        <div
+          className="flex items-center gap-2 border-b px-4 py-2.5"
+          style={{
+            borderColor: 'var(--sandbox-border-soft)',
+            background: 'color-mix(in oklab, var(--sandbox-surface-soft) 86%, transparent)',
+          }}
+        >
+          <Database className="h-3.5 w-3.5 text-[color:var(--sandbox-tone-emerald)]" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/90">
             Schema
           </span>
         </div>
-        <p className={cn('px-4 py-6 text-center text-xs', isLightTheme ? 'text-muted-foreground/80' : 'text-muted-foreground')}>
+        <p className="px-4 py-6 text-center text-xs text-muted-foreground">
           No tables yet. Load a dataset or create a table.
         </p>
       </div>
@@ -46,16 +36,20 @@ export function SchemaBrowser({ tables, className }: SchemaBrowserProps) {
 
   return (
     <div className={containerClass}>
-      <div className={headerClass}>
-        <Database className={headerIconClass} />
-        <span className={headerTitleClass}>
+      <div
+        className="flex items-center gap-2 border-b px-4 py-2.5"
+        style={{
+          borderColor: 'var(--sandbox-border-soft)',
+          background: 'color-mix(in oklab, var(--sandbox-surface-soft) 86%, transparent)',
+        }}
+      >
+        <Database className="h-3.5 w-3.5 text-[color:var(--sandbox-tone-emerald)]" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/90">
           Schema
         </span>
         <span
-          className={cn(
-            'ml-auto rounded-md px-1.5 py-0.5 text-[10px] font-bold',
-            isLightTheme ? 'bg-primary text-white' : 'bg-emerald-500/10 text-emerald-400',
-          )}
+          data-tone="emerald"
+          className="qc-sandbox-dialog-badge ml-auto rounded-md px-1.5 py-0.5 text-[10px] font-bold"
         >
           {tables.length}
         </span>
@@ -64,27 +58,17 @@ export function SchemaBrowser({ tables, className }: SchemaBrowserProps) {
         {tables.map((table) => (
           <details key={table.name} className="group">
             <summary
-              className={cn(
-                'flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
-                isLightTheme ? 'text-foreground/80 hover:bg-muted/80' : 'text-foreground/80 hover:bg-muted/80/50',
-              )}
+              className="qc-sandbox-list-item flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors"
             >
-              <span
-                className={cn(
-                  'text-[10px] transition-transform group-open:rotate-90',
-                  isLightTheme ? 'text-muted-foreground/80' : 'text-muted-foreground',
-                )}
-              >
+              <span className="text-[10px] text-muted-foreground transition-transform group-open:rotate-90">
                 ▶
               </span>
               <span
-                className={cn(
-                  'h-1.5 w-1.5 rounded-full',
-                  isLightTheme ? 'bg-muted0/70' : 'bg-emerald-400/60',
-                )}
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: 'color-mix(in oklab, var(--sandbox-tone-emerald) 70%, transparent)' }}
               />
               {table.name}
-              <span className={cn('ml-auto text-[10px]', isLightTheme ? 'text-muted-foreground/80' : 'text-muted-foreground')}>
+              <span className="ml-auto text-[10px] text-muted-foreground">
                 {table.columns.length} cols
               </span>
             </summary>
@@ -92,29 +76,27 @@ export function SchemaBrowser({ tables, className }: SchemaBrowserProps) {
               {table.columns.map((col) => (
                 <li
                   key={col.name}
-                  className={cn('flex items-center gap-2 rounded-md px-2.5 py-1 text-xs', isLightTheme ? 'text-muted-foreground/80' : 'text-muted-foreground/80')}
+                  className="flex items-center gap-2 rounded-md px-2.5 py-1 text-xs text-muted-foreground"
                 >
                   {col.primaryKey ? (
-                    <KeyRound className={cn('h-3 w-3', isLightTheme ? 'text-amber-600' : 'text-amber-400')} />
+                    <KeyRound className="h-3 w-3 text-[color:var(--sandbox-tone-amber)]" />
                   ) : col.foreignKey ? (
-                    <KeyRound className={cn('h-3 w-3', isLightTheme ? 'text-blue-600' : 'text-blue-400')} />
+                    <KeyRound className="h-3 w-3 text-[color:var(--sandbox-tone-sky)]" />
                   ) : (
                     <span
-                      className={cn(
-                        'ml-0.5 inline-block h-1 w-1 rounded-full',
-                        isLightTheme ? 'bg-border' : 'bg-primary',
-                      )}
+                      className="ml-0.5 inline-block h-1 w-1 rounded-full"
+                      style={{ background: 'var(--sandbox-border-strong)' }}
                     />
                   )}
-                  <span className={cn('font-medium', isLightTheme ? 'text-foreground/80' : 'text-foreground/80')}>
+                  <span className="font-medium text-foreground/90">
                     {col.name}
                     {col.foreignKey && (
-                      <span className={cn('ml-1.5 font-normal', isLightTheme ? 'text-muted-foreground/80' : 'text-muted-foreground/80')}>
+                      <span className="ml-1.5 font-normal text-muted-foreground">
                         → {col.foreignKey.table}.{col.foreignKey.column}
                       </span>
                     )}
                   </span>
-                  <span className={cn('ml-auto font-mono text-[10px] uppercase', isLightTheme ? 'text-muted-foreground/80' : 'text-muted-foreground')}>
+                  <span className="ml-auto font-mono text-[10px] uppercase text-muted-foreground">
                     {col.type}
                   </span>
                 </li>

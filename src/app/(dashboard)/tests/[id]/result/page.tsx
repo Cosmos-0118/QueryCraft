@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
 import {
@@ -113,6 +113,8 @@ function StatCard({
 }
 
 export default function TestResultPage() {
+  const router = useRouter();
+  const pathname = usePathname();
   const params = useParams();
   const searchParams = useSearchParams();
   const { user } = useAuth();
@@ -131,6 +133,12 @@ export default function TestResultPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
+
+  const loginNextTarget = useMemo(() => {
+    const query = searchParams.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  }, [pathname, searchParams]);
 
   useEffect(() => {
     if (!testId) return;
@@ -140,6 +148,7 @@ export default function TestResultPage() {
     const loadResultContext = async () => {
       setLoading(true);
       setError(null);
+      setAccessDenied(false);
 
       try {
         const [testRes, questionsRes] = await Promise.all([
@@ -148,6 +157,16 @@ export default function TestResultPage() {
         ]);
 
         const [testData, questionsData] = await Promise.all([testRes.json(), questionsRes.json()]);
+
+        if (testRes.status === 401 || questionsRes.status === 401) {
+          router.replace(`/tests/login?next=${encodeURIComponent(loginNextTarget)}`);
+          return;
+        }
+
+        if (testRes.status === 403 || questionsRes.status === 403) {
+          setAccessDenied(true);
+          return;
+        }
 
         if (!testRes.ok || !testData?.test) {
           setError(testData.error || 'Unable to load test result context.');
@@ -169,6 +188,16 @@ export default function TestResultPage() {
         const attemptRes = await fetch(attemptUrl, { signal: controller.signal });
         const attemptData = await attemptRes.json();
 
+        if (attemptRes.status === 401) {
+          router.replace(`/tests/login?next=${encodeURIComponent(loginNextTarget)}`);
+          return;
+        }
+
+        if (attemptRes.status === 403) {
+          setAccessDenied(true);
+          return;
+        }
+
         if (!attemptRes.ok) {
           setError(attemptData.error || 'Unable to load attempt result.');
           return;
@@ -189,7 +218,7 @@ export default function TestResultPage() {
     loadResultContext();
 
     return () => controller.abort();
-  }, [attemptIdQuery, studentIdQuery, teacherAccessQuery, testId, user?.id]);
+  }, [attemptIdQuery, loginNextTarget, router, studentIdQuery, teacherAccessQuery, testId, user?.id]);
 
   const isClassicTest = !test?.module_type || test.module_type === 'classic';
   const isPublished = attempt?.published === true;
@@ -286,6 +315,31 @@ export default function TestResultPage() {
             <div>
               <p className="font-semibold">Unable to load result</p>
               <p className="mt-1 text-sm text-red-300/90">{error}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-amber-200">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={16} className="mt-0.5" />
+            <div>
+              <p className="font-semibold">Access restricted</p>
+              <p className="mt-1 text-sm text-amber-200/90">
+                This result is not available for your account.
+              </p>
+              <Link
+                href="/tests"
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+              >
+                <ArrowLeft size={15} />
+                Back to Tests
+              </Link>
             </div>
           </div>
         </div>
@@ -537,11 +591,10 @@ export default function TestResultPage() {
                     <p className="mt-1 text-sm text-foreground">{item.question_text}</p>
                   </div>
                   <span
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                      item.is_correct
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${item.is_correct
                         ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300'
                         : 'border-amber-500/30 bg-amber-500/12 text-amber-300'
-                    }`}
+                      }`}
                   >
                     {item.is_correct ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
                     {item.is_correct ? 'Correct' : 'Needs Work'}

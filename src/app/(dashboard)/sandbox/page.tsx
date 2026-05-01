@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSqlEngine } from '@/hooks/use-sql-engine';
 import { useSandboxStore } from '@/stores/sandbox-store';
-import { useThemeStore } from '@/stores/theme-store';
 import { useSessionPersistence } from '@/hooks/use-session-persistence';
 import { useLoadingStore } from '@/stores/loading-store';
 import { SqlEditor } from '@/components/sandbox/sql-editor';
@@ -13,7 +12,6 @@ import { SchemaBrowser } from '@/components/sandbox/schema-browser';
 import { CreateTableModal } from '@/components/algebra/create-table-modal';
 import { ResultPanel } from '@/components/visual/result-panel';
 import { SqlErrorAlert } from '@/components/visual/sql-error-alert';
-import { cn } from '@/lib/utils/helpers';
 import type { QueryResult, StatementQueryResult } from '@/types/database';
 import {
   Terminal,
@@ -87,7 +85,6 @@ export default function SandboxPage() {
     seedDatasets,
   } = useSqlEngine();
   const store = useSandboxStore();
-  const { theme } = useThemeStore();
   const { start: startLoading, stop: stopLoading } = useLoadingStore();
   const [result, setResult] = useState<QueryResult | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -551,11 +548,6 @@ export default function SandboxPage() {
 
   const tableCount = tables.length;
   const historyCount = store.queryHistory.length;
-  const isLightTheme = theme === 'light';
-  const lightToolbarActionButtonClass =
-    'inline-flex items-center gap-1.5 rounded-lg border border-border bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary/90 disabled:opacity-40';
-  const lightToolbarDangerButtonClass =
-    'inline-flex items-center gap-1.5 rounded-lg border border-rose-700 bg-rose-700 px-3 py-1.5 text-[11px] font-medium text-rose-50 shadow-sm transition-colors hover:border-rose-800 hover:bg-rose-800 active:scale-95';
   const statementResults: StatementQueryResult[] = result
     ? result.statementResults && result.statementResults.length > 0
       ? result.statementResults
@@ -574,28 +566,18 @@ export default function SandboxPage() {
 
   return (
     <>
-      <div className="flex h-full flex-col gap-3 p-6 lg:p-8">
+      <div className="qc-sandbox-page flex h-full flex-col gap-3 rounded-2xl p-6 lg:p-8">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
-            <div
-              className={cn(
-                'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1',
-                'ring-emerald-500/25',
-              )}
-              style={
-                isLightTheme
-                  ? undefined
-                  : { background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.04) 100%)' }
-              }
-            >
-              <Terminal className={cn('h-5 w-5', 'text-emerald-400')} />
+            <div className="qc-sandbox-icon-badge mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+              <Terminal className="h-5 w-5" />
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-foreground">SQL Sandbox</h1>
               <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-1">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: 'var(--sandbox-tone-emerald)' }} />
                   {tableCount} table{tableCount !== 1 ? 's' : ''}
                 </span>
                 <span className="text-muted-foreground/70">&middot;</span>
@@ -606,7 +588,7 @@ export default function SandboxPage() {
             </div>
           </div>
 
-          <div className="w-full rounded-2xl border border-border/70 bg-card/95 p-3 shadow-[0_10px_26px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:w-auto">
+          <div className="qc-sandbox-surface w-full rounded-2xl p-3 sm:w-auto">
             <div className="overflow-x-auto overflow-y-visible">
               <div className="flex min-w-max flex-wrap items-center gap-2 xl:min-w-0">
                 {/* Databases dropdown */}
@@ -619,11 +601,11 @@ export default function SandboxPage() {
                       setShowDatabases((v) => !v);
                     }}
                     disabled={!isReady}
-                    className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2 text-[11px] font-medium text-foreground transition-colors hover:border-border hover:bg-muted disabled:opacity-40"
+                    className="qc-sandbox-btn qc-sandbox-btn-neutral inline-flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-medium"
                   >
-                    <Database className="h-3.5 w-3.5 text-sky-500 dark:text-sky-300" />
+                    <Database className="h-3.5 w-3.5 text-[color:var(--sandbox-tone-sky)]" />
                     Databases
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                    <span className="qc-sandbox-chip-muted rounded-full px-2 py-0.5 text-[10px]">
                       {activeDatabase}
                     </span>
                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
@@ -640,28 +622,25 @@ export default function SandboxPage() {
                       setShowUsers((v) => !v);
                     }}
                     disabled={!isReady}
-                    className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2 text-[11px] font-medium text-foreground transition-colors hover:border-border hover:bg-muted disabled:opacity-40"
+                    className="qc-sandbox-btn qc-sandbox-btn-neutral inline-flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-medium"
                   >
-                    <UserRound className="h-3.5 w-3.5 text-amber-500 dark:text-amber-300" />
+                    <UserRound className="h-3.5 w-3.5 text-[color:var(--sandbox-tone-amber)]" />
                     Users
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                    <span className="qc-sandbox-chip-muted rounded-full px-2 py-0.5 text-[10px]">
                       {activeUser}
                     </span>
                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                   </button>
                 </div>
 
-                <div className="mx-0.5 h-5 w-px bg-border/80" />
+                <div className="qc-sandbox-divider mx-0.5 h-5 w-px" />
 
                 {/* Create Table */}
                 <button
                   onClick={() => setCreateOpen(true)}
                   disabled={!isReady}
-                  className={
-                    isLightTheme
-                      ? lightToolbarActionButtonClass
-                      : 'inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-300 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20 disabled:opacity-40'
-                  }
+                  data-tone="emerald"
+                  className="qc-sandbox-btn qc-sandbox-btn-tone inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Create Table
@@ -671,11 +650,8 @@ export default function SandboxPage() {
                 <button
                   onClick={() => setShowImport(!showImport)}
                   disabled={!isReady}
-                  className={
-                    isLightTheme
-                      ? lightToolbarActionButtonClass
-                      : 'inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20 disabled:opacity-40'
-                  }
+                  data-tone="violet"
+                  className="qc-sandbox-btn qc-sandbox-btn-tone inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium"
                 >
                   <ClipboardPaste className="h-3.5 w-3.5" />
                   Import SQL
@@ -690,22 +666,13 @@ export default function SandboxPage() {
                     setShowTriggersPanel((v) => !v);
                   }}
                   disabled={!isReady}
-                  className={
-                    isLightTheme
-                      ? lightToolbarActionButtonClass
-                      : 'inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-[11px] font-medium text-cyan-300 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/20 disabled:opacity-40'
-                  }
+                  data-tone="cyan"
+                  className="qc-sandbox-btn qc-sandbox-btn-tone inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium"
                 >
                   <ListTree className="h-3.5 w-3.5" />
                   Triggers
                   {triggerRows.length > 0 && (
-                    <span
-                      className={
-                        isLightTheme
-                          ? 'rounded-full bg-card/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
-                          : 'rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-200'
-                      }
-                    >
+                    <span data-tone="cyan" className="qc-sandbox-dialog-badge rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
                       {triggerRows.length}
                     </span>
                   )}
@@ -720,22 +687,13 @@ export default function SandboxPage() {
                     setShowProceduresPanel((v) => !v);
                   }}
                   disabled={!isReady}
-                  className={
-                    isLightTheme
-                      ? lightToolbarActionButtonClass
-                      : 'inline-flex items-center gap-1.5 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1.5 text-[11px] font-medium text-fuchsia-300 transition-all hover:border-fuchsia-500/50 hover:bg-fuchsia-500/20 disabled:opacity-40'
-                  }
+                  data-tone="fuchsia"
+                  className="qc-sandbox-btn qc-sandbox-btn-tone inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium"
                 >
                   <ScrollText className="h-3.5 w-3.5" />
                   Procedures
                   {procedureRows.length > 0 && (
-                    <span
-                      className={
-                        isLightTheme
-                          ? 'rounded-full bg-card/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
-                          : 'rounded-full bg-fuchsia-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-200'
-                      }
-                    >
+                    <span data-tone="fuchsia" className="qc-sandbox-dialog-badge rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
                       {procedureRows.length}
                     </span>
                   )}
@@ -750,22 +708,13 @@ export default function SandboxPage() {
                     setShowCursorsPanel((v) => !v);
                   }}
                   disabled={!isReady}
-                  className={
-                    isLightTheme
-                      ? lightToolbarActionButtonClass
-                      : 'inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-[11px] font-medium text-sky-300 transition-all hover:border-sky-500/50 hover:bg-sky-500/20 disabled:opacity-40'
-                  }
+                  data-tone="sky"
+                  className="qc-sandbox-btn qc-sandbox-btn-tone inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium"
                 >
                   <Terminal className="h-3.5 w-3.5" />
                   Cursors
                   {cursorRows.length > 0 && (
-                    <span
-                      className={
-                        isLightTheme
-                          ? 'rounded-full bg-card/20 px-1.5 py-0.5 text-[10px] font-semibold text-white'
-                          : 'rounded-full bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-sky-200'
-                      }
-                    >
+                    <span data-tone="sky" className="qc-sandbox-dialog-badge rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
                       {cursorRows.length}
                     </span>
                   )}
@@ -782,11 +731,8 @@ export default function SandboxPage() {
                     setShowSecurityPanel((v) => !v);
                   }}
                   disabled={!isReady}
-                  className={
-                    isLightTheme
-                      ? lightToolbarActionButtonClass
-                      : 'inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-medium text-amber-300 transition-all hover:border-amber-500/50 hover:bg-amber-500/20 disabled:opacity-40'
-                  }
+                  data-tone="amber"
+                  className="qc-sandbox-btn qc-sandbox-btn-tone inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium"
                 >
                   <Shield className="h-3.5 w-3.5" />
                   Security
@@ -795,11 +741,7 @@ export default function SandboxPage() {
                 {/* Clear */}
                 <button
                   onClick={handleClearInputOutput}
-                  className={
-                    isLightTheme
-                      ? lightToolbarDangerButtonClass
-                      : 'inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95'
-                  }
+                  className="qc-sandbox-btn qc-sandbox-btn-danger inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium"
                 >
                   Clear
                 </button>
@@ -807,11 +749,7 @@ export default function SandboxPage() {
                 {/* Reset */}
                 <button
                   onClick={handleResetWorkspace}
-                  className={
-                    isLightTheme
-                      ? lightToolbarDangerButtonClass
-                      : 'inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400/80 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95'
-                  }
+                  className="qc-sandbox-btn qc-sandbox-btn-danger inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Reset
@@ -823,7 +761,7 @@ export default function SandboxPage() {
 
         {/* Import SQL Panel */}
         {showImport && (
-          <div className="rounded-xl border border-violet-500/30 bg-card/90 p-4 backdrop-blur-sm">
+          <div className="qc-sandbox-panel rounded-xl p-4">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-foreground">Import SQL</h3>
               <p className="text-[11px] text-muted-foreground">Paste CREATE TABLE / INSERT statements from Table Generator</p>
@@ -835,7 +773,7 @@ export default function SandboxPage() {
                 if (importErrorResult) setImportErrorResult(null);
               }}
               placeholder={'-- Paste your SQL here\nCREATE TABLE "students" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);'}
-              className="w-full rounded-xl border border-border bg-card px-4 py-3 font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
+              className="qc-sandbox-textarea w-full rounded-xl px-4 py-3 font-mono text-sm"
               rows={6}
             />
             {importErrorResult?.error && (
@@ -850,7 +788,8 @@ export default function SandboxPage() {
               <button
                 onClick={handleImportSQL}
                 disabled={!importSql.trim()}
-                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-violet-500/20 transition-all hover:bg-violet-500 disabled:opacity-40"
+                data-tone="violet"
+                className="qc-sandbox-btn qc-sandbox-btn-tone inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold"
               >
                 <ClipboardPaste className="h-3.5 w-3.5" />
                 Run Import
@@ -861,7 +800,7 @@ export default function SandboxPage() {
                   setImportSql('');
                   setImportErrorResult(null);
                 }}
-                className="rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="qc-sandbox-btn qc-sandbox-btn-neutral rounded-lg px-3 py-2 text-sm"
               >
                 Cancel
               </button>
@@ -871,8 +810,8 @@ export default function SandboxPage() {
 
         {/* Engine Status */}
         {!isReady && (
-          <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/50 px-4 py-3">
-            <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+          <div className="qc-sandbox-inline-status flex items-center gap-3 rounded-xl px-4 py-3">
+            <div className="h-2 w-2 animate-pulse rounded-full" style={{ background: 'var(--sandbox-tone-emerald)' }} />
             <span className="text-sm text-muted-foreground">Initializing SQL engine…</span>
           </div>
         )}
@@ -889,9 +828,9 @@ export default function SandboxPage() {
                   setEditorFocusRequestKey((key) => key + 1);
                 }}
                 title={`Query "${t.name}"`}
-                className="group inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2.5 py-1 font-mono text-xs text-foreground/90 transition-all hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300"
+                className="qc-sandbox-table-pill group inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-mono text-xs transition-all"
               >
-                <Table2 className="h-3 w-3 text-muted-foreground transition-colors group-hover:text-emerald-400" />
+                <Table2 className="h-3 w-3 text-muted-foreground transition-colors group-hover:text-[color:var(--sandbox-tone-emerald)]" />
                 {t.name}
               </button>
             ))}
@@ -918,12 +857,7 @@ export default function SandboxPage() {
               <button
                 onClick={handleExecute}
                 disabled={!isReady}
-                className="inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/15 transition-all duration-200 hover:shadow-emerald-500/25 disabled:opacity-40 disabled:shadow-none"
-                style={{
-                  background: isReady
-                    ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
-                    : 'rgba(63,63,70,0.5)',
-                }}
+                className="qc-sandbox-run-btn inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold transition-all duration-200"
               >
                 <Play className="h-4 w-4" />
                 Run Query
@@ -931,7 +865,7 @@ export default function SandboxPage() {
               {result && result.columns.length > 0 && (
                 <button
                   onClick={handleExportCSV}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-all hover:border-zinc-600 hover:bg-muted/60 hover:text-foreground"
+                  className="qc-sandbox-secondary-btn inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium transition-all"
                 >
                   <Download className="h-3.5 w-3.5" />
                   Export CSV
@@ -968,7 +902,7 @@ export default function SandboxPage() {
                 return (
                   <div
                     key={`${statementLabel}-${index}`}
-                    className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400"
+                    className="qc-sandbox-success-banner flex items-center gap-2.5 rounded-xl px-4 py-3 text-sm"
                   >
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
                     <span>
@@ -986,30 +920,20 @@ export default function SandboxPage() {
             <SchemaBrowser tables={tables} />
             <Link
               href="/sandbox/history"
-              className={cn(
-                'flex items-center gap-2.5 rounded-xl px-4 py-3 transition-colors',
-                isLightTheme
-                  ? 'border border-border/85 bg-card shadow-sm hover:border-border hover:bg-muted'
-                  : 'border border-border bg-muted hover:border-violet-500/30 hover:bg-muted/50',
-              )}
+              className="qc-sandbox-history-link flex items-center gap-2.5 rounded-xl px-4 py-3 transition-colors"
             >
-              <History className={cn('h-4 w-4', 'text-violet-400')} />
+              <History className="h-4 w-4 text-[color:var(--sandbox-tone-violet)]" />
               <div className="min-w-0 flex-1">
-                <span className={cn('text-sm font-medium', 'text-foreground')}>
+                <span className="text-sm font-medium text-foreground">
                   Query History
                 </span>
                 {historyCount > 0 && (
-                  <p className={cn('text-[11px]', 'text-muted-foreground')}>
+                  <p className="text-[11px] text-muted-foreground">
                     {historyCount} quer{historyCount === 1 ? 'y' : 'ies'} recorded
                   </p>
                 )}
               </div>
-              <span
-                className={cn(
-                  'rounded-md px-1.5 py-0.5 text-[10px] font-bold',
-                  'bg-violet-500/10 text-violet-400',
-                )}
-              >
+              <span data-tone="violet" className="qc-sandbox-dialog-badge rounded-md px-1.5 py-0.5 text-[10px] font-bold">
                 {historyCount}
               </span>
             </Link>
@@ -1029,15 +953,15 @@ export default function SandboxPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <button
             aria-label="Close trigger inspector"
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="qc-sandbox-overlay absolute inset-0"
             onClick={() => setShowTriggersPanel(false)}
           />
 
-          <div className="relative z-10 w-full max-w-4xl rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-cyan-500/10 via-muted/95 to-background p-4 shadow-2xl shadow-black/60 sm:p-5">
+          <div data-tone="cyan" className="qc-sandbox-dialog relative z-10 w-full max-w-4xl rounded-2xl p-4 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <h3 className="text-sm font-semibold text-cyan-100">Trigger Inspector</h3>
-                <p className="text-[11px] text-cyan-200/70">
+                <h3 className="text-sm font-semibold text-foreground">Trigger Inspector</h3>
+                <p className="text-[11px] text-muted-foreground">
                   {triggerRows.length} trigger{triggerRows.length === 1 ? '' : 's'} in {activeDatabase}
                   {triggerQueryMs !== null && ` · ${triggerQueryMs.toFixed(1)}ms`}
                 </p>
@@ -1045,13 +969,14 @@ export default function SandboxPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={loadTriggers}
-                  className="rounded-lg border border-cyan-400/35 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-medium text-cyan-100 transition hover:bg-cyan-500/20"
+                  data-tone="cyan"
+                  className="qc-sandbox-btn qc-sandbox-btn-tone rounded-lg px-2.5 py-1 text-[11px] font-medium"
                 >
                   Refresh
                 </button>
                 <button
                   onClick={() => setShowTriggersPanel(false)}
-                  className="rounded-lg border border-border/70 bg-muted p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  className="qc-sandbox-btn qc-sandbox-btn-neutral rounded-lg p-1.5 text-muted-foreground"
                   aria-label="Close trigger inspector"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -1062,7 +987,7 @@ export default function SandboxPage() {
             {triggerQueryError ? (
               <SqlErrorAlert error={triggerQueryError} compact />
             ) : triggerRows.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-cyan-500/25 bg-card/50 px-4 py-6 text-center text-sm text-muted-foreground">
+              <div className="qc-sandbox-empty-state rounded-xl px-4 py-6 text-center text-sm text-muted-foreground">
                 No triggers found in this database.
               </div>
             ) : (
@@ -1070,18 +995,18 @@ export default function SandboxPage() {
                 {triggerRows.map((trigger) => (
                   <div
                     key={`${trigger.Trigger}-${trigger.Table}`}
-                    className="rounded-xl border border-cyan-500/20 bg-card p-3"
+                    className="qc-sandbox-surface-soft rounded-xl p-3"
                   >
                     <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
+                      <span data-tone="cyan" className="qc-sandbox-dialog-badge rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
                         {trigger.Trigger}
                       </span>
                       <span className="text-[11px] text-muted-foreground">on table</span>
-                      <span className="rounded-full bg-muted/80 px-2 py-0.5 font-mono text-[10px] text-foreground">
+                      <span className="qc-sandbox-chip-muted rounded-full px-2 py-0.5 font-mono text-[10px]">
                         {trigger.Table}
                       </span>
                     </div>
-                    <pre className="overflow-x-auto rounded-lg border border-border/80 bg-card/80 p-2 font-mono text-[11px] leading-relaxed text-foreground/90">
+                    <pre className="qc-sandbox-code-block overflow-x-auto rounded-lg p-2 font-mono text-[11px] leading-relaxed text-foreground/90">
                       {trigger.Statement}
                     </pre>
                   </div>
@@ -1096,7 +1021,7 @@ export default function SandboxPage() {
         ? createPortal(
           <div
             ref={dbMenuPanelRef}
-            className="fixed z-[120] overflow-hidden rounded-xl border border-border bg-card p-2 shadow-2xl shadow-black/40 backdrop-blur-md"
+            className="qc-sandbox-dropdown fixed z-[120] overflow-hidden rounded-xl p-2"
             style={{
               top: dbMenuPosition.top,
               left: dbMenuPosition.left,
@@ -1121,24 +1046,12 @@ export default function SandboxPage() {
                         setShowDatabases(false);
                       }
                     }}
-                    className={cn(
-                      'flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
-                      isActiveDb
-                        ? isSystemDb
-                          ? 'border-sky-500/35 bg-sky-500/12 text-sky-100'
-                          : 'border-violet-500/35 bg-violet-500/14 text-violet-100'
-                        : isSystemDb
-                          ? 'border-border bg-muted text-foreground/90 hover:border-sky-500/25 hover:bg-sky-500/8'
-                          : 'border-border bg-muted text-foreground/90 hover:border-violet-500/25 hover:bg-violet-500/8',
-                    )}
+                    data-tone={isSystemDb ? 'sky' : 'violet'}
+                    data-active={isActiveDb ? 'true' : 'false'}
+                    className="qc-sandbox-dropdown-item flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-all"
                   >
                     <span className="truncate font-medium">{dbName}</span>
-                    <span
-                      className={cn(
-                        'rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                        isSystemDb ? 'bg-sky-500/15 text-sky-300' : 'bg-violet-500/15 text-violet-300',
-                      )}
-                    >
+                    <span data-tone={isSystemDb ? 'sky' : 'violet'} className="qc-sandbox-dialog-badge rounded-full px-2 py-0.5 text-[10px] font-semibold">
                       {isSystemDb ? 'system' : 'user'}
                     </span>
                   </button>
@@ -1154,7 +1067,7 @@ export default function SandboxPage() {
         ? createPortal(
           <div
             ref={userMenuPanelRef}
-            className="fixed z-[120] overflow-hidden rounded-xl border border-border bg-card p-2 shadow-2xl shadow-black/40 backdrop-blur-md"
+            className="qc-sandbox-dropdown fixed z-[120] overflow-hidden rounded-xl p-2"
             style={{
               top: userMenuPosition.top,
               left: userMenuPosition.left,
@@ -1179,24 +1092,12 @@ export default function SandboxPage() {
                         setShowUsers(false);
                       }
                     }}
-                    className={cn(
-                      'flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
-                      isActive
-                        ? isAdmin
-                          ? 'border-amber-500/35 bg-amber-500/12 text-amber-100'
-                          : 'border-teal-500/35 bg-teal-500/14 text-teal-100'
-                        : isAdmin
-                          ? 'border-border bg-muted text-foreground/90 hover:border-amber-500/25 hover:bg-amber-500/8'
-                          : 'border-border bg-muted text-foreground/90 hover:border-teal-500/25 hover:bg-teal-500/8',
-                    )}
+                    data-tone={isAdmin ? 'amber' : 'emerald'}
+                    data-active={isActive ? 'true' : 'false'}
+                    className="qc-sandbox-dropdown-item flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-all"
                   >
                     <span className="truncate font-medium">{userName}</span>
-                    <span
-                      className={cn(
-                        'rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                        isAdmin ? 'bg-amber-500/15 text-amber-300' : 'bg-teal-500/15 text-teal-300',
-                      )}
-                    >
+                    <span data-tone={isAdmin ? 'amber' : 'emerald'} className="qc-sandbox-dialog-badge rounded-full px-2 py-0.5 text-[10px] font-semibold">
                       {isAdmin ? 'admin' : 'user'}
                     </span>
                   </button>
@@ -1212,15 +1113,15 @@ export default function SandboxPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <button
             aria-label="Close procedure inspector"
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="qc-sandbox-overlay absolute inset-0"
             onClick={() => setShowProceduresPanel(false)}
           />
 
-          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-fuchsia-500/25 bg-gradient-to-br from-fuchsia-500/10 via-muted/95 to-background p-4 shadow-2xl shadow-black/60 sm:p-5">
+          <div data-tone="fuchsia" className="qc-sandbox-dialog relative z-10 w-full max-w-5xl rounded-2xl p-4 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <h3 className="text-sm font-semibold text-fuchsia-100">Procedure Inspector</h3>
-                <p className="text-[11px] text-fuchsia-200/70">
+                <h3 className="text-sm font-semibold text-foreground">Procedure Inspector</h3>
+                <p className="text-[11px] text-muted-foreground">
                   {procedureRows.length} procedure{procedureRows.length === 1 ? '' : 's'}
                   {procedureQueryMs !== null && ` · ${procedureQueryMs.toFixed(1)}ms`}
                 </p>
@@ -1228,13 +1129,14 @@ export default function SandboxPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={loadProcedures}
-                  className="rounded-lg border border-fuchsia-400/35 bg-fuchsia-500/10 px-2.5 py-1 text-[11px] font-medium text-fuchsia-100 transition hover:bg-fuchsia-500/20"
+                  data-tone="fuchsia"
+                  className="qc-sandbox-btn qc-sandbox-btn-tone rounded-lg px-2.5 py-1 text-[11px] font-medium"
                 >
                   Refresh
                 </button>
                 <button
                   onClick={() => setShowProceduresPanel(false)}
-                  className="rounded-lg border border-border/70 bg-muted p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  className="qc-sandbox-btn qc-sandbox-btn-neutral rounded-lg p-1.5 text-muted-foreground"
                   aria-label="Close procedure inspector"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -1245,12 +1147,12 @@ export default function SandboxPage() {
             {procedureQueryError ? (
               <SqlErrorAlert error={procedureQueryError} compact />
             ) : procedureRows.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-fuchsia-500/25 bg-card/50 px-4 py-6 text-center text-sm text-muted-foreground">
+              <div className="qc-sandbox-empty-state rounded-xl px-4 py-6 text-center text-sm text-muted-foreground">
                 No procedures found.
               </div>
             ) : (
               <div className="grid max-h-[65vh] grid-cols-1 gap-3 overflow-hidden lg:grid-cols-3">
-                <div className="overflow-y-auto rounded-xl border border-border/80 bg-card p-2 lg:col-span-1">
+                <div className="qc-sandbox-list overflow-y-auto rounded-xl p-2 lg:col-span-1">
                   <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Procedures</div>
                   <div className="space-y-1">
                     {procedureRows.map((proc) => {
@@ -1260,12 +1162,9 @@ export default function SandboxPage() {
                         <button
                           key={qualifiedName}
                           onClick={() => loadProcedureDefinition(proc)}
-                          className={cn(
-                            'w-full rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
-                            isSelected
-                              ? 'border-fuchsia-500/35 bg-fuchsia-500/15 text-fuchsia-100'
-                              : 'border-border/80 bg-muted/70 text-foreground/90 hover:border-fuchsia-500/25 hover:bg-fuchsia-500/10',
-                          )}
+                          data-tone="fuchsia"
+                          data-active={isSelected ? 'true' : 'false'}
+                          className="qc-sandbox-list-item w-full rounded-lg px-2.5 py-2 text-left text-xs transition-all"
                         >
                           <div className="truncate font-medium">{proc.Name}</div>
                           <div className="mt-0.5 text-[10px] text-muted-foreground">{proc.Db}</div>
@@ -1275,18 +1174,18 @@ export default function SandboxPage() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-border/80 bg-card p-3 lg:col-span-2">
+                <div className="qc-sandbox-surface-soft rounded-xl p-3 lg:col-span-2">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <div className="text-[11px] text-muted-foreground">
                       {selectedProcedureName ? `Definition: ${selectedProcedureName}` : 'Select a procedure to view definition'}
                     </div>
                   </div>
                   {selectedProcedureSql ? (
-                    <pre className="max-h-[48vh] overflow-auto rounded-lg border border-border/80 bg-card/90 p-2 font-mono text-[11px] leading-relaxed text-foreground/90">
+                    <pre className="qc-sandbox-code-block max-h-[48vh] overflow-auto rounded-lg p-2 font-mono text-[11px] leading-relaxed text-foreground/90">
                       {selectedProcedureSql}
                     </pre>
                   ) : (
-                    <div className="rounded-lg border border-dashed border-border/70 bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
+                    <div className="qc-sandbox-empty-state rounded-lg px-4 py-6 text-center text-sm text-muted-foreground">
                       Pick a procedure from the left.
                     </div>
                   )}
@@ -1301,15 +1200,15 @@ export default function SandboxPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <button
             aria-label="Close cursor inspector"
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="qc-sandbox-overlay absolute inset-0"
             onClick={() => setShowCursorsPanel(false)}
           />
 
-          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-sky-500/25 bg-gradient-to-br from-sky-500/10 via-muted/95 to-background p-4 shadow-2xl shadow-black/60 sm:p-5">
+          <div data-tone="sky" className="qc-sandbox-dialog relative z-10 w-full max-w-5xl rounded-2xl p-4 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <h3 className="text-sm font-semibold text-sky-100">Cursor Inspector</h3>
-                <p className="text-[11px] text-sky-200/70">
+                <h3 className="text-sm font-semibold text-foreground">Cursor Inspector</h3>
+                <p className="text-[11px] text-muted-foreground">
                   {cursorRows.length} cursor{cursorRows.length === 1 ? '' : 's'}
                   {cursorQueryMs !== null && ` · ${cursorQueryMs.toFixed(1)}ms`}
                 </p>
@@ -1317,13 +1216,14 @@ export default function SandboxPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={loadCursors}
-                  className="rounded-lg border border-sky-400/35 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-100 transition hover:bg-sky-500/20"
+                  data-tone="sky"
+                  className="qc-sandbox-btn qc-sandbox-btn-tone rounded-lg px-2.5 py-1 text-[11px] font-medium"
                 >
                   Refresh
                 </button>
                 <button
                   onClick={() => setShowCursorsPanel(false)}
-                  className="rounded-lg border border-border/70 bg-muted p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  className="qc-sandbox-btn qc-sandbox-btn-neutral rounded-lg p-1.5 text-muted-foreground"
                   aria-label="Close cursor inspector"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -1334,12 +1234,12 @@ export default function SandboxPage() {
             {cursorQueryError ? (
               <SqlErrorAlert error={cursorQueryError} compact />
             ) : cursorRows.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-sky-500/25 bg-card/50 px-4 py-6 text-center text-sm text-muted-foreground">
+              <div className="qc-sandbox-empty-state rounded-xl px-4 py-6 text-center text-sm text-muted-foreground">
                 No cursors found in stored procedures.
               </div>
             ) : (
               <div className="grid max-h-[65vh] grid-cols-1 gap-3 overflow-hidden lg:grid-cols-3">
-                <div className="overflow-y-auto rounded-xl border border-border/80 bg-card p-2 lg:col-span-1">
+                <div className="qc-sandbox-list overflow-y-auto rounded-xl p-2 lg:col-span-1">
                   <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Cursors</div>
                   <div className="space-y-1">
                     {cursorRows.map((cursor) => {
@@ -1349,12 +1249,9 @@ export default function SandboxPage() {
                         <button
                           key={`${cursor.Db}.${qualifiedName}`}
                           onClick={() => loadCursorDefinition(cursor)}
-                          className={cn(
-                            'w-full rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
-                            isSelected
-                              ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
-                              : 'border-border/80 bg-muted/70 text-foreground/90 hover:border-sky-500/25 hover:bg-sky-500/10',
-                          )}
+                          data-tone="sky"
+                          data-active={isSelected ? 'true' : 'false'}
+                          className="qc-sandbox-list-item w-full rounded-lg px-2.5 py-2 text-left text-xs transition-all"
                         >
                           <div className="truncate font-medium">{cursor.Cursor}</div>
                           <div className="mt-0.5 text-[10px] text-muted-foreground">{cursor.Procedure}</div>
@@ -1364,7 +1261,7 @@ export default function SandboxPage() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-border/80 bg-card p-3 lg:col-span-2">
+                <div className="qc-sandbox-surface-soft rounded-xl p-3 lg:col-span-2">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <div className="text-[11px] text-muted-foreground">
                       {selectedCursorName ? `Definition: ${selectedCursorName}` : 'Select a cursor to view declaration'}
@@ -1372,12 +1269,12 @@ export default function SandboxPage() {
                   </div>
                   {selectedCursorSql ? (
                     <div className="space-y-3">
-                      <pre className="max-h-[30vh] overflow-auto rounded-lg border border-border/80 bg-card/90 p-2 font-mono text-[11px] leading-relaxed text-foreground/90">
+                      <pre className="qc-sandbox-code-block max-h-[30vh] overflow-auto rounded-lg p-2 font-mono text-[11px] leading-relaxed text-foreground/90">
                         {selectedCursorSql}
                       </pre>
                       {cursorRows.find((cursor) => `${cursor.Procedure}.${cursor.Cursor}` === selectedCursorName)?.Query && (
-                        <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3">
-                          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-300/80">Resolved query</div>
+                        <div data-tone="sky" className="qc-sandbox-list-item rounded-lg p-3">
+                          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Resolved query</div>
                           <pre className="overflow-auto font-mono text-[11px] leading-relaxed text-foreground/90">
                             {cursorRows.find((cursor) => `${cursor.Procedure}.${cursor.Cursor}` === selectedCursorName)?.Query}
                           </pre>
@@ -1385,7 +1282,7 @@ export default function SandboxPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="rounded-lg border border-dashed border-border/70 bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
+                    <div className="qc-sandbox-empty-state rounded-lg px-4 py-6 text-center text-sm text-muted-foreground">
                       Pick a cursor from the left.
                     </div>
                   )}
@@ -1400,22 +1297,22 @@ export default function SandboxPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <button
             aria-label="Close security inspector"
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="qc-sandbox-overlay absolute inset-0"
             onClick={() => setShowSecurityPanel(false)}
           />
 
-          <div className="relative z-10 w-full max-w-5xl rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-500/10 via-muted/95 to-background p-4 shadow-2xl shadow-black/60 sm:p-5">
+          <div data-tone="amber" className="qc-sandbox-dialog relative z-10 w-full max-w-5xl rounded-2xl p-4 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <h3 className="text-sm font-semibold text-amber-100">Security Inspector</h3>
-                <p className="text-[11px] text-amber-200/70">
+                <h3 className="text-sm font-semibold text-foreground">Security Inspector</h3>
+                <p className="text-[11px] text-muted-foreground">
                   {users.length} user{users.length === 1 ? '' : 's'}
                   {grantsQueryMs !== null && ` · grants fetched in ${grantsQueryMs.toFixed(1)}ms`}
                 </p>
               </div>
               <button
                 onClick={() => setShowSecurityPanel(false)}
-                className="rounded-lg border border-border/70 bg-muted p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                className="qc-sandbox-btn qc-sandbox-btn-neutral rounded-lg p-1.5 text-muted-foreground"
                 aria-label="Close security inspector"
               >
                 <X className="h-3.5 w-3.5" />
@@ -1423,7 +1320,7 @@ export default function SandboxPage() {
             </div>
 
             <div className="grid max-h-[65vh] grid-cols-1 gap-3 overflow-hidden lg:grid-cols-3">
-              <div className="overflow-y-auto rounded-xl border border-border/80 bg-card p-2 lg:col-span-1">
+              <div className="qc-sandbox-list overflow-y-auto rounded-xl p-2 lg:col-span-1">
                 <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Users</div>
                 <div className="space-y-1">
                   {users.map((userName) => {
@@ -1437,12 +1334,9 @@ export default function SandboxPage() {
                           setSelectedSecurityUser(userName);
                           loadGrantsForUser(userName);
                         }}
-                        className={cn(
-                          'w-full rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
-                          isSelected
-                            ? 'border-amber-500/35 bg-amber-500/15 text-amber-100'
-                            : 'border-border/80 bg-muted/70 text-foreground/90 hover:border-amber-500/25 hover:bg-amber-500/10',
-                        )}
+                        data-tone="amber"
+                        data-active={isSelected ? 'true' : 'false'}
+                        className="qc-sandbox-list-item w-full rounded-lg px-2.5 py-2 text-left text-xs transition-all"
                       >
                         <div className="truncate font-medium">{userName}</div>
                         <div className="mt-0.5 text-[10px] text-muted-foreground">{isActive ? 'current session user' : 'available user'}</div>
@@ -1452,7 +1346,7 @@ export default function SandboxPage() {
                 </div>
               </div>
 
-              <div className="overflow-y-auto rounded-xl border border-border/80 bg-card p-3 lg:col-span-2">
+              <div className="qc-sandbox-surface-soft overflow-y-auto rounded-xl p-3 lg:col-span-2">
                 <div className="mb-2 text-[11px] text-muted-foreground">
                   {selectedSecurityUser ? `Grants for ${selectedSecurityUser}` : 'Select a user to inspect grants'}
                 </div>
@@ -1460,7 +1354,7 @@ export default function SandboxPage() {
                 {grantsQueryError ? (
                   <SqlErrorAlert error={grantsQueryError} compact />
                 ) : grantsRows.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border/70 bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
+                  <div className="qc-sandbox-empty-state rounded-lg px-4 py-6 text-center text-sm text-muted-foreground">
                     No grants to show.
                   </div>
                 ) : (
@@ -1468,7 +1362,7 @@ export default function SandboxPage() {
                     {grantsRows.map((grant, index) => (
                       <pre
                         key={`${grant}-${index}`}
-                        className="overflow-x-auto rounded-lg border border-border/80 bg-card/90 p-2 font-mono text-[11px] leading-relaxed text-foreground/90"
+                        className="qc-sandbox-code-block overflow-x-auto rounded-lg p-2 font-mono text-[11px] leading-relaxed text-foreground/90"
                       >
                         {grant}
                       </pre>

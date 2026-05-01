@@ -15,6 +15,58 @@
   --card: #ffffff;
   --card-foreground: #0a0a0a;
   --ring: #6d28d9;
+  --sandbox-shell-gradient-start: #ffffff;
+  --sandbox-shell-gradient-end: #e7eef9;
+  --sandbox-shell-glow-1: rgba(14, 165, 233, 0.16);
+  --sandbox-shell-glow-2: rgba(16, 185, 129, 0.13);
+  --sandbox-surface: rgba(255, 255, 255, 0.86);
+  --sandbox-surface-soft: rgba(242, 247, 255, 0.75);
+  --sandbox-surface-strong: rgba(255, 255, 255, 0.94);
+  --sandbox-border-soft: rgba(65, 92, 132, 0.2);
+  --sandbox-border-strong: rgba(31, 56, 93, 0.32);
+  --sandbox-shadow: 0 28px 58px -40px rgba(15, 35, 65, 0.42);
+  --sandbox-chip-bg: rgba(20, 66, 116, 0.12);
+  --sandbox-chip-fg: #1b4371;
+  --sandbox-muted-pill-bg: rgba(27, 63, 113, 0.08);
+  --sandbox-muted-pill-fg: #3f5476;
+  --sandbox-button-bg: rgba(255, 255, 255, 0.82);
+  --sandbox-button-fg: #17385f;
+  --sandbox-button-border: rgba(58, 84, 121, 0.24);
+  --sandbox-button-hover-bg: rgba(232, 241, 253, 0.92);
+  --sandbox-button-hover-border: rgba(36, 74, 124, 0.35);
+  --sandbox-danger-bg: rgba(190, 24, 93, 0.1);
+  --sandbox-danger-fg: #9f1239;
+  --sandbox-danger-border: rgba(190, 24, 93, 0.32);
+  --sandbox-danger-hover-bg: rgba(190, 24, 93, 0.16);
+  --sandbox-danger-hover-border: rgba(159, 18, 57, 0.5);
+  --sandbox-run-from: #0284c7;
+  --sandbox-run-to: #0369a1;
+  --sandbox-run-shadow: 0 18px 38px -24px rgba(2, 132, 199, 0.54);
+  --sandbox-overlay: rgba(17, 24, 39, 0.44);
+  --sandbox-panel-overlay: rgba(255, 255, 255, 0.84);
+  --sandbox-tone-emerald: #10b981;
+  --sandbox-tone-violet: #7c3aed;
+  --sandbox-tone-cyan: #0891b2;
+  --sandbox-tone-fuchsia: #c026d3;
+  --sandbox-tone-sky: #0284c7;
+  --sandbox-tone-amber: #d97706;
+  --sandbox-tone-rose: #e11d48;
+  --sandbox-editor-bg: #0c1422;
+  --sandbox-editor-bg-2: #0f1b30;
+  --sandbox-editor-gutter: #5f7398;
+  --sandbox-editor-active-line: rgba(90, 115, 152, 0.2);
+  --sandbox-editor-tooltip-bg: rgba(12, 20, 34, 0.98);
+  --sandbox-editor-tooltip-border: rgba(95, 115, 152, 0.52);
+  --sandbox-editor-tooltip-selected: rgba(14, 165, 233, 0.18);
+  --sandbox-editor-tooltip-text: #d8e7ff;
+  --sandbox-editor-tooltip-muted: #8196bb;
+  --sandbox-editor-tooltip-match: #6ec7ff;
+  --sandbox-success-bg: rgba(5, 150, 105, 0.12);
+  --sandbox-success-border: rgba(5, 150, 105, 0.34);
+  --sandbox-success-fg: #046c4e;
+  --sandbox-error-bg: rgba(225, 29, 72, 0.12);
+  --sandbox-error-border: rgba(225, 29, 72, 0.34);
+  --sandbox-error-fg: #9f1239;
 }
 
 @theme inline {
@@ -52,6 +104,58 @@
     --card: #111113;
     --card-foreground: #fafafa;
     --ring: #7c3aed;
+    --sandbox-shell-gradient-start: #0b1324;
+    --sandbox-shell-gradient-end: #070d1a;
+    --sandbox-shell-glow-1: rgba(56, 189, 248, 0.16);
+    --sandbox-shell-glow-2: rgba(59, 130, 246, 0.16);
+    --sandbox-surface: rgba(12, 20, 35, 0.8);
+    --sandbox-surface-soft: rgba(11, 19, 33, 0.65);
+    --sandbox-surface-strong: rgba(8, 14, 26, 0.9);
+    --sandbox-border-soft: rgba(116, 148, 199, 0.22);
+    --sandbox-border-strong: rgba(126, 166, 226, 0.35);
+    --sandbox-shadow: 0 30px 64px -42px rgba(0, 0, 0, 0.82);
+    --sandbox-chip-bg: rgba(56, 189, 248, 0.14);
+    --sandbox-chip-fg: #9edaff;
+    --sandbox-muted-pill-bg: rgba(145, 170, 207, 0.14);
+    --sandbox-muted-pill-fg: #b2c4df;
+    --sandbox-button-bg: rgba(12, 20, 34, 0.82);
+    --sandbox-button-fg: #d9e8ff;
+    --sandbox-button-border: rgba(109, 138, 178, 0.28);
+    --sandbox-button-hover-bg: rgba(20, 34, 56, 0.9);
+    --sandbox-button-hover-border: rgba(126, 168, 232, 0.38);
+    --sandbox-danger-bg: rgba(251, 113, 133, 0.12);
+    --sandbox-danger-fg: #fecdd3;
+    --sandbox-danger-border: rgba(251, 113, 133, 0.3);
+    --sandbox-danger-hover-bg: rgba(251, 113, 133, 0.2);
+    --sandbox-danger-hover-border: rgba(251, 113, 133, 0.48);
+    --sandbox-run-from: #0ea5e9;
+    --sandbox-run-to: #2563eb;
+    --sandbox-run-shadow: 0 18px 40px -25px rgba(14, 165, 233, 0.62);
+    --sandbox-overlay: rgba(2, 6, 14, 0.72);
+    --sandbox-panel-overlay: rgba(9, 15, 27, 0.74);
+    --sandbox-tone-emerald: #34d399;
+    --sandbox-tone-violet: #a78bfa;
+    --sandbox-tone-cyan: #22d3ee;
+    --sandbox-tone-fuchsia: #e879f9;
+    --sandbox-tone-sky: #38bdf8;
+    --sandbox-tone-amber: #fbbf24;
+    --sandbox-tone-rose: #fb7185;
+    --sandbox-editor-bg: #080f1d;
+    --sandbox-editor-bg-2: #0c1526;
+    --sandbox-editor-gutter: #6f85ab;
+    --sandbox-editor-active-line: rgba(111, 133, 171, 0.16);
+    --sandbox-editor-tooltip-bg: rgba(8, 15, 30, 0.98);
+    --sandbox-editor-tooltip-border: rgba(111, 133, 171, 0.42);
+    --sandbox-editor-tooltip-selected: rgba(56, 189, 248, 0.18);
+    --sandbox-editor-tooltip-text: #dbe8ff;
+    --sandbox-editor-tooltip-muted: #7f97bf;
+    --sandbox-editor-tooltip-match: #7dd3fc;
+    --sandbox-success-bg: rgba(52, 211, 153, 0.14);
+    --sandbox-success-border: rgba(52, 211, 153, 0.36);
+    --sandbox-success-fg: #bbf7d0;
+    --sandbox-error-bg: rgba(251, 113, 133, 0.16);
+    --sandbox-error-border: rgba(251, 113, 133, 0.38);
+    --sandbox-error-fg: #fecdd3;
   }
 }
 
@@ -59,6 +163,377 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.qc-sandbox-page {
+  background-color: color-mix(in oklab, var(--sandbox-shell-gradient-end) 90%, var(--background));
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in oklab, var(--sandbox-border-soft) 70%, transparent) 1px,
+    transparent 1.2px
+  );
+  background-size: 14px 14px;
+}
+
+.qc-sandbox-page,
+.qc-sandbox-surface,
+.qc-sandbox-surface-soft,
+.qc-sandbox-surface-strong,
+.qc-sandbox-icon-badge,
+.qc-sandbox-btn,
+.qc-sandbox-run-btn,
+.qc-sandbox-secondary-btn,
+.qc-sandbox-panel,
+.qc-sandbox-textarea,
+.qc-sandbox-inline-status,
+.qc-sandbox-table-pill,
+.qc-sandbox-history-link,
+.qc-sandbox-success-banner,
+.qc-sandbox-dialog,
+.qc-sandbox-dialog-badge,
+.qc-sandbox-list,
+.qc-sandbox-list-item,
+.qc-sandbox-code-block,
+.qc-sandbox-empty-state,
+.qc-sandbox-dropdown,
+.qc-sandbox-dropdown-item,
+.qc-sandbox-kbd,
+.qc-sandbox-editor-shell {
+  border-radius: 0 !important;
+}
+
+.qc-sandbox-page [class*='rounded'],
+.qc-sandbox-dialog [class*='rounded'],
+.qc-sandbox-dropdown [class*='rounded'] {
+  border-radius: 0 !important;
+}
+
+.qc-sandbox-surface {
+  border: 1px solid var(--sandbox-border-soft);
+  background: var(--sandbox-surface);
+  box-shadow: var(--sandbox-shadow);
+  backdrop-filter: blur(14px);
+}
+
+.qc-sandbox-surface-soft {
+  border: 1px solid var(--sandbox-border-soft);
+  background: var(--sandbox-surface-soft);
+  box-shadow: 0 16px 34px -28px color-mix(in oklab, var(--sandbox-border-strong) 28%, transparent);
+}
+
+.qc-sandbox-surface-strong {
+  border: 1px solid var(--sandbox-border-strong);
+  background: var(--sandbox-surface-strong);
+  box-shadow: var(--sandbox-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.qc-sandbox-icon-badge {
+  border: 1px solid color-mix(in oklab, var(--sandbox-tone-emerald) 38%, var(--sandbox-border-soft));
+  background: color-mix(in oklab, var(--sandbox-tone-emerald) 16%, var(--sandbox-surface));
+  color: color-mix(in oklab, var(--sandbox-tone-emerald) 70%, var(--foreground));
+}
+
+.qc-sandbox-divider {
+  background: color-mix(in oklab, var(--sandbox-border-soft) 80%, transparent);
+}
+
+.qc-sandbox-chip {
+  border: 1px solid color-mix(in oklab, var(--sandbox-chip-bg) 78%, transparent);
+  background: var(--sandbox-chip-bg);
+  color: var(--sandbox-chip-fg);
+}
+
+.qc-sandbox-chip-muted {
+  border: 1px solid color-mix(in oklab, var(--sandbox-muted-pill-bg) 86%, transparent);
+  background: var(--sandbox-muted-pill-bg);
+  color: var(--sandbox-muted-pill-fg);
+}
+
+.qc-sandbox-btn {
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 0.75rem;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 120ms ease;
+}
+
+.qc-sandbox-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.qc-sandbox-btn-neutral {
+  border-color: var(--sandbox-button-border);
+  background: var(--sandbox-button-bg);
+  color: var(--sandbox-button-fg);
+}
+
+.qc-sandbox-btn-neutral:hover:not(:disabled) {
+  border-color: var(--sandbox-button-hover-border);
+  background: var(--sandbox-button-hover-bg);
+}
+
+.qc-sandbox-btn-danger {
+  border-color: var(--sandbox-danger-border);
+  background: var(--sandbox-danger-bg);
+  color: var(--sandbox-danger-fg);
+}
+
+.qc-sandbox-btn-danger:hover:not(:disabled) {
+  border-color: var(--sandbox-danger-hover-border);
+  background: var(--sandbox-danger-hover-bg);
+}
+
+.qc-sandbox-btn-tone {
+  --qc-tone: var(--sandbox-tone-sky);
+  border-color: color-mix(in oklab, var(--qc-tone) 38%, var(--sandbox-button-border));
+  background: color-mix(in oklab, var(--qc-tone) 14%, var(--sandbox-button-bg));
+  color: color-mix(in oklab, var(--qc-tone) 20%, var(--sandbox-button-fg));
+}
+
+.qc-sandbox-btn-tone:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--qc-tone) 52%, var(--sandbox-button-hover-border));
+  background: color-mix(in oklab, var(--qc-tone) 22%, var(--sandbox-button-hover-bg));
+  box-shadow: 0 12px 24px -16px color-mix(in oklab, var(--qc-tone) 48%, transparent);
+}
+
+.qc-sandbox-btn-tone[data-tone='emerald'],
+.qc-sandbox-dialog[data-tone='emerald'],
+.qc-sandbox-list-item[data-tone='emerald'],
+.qc-sandbox-dropdown-item[data-tone='emerald'],
+.qc-sandbox-dialog-badge[data-tone='emerald'] {
+  --qc-tone: var(--sandbox-tone-emerald);
+}
+
+.qc-sandbox-btn-tone[data-tone='violet'],
+.qc-sandbox-dialog[data-tone='violet'],
+.qc-sandbox-list-item[data-tone='violet'],
+.qc-sandbox-dropdown-item[data-tone='violet'],
+.qc-sandbox-dialog-badge[data-tone='violet'] {
+  --qc-tone: var(--sandbox-tone-violet);
+}
+
+.qc-sandbox-btn-tone[data-tone='cyan'],
+.qc-sandbox-dialog[data-tone='cyan'],
+.qc-sandbox-list-item[data-tone='cyan'],
+.qc-sandbox-dropdown-item[data-tone='cyan'],
+.qc-sandbox-dialog-badge[data-tone='cyan'] {
+  --qc-tone: var(--sandbox-tone-cyan);
+}
+
+.qc-sandbox-btn-tone[data-tone='fuchsia'],
+.qc-sandbox-dialog[data-tone='fuchsia'],
+.qc-sandbox-list-item[data-tone='fuchsia'],
+.qc-sandbox-dropdown-item[data-tone='fuchsia'],
+.qc-sandbox-dialog-badge[data-tone='fuchsia'] {
+  --qc-tone: var(--sandbox-tone-fuchsia);
+}
+
+.qc-sandbox-btn-tone[data-tone='sky'],
+.qc-sandbox-dialog[data-tone='sky'],
+.qc-sandbox-list-item[data-tone='sky'],
+.qc-sandbox-dropdown-item[data-tone='sky'],
+.qc-sandbox-dialog-badge[data-tone='sky'] {
+  --qc-tone: var(--sandbox-tone-sky);
+}
+
+.qc-sandbox-btn-tone[data-tone='amber'],
+.qc-sandbox-dialog[data-tone='amber'],
+.qc-sandbox-list-item[data-tone='amber'],
+.qc-sandbox-dropdown-item[data-tone='amber'],
+.qc-sandbox-dialog-badge[data-tone='amber'] {
+  --qc-tone: var(--sandbox-tone-amber);
+}
+
+.qc-sandbox-btn-tone[data-tone='rose'],
+.qc-sandbox-dialog[data-tone='rose'],
+.qc-sandbox-list-item[data-tone='rose'],
+.qc-sandbox-dropdown-item[data-tone='rose'],
+.qc-sandbox-dialog-badge[data-tone='rose'] {
+  --qc-tone: var(--sandbox-tone-rose);
+}
+
+.qc-sandbox-run-btn {
+  border: 1px solid color-mix(in oklab, var(--sandbox-run-from) 45%, var(--sandbox-border-strong));
+  background: color-mix(in oklab, var(--sandbox-run-from) 22%, var(--sandbox-surface-strong));
+  box-shadow: var(--sandbox-run-shadow);
+  color: color-mix(in oklab, var(--sandbox-run-from) 30%, var(--foreground));
+}
+
+.qc-sandbox-run-btn:hover:not(:disabled) {
+  filter: saturate(1.06) brightness(1.04);
+}
+
+.qc-sandbox-run-btn:disabled {
+  background: color-mix(in oklab, var(--sandbox-button-bg) 86%, transparent);
+  box-shadow: none;
+}
+
+.qc-sandbox-secondary-btn {
+  border: 1px solid var(--sandbox-button-border);
+  background: var(--sandbox-button-bg);
+  color: var(--sandbox-button-fg);
+}
+
+.qc-sandbox-secondary-btn:hover:not(:disabled) {
+  border-color: var(--sandbox-button-hover-border);
+  background: var(--sandbox-button-hover-bg);
+}
+
+.qc-sandbox-panel {
+  border: 1px solid var(--sandbox-border-soft);
+  background: var(--sandbox-surface-soft);
+  box-shadow: var(--sandbox-shadow);
+  backdrop-filter: blur(12px);
+}
+
+.qc-sandbox-textarea {
+  border: 1px solid var(--sandbox-border-soft);
+  background: color-mix(in oklab, var(--sandbox-surface-strong) 88%, transparent);
+  color: var(--foreground);
+}
+
+.qc-sandbox-textarea::placeholder {
+  color: color-mix(in oklab, var(--muted-foreground) 88%, transparent);
+}
+
+.qc-sandbox-textarea:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent);
+  outline-offset: 0;
+  border-color: color-mix(in oklab, var(--accent) 62%, var(--sandbox-border-strong));
+}
+
+.qc-sandbox-inline-status {
+  border: 1px solid var(--sandbox-border-soft);
+  background: color-mix(in oklab, var(--sandbox-surface-soft) 88%, transparent);
+}
+
+.qc-sandbox-table-pill {
+  border: 1px solid var(--sandbox-border-soft);
+  background: color-mix(in oklab, var(--sandbox-surface-soft) 90%, transparent);
+  color: color-mix(in oklab, var(--sandbox-button-fg) 78%, var(--foreground));
+}
+
+.qc-sandbox-table-pill:hover {
+  border-color: color-mix(in oklab, var(--sandbox-tone-emerald) 38%, var(--sandbox-border-soft));
+  background: color-mix(in oklab, var(--sandbox-tone-emerald) 12%, var(--sandbox-surface-soft));
+}
+
+.qc-sandbox-history-link {
+  border: 1px solid var(--sandbox-border-soft);
+  background: var(--sandbox-surface-soft);
+  box-shadow: 0 18px 38px -28px color-mix(in oklab, var(--sandbox-border-strong) 34%, transparent);
+}
+
+.qc-sandbox-history-link:hover {
+  border-color: var(--sandbox-border-strong);
+  background: color-mix(in oklab, var(--sandbox-surface-soft) 86%, var(--sandbox-button-hover-bg));
+}
+
+.qc-sandbox-success-banner {
+  border: 1px solid var(--sandbox-success-border);
+  background: var(--sandbox-success-bg);
+  color: var(--sandbox-success-fg);
+}
+
+.qc-sandbox-overlay {
+  background: var(--sandbox-overlay);
+  backdrop-filter: blur(10px);
+}
+
+.qc-sandbox-dialog {
+  --qc-tone: var(--sandbox-tone-sky);
+  border: 1px solid color-mix(in oklab, var(--qc-tone) 36%, var(--sandbox-border-soft));
+  background: color-mix(in oklab, var(--qc-tone) 10%, var(--sandbox-surface-strong));
+  box-shadow: var(--sandbox-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.qc-sandbox-dialog-badge {
+  --qc-tone: var(--sandbox-tone-sky);
+  border: 1px solid color-mix(in oklab, var(--qc-tone) 42%, transparent);
+  background: color-mix(in oklab, var(--qc-tone) 20%, transparent);
+  color: color-mix(in oklab, var(--qc-tone) 58%, var(--foreground));
+}
+
+.qc-sandbox-list {
+  border: 1px solid var(--sandbox-border-soft);
+  background: color-mix(in oklab, var(--sandbox-surface-soft) 88%, transparent);
+}
+
+.qc-sandbox-list-item {
+  --qc-tone: var(--sandbox-tone-sky);
+  border: 1px solid var(--sandbox-border-soft);
+  background: color-mix(in oklab, var(--sandbox-surface-soft) 92%, transparent);
+  color: color-mix(in oklab, var(--sandbox-button-fg) 82%, var(--foreground));
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.qc-sandbox-list-item:hover {
+  border-color: color-mix(in oklab, var(--qc-tone) 32%, var(--sandbox-border-soft));
+  background: color-mix(in oklab, var(--qc-tone) 10%, var(--sandbox-surface-soft));
+}
+
+.qc-sandbox-list-item[data-active='true'] {
+  border-color: color-mix(in oklab, var(--qc-tone) 44%, var(--sandbox-border-strong));
+  background: color-mix(in oklab, var(--qc-tone) 16%, var(--sandbox-surface-soft));
+  color: color-mix(in oklab, var(--qc-tone) 42%, var(--foreground));
+  box-shadow: 0 14px 28px -24px color-mix(in oklab, var(--qc-tone) 48%, transparent);
+}
+
+.qc-sandbox-code-block {
+  border: 1px solid var(--sandbox-border-soft);
+  background: color-mix(in oklab, var(--sandbox-surface-strong) 88%, transparent);
+}
+
+.qc-sandbox-empty-state {
+  border: 1px dashed color-mix(in oklab, var(--sandbox-border-soft) 84%, transparent);
+  background: color-mix(in oklab, var(--sandbox-surface-soft) 84%, transparent);
+}
+
+.qc-sandbox-dropdown {
+  border: 1px solid var(--sandbox-border-soft);
+  background: var(--sandbox-surface-strong);
+  box-shadow: var(--sandbox-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.qc-sandbox-dropdown-item {
+  --qc-tone: var(--sandbox-tone-sky);
+  border: 1px solid transparent;
+  background: color-mix(in oklab, var(--sandbox-surface-soft) 72%, transparent);
+  color: color-mix(in oklab, var(--sandbox-button-fg) 80%, var(--foreground));
+}
+
+.qc-sandbox-dropdown-item:hover {
+  border-color: color-mix(in oklab, var(--qc-tone) 32%, var(--sandbox-border-soft));
+  background: color-mix(in oklab, var(--qc-tone) 10%, var(--sandbox-surface-soft));
+}
+
+.qc-sandbox-dropdown-item[data-active='true'] {
+  border-color: color-mix(in oklab, var(--qc-tone) 44%, var(--sandbox-border-strong));
+  background: color-mix(in oklab, var(--qc-tone) 16%, var(--sandbox-surface-soft));
+  color: color-mix(in oklab, var(--qc-tone) 48%, var(--foreground));
+}
+
+.qc-sandbox-kbd {
+  border: 1px solid var(--sandbox-border-soft);
+  background: color-mix(in oklab, var(--sandbox-surface-soft) 90%, transparent);
+}
+
+.qc-sandbox-editor-shell {
+  border: 1px solid var(--sandbox-border-soft);
+  background: var(--sandbox-editor-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sandbox-border-soft) 45%, transparent);
 }
 
 /* Custom scrollbar */
@@ -89,29 +564,29 @@ body {
 
 @keyframes execute-success-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45);
-    border-color: rgba(52, 211, 153, 0.75);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--sandbox-success-border) 80%, transparent);
+    border-color: color-mix(in oklab, var(--sandbox-success-border) 90%, transparent);
   }
   40% {
-    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0.12);
+    box-shadow: 0 0 0 8px color-mix(in oklab, var(--sandbox-success-bg) 80%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
-    border-color: rgba(63, 63, 70, 0.5);
+    box-shadow: 0 0 0 0 transparent;
+    border-color: var(--sandbox-border-soft);
   }
 }
 
 @keyframes execute-error-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45);
-    border-color: rgba(248, 113, 113, 0.75);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--sandbox-error-border) 80%, transparent);
+    border-color: color-mix(in oklab, var(--sandbox-error-border) 90%, transparent);
   }
   40% {
-    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.12);
+    box-shadow: 0 0 0 8px color-mix(in oklab, var(--sandbox-error-bg) 80%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
-    border-color: rgba(63, 63, 70, 0.5);
+    box-shadow: 0 0 0 0 transparent;
+    border-color: var(--sandbox-border-soft);
   }
 }
 

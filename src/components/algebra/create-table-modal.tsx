@@ -151,18 +151,19 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="qc-sandbox-overlay fixed inset-0 z-50 flex items-center justify-center"
       onClick={handleClose}
     >
       <div
-        className="relative flex w-[95vw] max-w-2xl flex-col overflow-hidden rounded-2xl border border-border/80/50 bg-muted shadow-2xl shadow-violet-500/5"
+        data-tone="violet"
+        className="qc-sandbox-dialog relative flex w-[95vw] max-w-2xl flex-col overflow-hidden rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border/80/40 px-6 py-4">
+        <div className="flex items-center justify-between border-b px-6 py-4" style={{ borderColor: 'var(--sandbox-border-soft)' }}>
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 ring-1 ring-violet-500/25">
-              <Plus className="h-4 w-4 text-violet-400" />
+            <div data-tone="violet" className="qc-sandbox-dialog-badge flex h-9 w-9 items-center justify-center rounded-xl">
+              <Plus className="h-4 w-4" />
             </div>
             <div>
               <h2 className="text-base font-semibold text-foreground">Create Table</h2>
@@ -171,7 +172,7 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
           </div>
           <button
             onClick={handleClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/80 transition-colors hover:bg-muted/80 hover:text-foreground/80"
+            className="qc-sandbox-btn qc-sandbox-btn-neutral flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -190,7 +191,7 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
               onChange={(e) => setTableName(e.target.value)}
               placeholder="employees"
               autoFocus
-              className="w-full rounded-xl border border-border/80/50 bg-card/60 px-4 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
+              className="qc-sandbox-textarea w-full rounded-xl px-4 py-2.5 text-sm"
             />
           </div>
 
@@ -206,7 +207,7 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
                 return (
                   <div
                     key={col.id}
-                    className="group flex items-center gap-2 rounded-xl border border-border/60 bg-muted/80/20 px-3 py-2 transition-colors hover:border-border/80/60"
+                    className="qc-sandbox-list-item group flex items-center gap-2 rounded-xl px-3 py-2 transition-colors"
                   >
                     {/* Name */}
                     <input
@@ -238,9 +239,10 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
                       className={cn(
                         'inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition-all',
                         col.pk
-                          ? 'bg-amber-500/15 text-amber-400'
-                          : 'bg-muted/80 text-muted-foreground hover:text-muted-foreground',
+                          ? 'qc-sandbox-dialog-badge'
+                          : 'qc-sandbox-chip-muted',
                       )}
+                      data-tone={col.pk ? 'amber' : undefined}
                     >
                       <KeyRound className="h-3 w-3" />
                       PK
@@ -250,7 +252,7 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
                     {columns.length > 1 && (
                       <button
                         onClick={() => removeColumn(col.id)}
-                        className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-muted/80 hover:text-red-400 group-hover:opacity-100"
+                        className="qc-sandbox-btn qc-sandbox-btn-neutral flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all group-hover:opacity-100"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -261,7 +263,8 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
             </div>
             <button
               onClick={addColumn}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground/80 transition-all hover:bg-muted/80/50 hover:text-violet-300"
+              data-tone="violet"
+              className="qc-sandbox-btn qc-sandbox-btn-tone mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
             >
               <Plus className="h-3 w-3" /> Add Column
             </button>
@@ -275,10 +278,16 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
             </label>
 
             {rows.length > 0 && (
-              <div className="mb-2 overflow-x-auto rounded-xl border border-border/60">
+              <div className="qc-sandbox-code-block mb-2 overflow-x-auto rounded-xl">
                 <table className="w-full min-w-[400px] text-xs">
                   <thead>
-                    <tr className="border-b border-border/50 bg-muted/80/30">
+                    <tr
+                      className="border-b"
+                      style={{
+                        borderColor: 'var(--sandbox-border-soft)',
+                        background: 'color-mix(in oklab, var(--sandbox-surface-soft) 82%, transparent)',
+                      }}
+                    >
                       {columns.map((c, ci) => (
                         <th
                           key={ci}
@@ -297,7 +306,8 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
                     {rows.map((row, ri) => (
                       <tr
                         key={ri}
-                        className="group border-b border-border/30 last:border-0 transition-colors hover:bg-muted/80/20"
+                        className="group border-b last:border-0 transition-colors"
+                        style={{ borderColor: 'var(--sandbox-border-soft)' }}
                       >
                         {columns.map((_, ci) => (
                           <td key={ci} className="px-1.5 py-1">
@@ -306,14 +316,14 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
                               value={row[ci] ?? ''}
                               onChange={(e) => updateCell(ri, ci, e.target.value)}
                               placeholder="—"
-                              className="w-full min-w-[70px] rounded-md border border-transparent bg-transparent px-2 py-1 text-xs text-foreground/80 outline-none placeholder:text-muted-foreground/80 focus:border-border/80 focus:bg-card/50"
+                              className="w-full min-w-[70px] rounded-md border border-transparent bg-transparent px-2 py-1 text-xs text-foreground/80 outline-none placeholder:text-muted-foreground/80"
                             />
                           </td>
                         ))}
                         <td className="px-1">
                           <button
                             onClick={() => removeRow(ri)}
-                            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/80 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100"
+                            className="qc-sandbox-btn qc-sandbox-btn-neutral flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 transition-all group-hover:opacity-100"
                           >
                             <Trash2 className="h-2.5 w-2.5" />
                           </button>
@@ -327,7 +337,8 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
 
             <button
               onClick={addRow}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground/80 transition-all hover:bg-muted/80/50 hover:text-violet-300"
+              data-tone="violet"
+              className="qc-sandbox-btn qc-sandbox-btn-tone inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
             >
               <Plus className="h-3 w-3" /> Add Row
             </button>
@@ -335,29 +346,32 @@ export function CreateTableModal({ open, onClose, execute, onCreated }: CreateTa
 
           {/* Error */}
           {error && (
-            <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs text-red-400">
+            <div
+              className="mb-4 rounded-xl border px-4 py-2.5 text-xs"
+              style={{
+                borderColor: 'var(--sandbox-error-border)',
+                background: 'var(--sandbox-error-bg)',
+                color: 'var(--sandbox-error-fg)',
+              }}
+            >
               {error}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-border/80/40 px-6 py-4">
+        <div className="flex items-center justify-end gap-3 border-t px-6 py-4" style={{ borderColor: 'var(--sandbox-border-soft)' }}>
           <button
             onClick={handleClose}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground/90"
+            className="qc-sandbox-btn qc-sandbox-btn-neutral rounded-lg px-4 py-2 text-sm font-medium"
           >
             Cancel
           </button>
           <button
             onClick={handleCreate}
             disabled={success}
-            className={cn(
-              'inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold shadow-sm transition-all active:scale-[0.98]',
-              success
-                ? 'bg-emerald-600 text-white shadow-emerald-500/20'
-                : 'bg-violet-600 text-white shadow-violet-500/20 hover:bg-violet-500 hover:shadow-violet-500/30',
-            )}
+            data-tone={success ? 'emerald' : 'violet'}
+            className="qc-sandbox-btn qc-sandbox-btn-tone inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold transition-all active:scale-[0.98]"
           >
             {success ? (
               <>✓ Created</>
