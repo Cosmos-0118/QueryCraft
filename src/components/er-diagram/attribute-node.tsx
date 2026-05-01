@@ -9,53 +9,63 @@ interface AttributeData {
   kind: AttributeKind;
 }
 
-const kindConfig: Record<AttributeKind, {
+// Attribute appearances expressed entirely as CSS-variable-based inline styles
+// so every theme changes them automatically.
+type KindStyle = {
   gradient: string;
-  border: string;
-  dot: string;
-  glow: string;
+  borderStyle: React.CSSProperties;
+  dotStyle: React.CSSProperties;
+  ringStyle: React.CSSProperties;
   badgeLabel: string;
+  textStyle: React.CSSProperties;
   textClass: string;
-}> = {
+};
+
+const kindConfig: Record<AttributeKind, KindStyle> = {
   regular: {
-    gradient: 'linear-gradient(135deg, rgba(148,163,184,0.16) 0%, rgba(148,163,184,0.06) 100%)',
-    border: 'border-border',
-    dot: 'bg-muted/80',
-    glow: '',
+    gradient: 'linear-gradient(135deg, color-mix(in oklab, var(--border) 40%, transparent) 0%, color-mix(in oklab, var(--border) 14%, transparent) 100%)',
+    borderStyle: { borderColor: 'var(--border)' },
+    dotStyle: { backgroundColor: 'var(--muted-foreground)', opacity: 0.6 },
+    ringStyle: {},
     badgeLabel: '',
+    textStyle: {},
     textClass: 'text-foreground/80',
   },
   key: {
-    gradient: 'linear-gradient(135deg, rgba(234,179,8,0.2) 0%, rgba(234,179,8,0.07) 100%)',
-    border: 'border-yellow-400/70',
-    dot: 'bg-yellow-400 shadow-[0_0_6px_rgba(234,179,8,0.6)]',
-    glow: 'shadow-yellow-500/5',
+    gradient: 'linear-gradient(135deg, color-mix(in oklab, var(--warning) 22%, var(--card)) 0%, color-mix(in oklab, var(--warning) 8%, var(--card)) 100%)',
+    borderStyle: { borderColor: 'color-mix(in oklab, var(--warning) 62%, transparent)' },
+    dotStyle: { backgroundColor: 'var(--warning)', boxShadow: '0 0 6px color-mix(in oklab, var(--warning) 55%, transparent)' },
+    ringStyle: { outline: '2px solid color-mix(in oklab, var(--warning) 44%, transparent)', outlineOffset: '2px' },
     badgeLabel: 'PK',
-    textClass: 'text-yellow-700 font-semibold',
+    textStyle: { color: 'var(--warning)' },
+    textClass: 'font-semibold',
   },
   multivalued: {
-    gradient: 'linear-gradient(135deg, rgba(59,130,246,0.18) 0%, rgba(59,130,246,0.06) 100%)',
-    border: 'border-blue-400/70',
-    dot: 'bg-blue-400 shadow-[0_0_6px_rgba(59,130,246,0.6)]',
-    glow: 'shadow-blue-500/5',
+    gradient: 'linear-gradient(135deg, color-mix(in oklab, var(--info) 20%, var(--card)) 0%, color-mix(in oklab, var(--info) 7%, var(--card)) 100%)',
+    borderStyle: { borderColor: 'color-mix(in oklab, var(--info) 60%, transparent)' },
+    dotStyle: { backgroundColor: 'var(--info)', boxShadow: '0 0 6px color-mix(in oklab, var(--info) 55%, transparent)' },
+    ringStyle: { outline: '2px solid color-mix(in oklab, var(--info) 40%, transparent)', outlineOffset: '2px' },
     badgeLabel: 'MV',
-    textClass: 'text-blue-700',
+    textStyle: { color: 'var(--info)' },
+    textClass: '',
   },
   derived: {
-    gradient: 'linear-gradient(135deg, rgba(148,163,184,0.14) 0%, rgba(148,163,184,0.05) 100%)',
-    border: 'border-dashed border-border/80',
-    dot: 'bg-muted/80',
-    glow: '',
+    gradient: 'linear-gradient(135deg, color-mix(in oklab, var(--border) 32%, transparent) 0%, color-mix(in oklab, var(--border) 10%, transparent) 100%)',
+    borderStyle: { borderColor: 'color-mix(in oklab, var(--border) 72%, transparent)', borderStyle: 'dashed' },
+    dotStyle: { backgroundColor: 'var(--muted-foreground)', opacity: 0.5 },
+    ringStyle: {},
     badgeLabel: 'D',
+    textStyle: {},
     textClass: 'text-muted-foreground/80 italic',
   },
   composite: {
-    gradient: 'linear-gradient(135deg, rgba(34,197,94,0.18) 0%, rgba(34,197,94,0.06) 100%)',
-    border: 'border-green-400/70',
-    dot: 'bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.6)]',
-    glow: 'shadow-green-500/5',
+    gradient: 'linear-gradient(135deg, color-mix(in oklab, var(--success) 20%, var(--card)) 0%, color-mix(in oklab, var(--success) 7%, var(--card)) 100%)',
+    borderStyle: { borderColor: 'color-mix(in oklab, var(--success) 60%, transparent)' },
+    dotStyle: { backgroundColor: 'var(--success)', boxShadow: '0 0 6px color-mix(in oklab, var(--success) 52%, transparent)' },
+    ringStyle: { outline: '2px solid color-mix(in oklab, var(--success) 38%, transparent)', outlineOffset: '2px' },
     badgeLabel: 'C',
-    textClass: 'text-green-700',
+    textStyle: { color: 'var(--success)' },
+    textClass: '',
   },
 };
 
@@ -66,27 +76,46 @@ export const AttributeNode = memo(function AttributeNode({ data, selected }: Nod
   return (
     <div className="group relative">
       {selected && (
-        <div className="pointer-events-none absolute -inset-1 rounded-full bg-violet-500/10 blur-md" />
+        <div
+          className="pointer-events-none absolute -inset-1 rounded-full blur-md"
+          style={{ background: 'color-mix(in oklab, var(--primary) 14%, transparent)' }}
+        />
       )}
 
       <div
-        className={`relative flex items-center gap-2 rounded-full border px-3 py-1.5 transition-all duration-150 ${c.border} ${c.glow} ${
-          selected ? 'ring-2 ring-violet-400/50 shadow-lg' : 'shadow-sm shadow-black/15 hover:shadow-md'
-        }`}
-        style={{ background: c.gradient }}
+        className={`relative flex items-center gap-2 rounded-full border px-3 py-1.5 transition-all duration-150 ${
+          selected ? 'shadow-lg' : 'shadow-sm hover:shadow-md'
+        } ${c.textClass}`}
+        style={{
+          background: c.gradient,
+          ...c.borderStyle,
+          ...(selected ? c.ringStyle : {}),
+        }}
       >
         {/* Colored dot indicator */}
-        <div className={`h-1.5 w-1.5 shrink-0 rounded-full ${c.dot}`} />
+        <div className="h-1.5 w-1.5 shrink-0 rounded-full" style={c.dotStyle} />
 
         {/* Badge */}
         {c.badgeLabel && (
-          <span className="rounded-sm bg-muted/80 px-1 py-px text-[8px] font-bold uppercase leading-none tracking-wider text-muted-foreground/80">
+          <span
+            className="rounded-sm px-1 py-px text-[8px] font-bold uppercase leading-none tracking-wider"
+            style={{
+              background: 'color-mix(in oklab, var(--muted-foreground) 14%, var(--card))',
+              color: 'var(--muted-foreground)',
+            }}
+          >
             {c.badgeLabel}
           </span>
         )}
 
         {/* Label */}
-        <span className={`text-[11px] leading-none ${c.textClass} ${kind === 'key' ? 'underline decoration-yellow-500/60 underline-offset-2' : ''}`}>
+        <span
+          className={`text-[11px] leading-none ${c.textClass} ${kind === 'key' ? 'underline underline-offset-2' : ''}`}
+          style={{
+            ...c.textStyle,
+            ...(kind === 'key' ? { textDecorationColor: 'color-mix(in oklab, var(--warning) 55%, transparent)' } : {}),
+          }}
+        >
           {label}
         </span>
 

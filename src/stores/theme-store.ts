@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { ThemeMode } from '@/lib/theme';
 
-export type ThemeMode = 'light' | 'dark' | 'signature' | 'crimson' | 'aurora' | 'electric-night';
+export type { ThemeMode } from '@/lib/theme';
 
 interface ThemeStore {
   theme: ThemeMode;

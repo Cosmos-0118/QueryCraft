@@ -294,8 +294,8 @@ export default function AlgebraPage() {
         {/* ── Header ──────────────────────────── */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 ring-1 ring-violet-500/25">
-              <Sparkles className="h-5 w-5 text-violet-400" />
+            <div className="qc-icon-badge mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+              <Sparkles className="h-5 w-5" />
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-foreground">
@@ -315,7 +315,7 @@ export default function AlgebraPage() {
               >
                 <Database className="h-3.5 w-3.5 text-primary-foreground/90" />
                 Groups
-                <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-primary-foreground/80">
+                <span className="rounded-full bg-primary-foreground/10 px-2 py-0.5 text-[10px] text-primary-foreground/80">
                   {activeDatabase}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 text-primary-foreground/80" />
@@ -328,7 +328,7 @@ export default function AlgebraPage() {
                   </div>
                   <button
                     onClick={handleCreateGroup}
-                    className="mb-2 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-2 text-left text-xs font-medium text-emerald-300 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20"
+                    className="mb-2 w-full rounded-lg border border-success/30 bg-success/10 px-2.5 py-2 text-left text-xs font-medium text-success transition-all hover:border-success/50 hover:bg-success/20"
                   >
                     + Create Group
                   </button>
@@ -351,18 +351,18 @@ export default function AlgebraPage() {
                             'flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-all',
                             isActive
                               ? isSystem
-                                ? 'border-sky-500/35 bg-sky-500/12 text-sky-100'
-                                : 'border-violet-500/35 bg-violet-500/14 text-violet-100'
+                                ? 'border-info/35 bg-info/12 text-foreground'
+                                : 'border-primary/35 bg-primary/14 text-foreground'
                               : isSystem
-                                ? 'border-border/70 bg-muted/60 text-foreground/80 hover:border-sky-500/25 hover:bg-sky-500/8'
-                                : 'border-border/70 bg-muted/60 text-foreground/80 hover:border-violet-500/25 hover:bg-violet-500/8',
+                                ? 'border-border/70 bg-muted/60 text-foreground/80 hover:border-info/25 hover:bg-info/8'
+                                : 'border-border/70 bg-muted/60 text-foreground/80 hover:border-primary/25 hover:bg-primary/8',
                           )}
                         >
                           <span className="truncate font-medium">{groupName}</span>
                           <span
                             className={cn(
                               'rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                              isSystem ? 'bg-sky-500/15 text-sky-300' : 'bg-violet-500/15 text-violet-300',
+                              isSystem ? 'bg-info/15 text-info' : 'bg-primary/15 text-primary',
                             )}
                           >
                             {isSystem ? 'system' : 'user'}
@@ -375,7 +375,7 @@ export default function AlgebraPage() {
               )}
             </div>
 
-            <div className="mx-1 h-5 w-px bg-muted0/70" />
+            <div className="mx-1 h-5 w-px bg-border/70" />
             <button
               onClick={() => setCreateOpen(true)}
               disabled={!isReady}
@@ -418,14 +418,14 @@ export default function AlgebraPage() {
         </div>
 
         {groupError && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             {groupError}
           </div>
         )}
 
         {/* ── Import SQL Panel ─────────────── */}
         {showImport && (
-          <div className="rounded-xl border border-violet-500/30 bg-muted/80 p-4 backdrop-blur-sm">
+          <div className="qc-card-muted rounded-xl p-4 backdrop-blur-sm">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-foreground/90">Import SQL</h3>
               <p className="text-[11px] text-muted-foreground/80">Paste CREATE TABLE / INSERT statements</p>
@@ -437,11 +437,11 @@ export default function AlgebraPage() {
                 if (importError) setImportError(null);
               }}
               placeholder={'-- Paste your SQL here\nCREATE TABLE "students" (\n  "id" INTEGER PRIMARY KEY,\n  "name" TEXT\n);'}
-              className="w-full rounded-xl border border-border/50 bg-card/60 px-4 py-3 font-mono text-sm text-foreground/90 outline-none placeholder:text-muted-foreground/60 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15"
+              className="qc-field w-full rounded-xl px-4 py-3 font-mono text-sm outline-none placeholder:text-muted-foreground/60"
               rows={6}
             />
             {importError && (
-              <p className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+              <p className="mt-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
                 Import failed: {importError}
               </p>
             )}
@@ -449,7 +449,7 @@ export default function AlgebraPage() {
               <button
                 onClick={handleImportSQL}
                 disabled={!importSql.trim()}
-                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-violet-500/20 transition-all hover:bg-violet-500 disabled:opacity-40"
+                className="qc-primary-action inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-40"
               >
                 <ClipboardPaste className="h-3.5 w-3.5" />
                 Run Import
@@ -472,16 +472,16 @@ export default function AlgebraPage() {
         {store.history.length > 0 && (
           <Link
             href="/algebra/history"
-            className="flex items-center gap-2.5 rounded-xl border border-border/50 bg-muted/60 px-4 py-3 transition-colors hover:border-violet-500/30 hover:bg-muted/40"
+            className="qc-card-muted flex items-center gap-2.5 rounded-xl px-4 py-3 transition-colors hover:border-primary/30 hover:bg-surface-hover/60"
           >
-            <History className="h-4 w-4 text-violet-400" />
+            <History className="h-4 w-4 text-primary" />
             <div className="min-w-0 flex-1">
               <span className="text-sm font-medium text-foreground/90">Expression History</span>
               <p className="text-[11px] text-muted-foreground/80">
                 {store.history.length} expression{store.history.length === 1 ? '' : 's'} evaluated
               </p>
             </div>
-            <span className="rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-bold text-violet-400">
+            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
               {store.history.length}
             </span>
           </Link>
@@ -490,7 +490,7 @@ export default function AlgebraPage() {
         {/* ── Engine Status ──────────────────── */}
         {!isReady && (
           <div className="flex items-center gap-3 rounded-xl border border-border/50 bg-muted/40 px-4 py-3">
-            <div className="h-2 w-2 animate-pulse rounded-full bg-violet-400" />
+            <div className="h-2 w-2 animate-pulse rounded-full bg-primary" />
             <span className="text-sm text-muted-foreground">Initializing SQL engine…</span>
           </div>
         )}
@@ -504,9 +504,9 @@ export default function AlgebraPage() {
                 key={t.name}
                 onClick={() => handleInsertTable(t.name)}
                 title={`Click to insert "${t.name}" into expression`}
-                className="group inline-flex items-center gap-1 rounded-md border border-border/40 bg-muted/50 px-2.5 py-1 font-mono text-xs text-foreground/80 transition-all hover:border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
+                className="group inline-flex items-center gap-1 rounded-md border border-border/40 bg-muted/50 px-2.5 py-1 font-mono text-xs text-foreground/80 transition-all hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
               >
-                <Table2 className="h-3 w-3 text-muted-foreground/80 transition-colors group-hover:text-violet-400" />
+                <Table2 className="h-3 w-3 text-muted-foreground/80 transition-colors group-hover:text-primary" />
                 {t.name}
               </button>
             ))}
@@ -522,7 +522,7 @@ export default function AlgebraPage() {
               <button
                 key={ex.label}
                 onClick={() => store.setExpression(ex.expr)}
-                className="rounded-md border border-dashed border-border/40 px-2.5 py-1 text-xs text-muted-foreground/80 transition-all hover:border-violet-500/30 hover:bg-violet-500/5 hover:text-violet-300"
+                className="rounded-md border border-dashed border-border/40 px-2.5 py-1 text-xs text-muted-foreground/80 transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
               >
                 {ex.label}
               </button>
@@ -544,7 +544,7 @@ export default function AlgebraPage() {
 
         {/* ── Error ──────────────────────────── */}
         {store.error && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             <span className="font-semibold">Error:</span> {store.error}
           </div>
         )}

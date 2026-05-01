@@ -404,23 +404,23 @@ export function TupleCalculusInput({
   }, []);
 
   const kindBadge: Record<CompletionItem['kind'], string> = {
-    keyword: 'bg-cyan-500/15 text-cyan-400',
-    operator: 'bg-blue-500/15 text-blue-400',
-    table: 'bg-emerald-500/15 text-emerald-400',
-    column: 'bg-violet-500/15 text-violet-400',
+    keyword: 'bg-info/15 text-info',
+    operator: 'bg-primary/15 text-primary',
+    table: 'bg-success/15 text-success',
+    column: 'bg-accent/15 text-accent',
     template: 'bg-muted/60 text-foreground/80',
   };
 
   return (
     <div
-      className={`rounded-xl border border-border bg-card ${executionFeedback === 'success'
+      className={`qc-card rounded-xl ${executionFeedback === 'success'
           ? 'execute-feedback-success'
           : executionFeedback === 'error'
             ? 'execute-feedback-error'
             : ''
         }`}
     >
-      <div className="flex items-center justify-between rounded-t-xl border-b border-border bg-muted/60/70 px-4 py-2.5">
+      <div className="flex items-center justify-between rounded-t-xl border-b border-border bg-surface-soft/80 px-4 py-2.5">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">TRC Expression</span>
         <div className="flex items-center gap-1.5">
           {[
@@ -448,7 +448,7 @@ export function TupleCalculusInput({
                   el.setSelectionRange(pos, pos);
                 });
               }}
-              className="rounded-md border border-border/80 bg-muted px-2 py-0.5 font-mono text-xs text-foreground/80 transition-colors hover:border-border/80 hover:bg-muted/80"
+              className="rounded-md border border-border/70 bg-surface-hover/70 px-2 py-0.5 font-mono text-xs text-foreground/80 transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
             >
               {token.label}
             </button>
@@ -463,7 +463,7 @@ export function TupleCalculusInput({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={4}
-          className="w-full resize-none rounded-lg border border-border/80 bg-card p-3 font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground/80 focus:border-primary focus:ring-1 focus:ring-primary/30"
+          className="qc-field w-full resize-none rounded-lg p-3 font-mono text-sm outline-none placeholder:text-muted-foreground/80"
           placeholder="{ <t.name, t.gpa> | students(t) ∧ t.gpa > 3.5 }"
           autoComplete="off"
           spellCheck={false}
@@ -501,13 +501,13 @@ export function TupleCalculusInput({
         <div className="mt-2.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">
-              <kbd className="rounded border border-border/80 bg-muted px-1.5 py-0.5 font-mono text-[10px] text-primary-foreground/90">
+              <kbd className="qc-kbd rounded px-1.5 py-0.5 font-mono text-[10px]">
                 {isMac ? '⌘' : 'Ctrl'} Enter
               </kbd>{' '}
               evaluate
             </span>
             <span className="text-xs text-muted-foreground">
-              <kbd className="rounded border border-border/80 bg-muted px-1.5 py-0.5 font-mono text-[10px] text-primary-foreground/90">
+              <kbd className="qc-kbd rounded px-1.5 py-0.5 font-mono text-[10px]">
                 {isMac ? '⌘' : 'Ctrl'} Space
               </kbd>{' '}
               suggestions
@@ -522,7 +522,7 @@ export function TupleCalculusInput({
           </div>
           <button
             onClick={onEvaluate}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-primary bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:border-border hover:bg-muted"
+            className="qc-primary-action inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-semibold"
           >
             <Play className="h-3.5 w-3.5" />
             Evaluate TRC

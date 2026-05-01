@@ -76,7 +76,7 @@ export function SymbolPalette({ onInsert }: SymbolPaletteProps) {
               key={s.symbol}
               onClick={() => onInsert(s.template)}
               title={`${s.label} — ${s.desc}${s.key ? `\n${mod}${keyLabel(s.key)}` : ''}`}
-              className="group relative flex h-7 w-7 items-center justify-center rounded-md border border-border/80/40 text-sm font-bold text-foreground/80 transition-all hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-violet-300 hover:shadow-sm hover:shadow-violet-500/10"
+              className="group relative flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-sm font-bold text-foreground/80 transition-all hover:border-primary/40 hover:bg-primary/10 hover:text-primary hover:shadow-sm"
             >
               {s.symbol}
             </button>

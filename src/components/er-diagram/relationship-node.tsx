@@ -11,41 +11,43 @@ interface RelationshipData {
 export const RelationshipNode = memo(function RelationshipNode({ data, selected }: NodeProps) {
   const { label, cardinality } = data as unknown as RelationshipData;
 
-  // Unique gradient ID to avoid SVG id collisions across nodes
-  const gradId = `dg-${label.replace(/\W/g, '')}-${selected ? 's' : 'd'}`;
-
   return (
     <div className="group relative flex h-[80px] w-[160px] items-center justify-center">
       {/* Glow behind diamond when selected */}
       {selected && (
-        <div className="pointer-events-none absolute inset-3 blur-lg" style={{
-          background: 'radial-gradient(ellipse, rgba(139,92,246,0.3) 0%, transparent 70%)',
-        }} />
+        <div
+          className="pointer-events-none absolute inset-3 blur-lg"
+          style={{ background: 'radial-gradient(ellipse, color-mix(in oklab, var(--primary) 28%, transparent) 0%, transparent 70%)' }}
+        />
       )}
 
       <svg
         viewBox="0 0 160 80"
         className="absolute inset-0 h-full w-full overflow-visible"
-        style={{ filter: selected ? 'drop-shadow(0 0 10px rgba(139,92,246,0.35))' : 'drop-shadow(0 2px 6px rgba(148,163,184,0.35))' }}
+        style={{
+          filter: selected
+            ? 'drop-shadow(0 0 8px color-mix(in oklab, var(--primary) 38%, transparent))'
+            : 'drop-shadow(0 2px 5px color-mix(in oklab, var(--shadow-color, rgba(0,0,0,0.25)) 60%, transparent))',
+        }}
       >
-        <defs>
-          <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor={selected ? 'rgba(139,92,246,0.18)' : 'rgba(241,245,249,0.96)'} />
-            <stop offset="100%" stopColor={selected ? 'rgba(139,92,246,0.08)' : 'rgba(226,232,240,0.96)'} />
-          </linearGradient>
-        </defs>
         <polygon
           points="80,4 156,40 80,76 4,40"
-          fill={`url(#${gradId})`}
-          stroke={selected ? 'rgba(139,92,246,0.6)' : 'rgba(148,163,184,0.8)'}
-          strokeWidth={selected ? 2 : 1.2}
+          style={{
+            fill: selected
+              ? 'color-mix(in oklab, var(--primary) 16%, var(--card))'
+              : 'var(--card)',
+            stroke: selected
+              ? 'color-mix(in oklab, var(--primary) 60%, transparent)'
+              : 'var(--border)',
+            strokeWidth: selected ? 2 : 1.2,
+          }}
         />
       </svg>
 
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center gap-0.5 px-4">
         <span className="max-w-[100px] truncate text-center text-[11px] font-semibold leading-tight text-foreground/80">{label}</span>
-        <span className="rounded-sm border border-violet-300/60 bg-violet-100 px-1.5 py-px text-[9px] font-bold leading-none text-violet-700">
+        <span className="rounded-sm border border-primary/40 bg-primary/10 px-1.5 py-px text-[9px] font-bold leading-none text-primary">
           {cardinality}
         </span>
       </div>

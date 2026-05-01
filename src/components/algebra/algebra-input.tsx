@@ -473,30 +473,30 @@ export function AlgebraInput({
   }, []);
 
   const kindColors: Record<string, string> = {
-    operator: 'text-violet-400',
-    keyword: 'text-sky-400',
-    table: 'text-emerald-400',
-    function: 'text-amber-400',
-    column: 'text-cyan-300',
+    operator: 'text-primary',
+    keyword: 'text-info',
+    table: 'text-success',
+    function: 'text-warning',
+    column: 'text-accent',
   };
   const kindBg: Record<string, string> = {
-    operator: 'bg-violet-500/15 text-violet-400',
-    keyword: 'bg-sky-500/15 text-sky-400',
-    table: 'bg-emerald-500/15 text-emerald-400',
-    function: 'bg-amber-500/15 text-amber-400',
-    column: 'bg-cyan-500/15 text-cyan-300',
+    operator: 'bg-primary/15 text-primary',
+    keyword: 'bg-info/15 text-info',
+    table: 'bg-success/15 text-success',
+    function: 'bg-warning/15 text-warning',
+    column: 'bg-accent/15 text-accent',
   };
 
   return (
     <div
-      className={`rounded-xl border border-border bg-card ${executionFeedback === 'success'
+      className={`qc-card rounded-xl ${executionFeedback === 'success'
           ? 'execute-feedback-success'
           : executionFeedback === 'error'
             ? 'execute-feedback-error'
             : ''
         }`}
     >
-      <div className="flex items-center justify-between rounded-t-xl border-b border-border bg-muted/60/70 px-4 py-2.5">
+      <div className="flex items-center justify-between rounded-t-xl border-b border-border bg-surface-soft/80 px-4 py-2.5">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Expression
         </span>
@@ -510,7 +510,7 @@ export function AlgebraInput({
           onKeyDown={handleKeyDown}
           placeholder="e.g. π[name, gpa](σ[gpa > 3.5](students))  —  Start typing or use shortcuts"
           rows={3}
-          className="w-full resize-none rounded-lg border border-border/80 bg-card p-3 font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground/80 focus:border-primary focus:ring-1 focus:ring-primary/30"
+          className="qc-field w-full resize-none rounded-lg p-3 font-mono text-sm outline-none placeholder:text-muted-foreground/80"
           autoComplete="off"
           spellCheck={false}
           onClick={() => updateCompletions(showComplete)}
@@ -549,13 +549,13 @@ export function AlgebraInput({
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">
               Press{' '}
-              <kbd className="rounded border border-border/80 bg-muted px-1.5 py-0.5 font-mono text-[10px] text-primary-foreground/90">
+              <kbd className="qc-kbd rounded px-1.5 py-0.5 font-mono text-[10px]">
                 {isMac ? '⌘' : 'Ctrl'} Enter
               </kbd>{' '}
               to evaluate
             </span>
             <span className="text-xs text-muted-foreground">
-              <kbd className="rounded border border-border/80 bg-muted px-1.5 py-0.5 font-mono text-[10px] text-primary-foreground/90">
+              <kbd className="qc-kbd rounded px-1.5 py-0.5 font-mono text-[10px]">
                 {isMac ? '⌘' : 'Ctrl'} Space
               </kbd>{' '}
               suggestions
@@ -570,7 +570,7 @@ export function AlgebraInput({
           </div>
           <button
             onClick={onEvaluate}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-primary bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:border-border hover:bg-muted active:scale-[0.98]"
+            className="qc-primary-action inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-semibold"
           >
             <Play className="h-3.5 w-3.5" />
             Evaluate
@@ -588,7 +588,7 @@ export function AlgebraInput({
                   <kbd className="inline-flex h-5 min-w-[3rem] items-center justify-center rounded border border-border bg-card px-1.5 font-mono text-[10px] text-muted-foreground">
                     {isMac ? '⌥' : 'Alt+'}{s.key.replace('Key', '')}
                   </kbd>
-                  <span className="font-mono text-sm text-violet-400">{s.symbol}</span>
+                  <span className="font-mono text-sm text-primary">{s.symbol}</span>
                   <span className="text-muted-foreground">{s.label}</span>
                 </div>
               ))}

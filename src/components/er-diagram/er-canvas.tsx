@@ -84,16 +84,34 @@ export function ERCanvas() {
     return n;
   }, [store.entities, store.attributes, store.relationships, store.selectedId, dimensions]);
 
+  // Read CSS custom properties once so edges use the active theme colours.
+  // We memoise on both data changes AND the resolved theme so re-theming
+  // triggers a re-build of edge objects.
+  const resolvedTheme =
+    typeof document !== 'undefined'
+      ? (document.documentElement.dataset.colorTheme ?? 'dark')
+      : 'dark';
+
   const edges = useMemo<Edge[]>(() => {
+    const root =
+      typeof document !== 'undefined' ? document.documentElement : null;
+    const getVar = (v: string, fallback: string) =>
+      root ? getComputedStyle(root).getPropertyValue(v).trim() || fallback : fallback;
+
+    const borderColor = getVar('--border', '#263247');
+    const primaryColor = getVar('--primary', '#7dd3fc');
+    const cardColor = getVar('--card', '#0d1322');
+    const fgColor = getVar('--foreground', '#e7edf8');
+
     const e: Edge[] = [];
-    // Attribute → Entity — subtle floating lines (shortest path)
+    // Attribute → Entity — subtle floating lines
     for (const attr of store.attributes) {
       e.push({
         id: `attr-${attr.id}-${attr.entityId}`,
         source: attr.entityId,
         target: attr.id,
         type: 'floating',
-        style: { stroke: 'rgba(100,116,139,0.45)', strokeWidth: 1 },
+        style: { stroke: borderColor, strokeWidth: 1, opacity: 0.7 },
         animated: false,
       });
     }
@@ -101,33 +119,19 @@ export function ERCanvas() {
     for (const rel of store.relationships) {
       const [e1, e2] = rel.entities;
       const labelParts = rel.cardinality.split(':');
-      e.push({
-        id: `rel-${rel.id}-${e1}`,
-        source: e1,
-        target: rel.id,
-        type: 'floating',
-        label: labelParts[0],
+      const relEdge = {
         labelBgPadding: [6, 3] as [number, number],
         labelBgBorderRadius: 4,
-        labelStyle: { fontWeight: 700, fontSize: 10, fill: '#334155', fontFamily: 'system-ui' },
-        labelBgStyle: { fill: '#e2e8f0', stroke: 'rgba(148,163,184,0.7)', strokeWidth: 1 },
-        style: { stroke: 'rgba(99,102,241,0.45)', strokeWidth: 1.5 },
-      });
-      e.push({
-        id: `rel-${rel.id}-${e2}`,
-        source: rel.id,
-        target: e2,
-        type: 'floating',
-        label: labelParts[1],
-        labelBgPadding: [6, 3] as [number, number],
-        labelBgBorderRadius: 4,
-        labelStyle: { fontWeight: 700, fontSize: 10, fill: '#334155', fontFamily: 'system-ui' },
-        labelBgStyle: { fill: '#e2e8f0', stroke: 'rgba(148,163,184,0.7)', strokeWidth: 1 },
-        style: { stroke: 'rgba(99,102,241,0.45)', strokeWidth: 1.5 },
-      });
+        labelStyle: { fontWeight: 700, fontSize: 10, fill: fgColor, fontFamily: 'system-ui' },
+        labelBgStyle: { fill: cardColor, stroke: borderColor, strokeWidth: 1 },
+        style: { stroke: primaryColor, strokeWidth: 1.5, opacity: 0.55 },
+      };
+      e.push({ id: `rel-${rel.id}-${e1}`, source: e1, target: rel.id, type: 'floating', label: labelParts[0], ...relEdge });
+      e.push({ id: `rel-${rel.id}-${e2}`, source: rel.id, target: e2, type: 'floating', label: labelParts[1], ...relEdge });
     }
     return e;
-  }, [store.attributes, store.relationships]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.attributes, store.relationships, resolvedTheme]);
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -202,7 +206,7 @@ export function ERCanvas() {
         />
         <Controls
           showInteractive={false}
-          className="!rounded-xl !border !border-border !bg-card/95 !shadow-lg !shadow-slate-300/30 !backdrop-blur-sm [&>button]:!border-border [&>button]:!bg-transparent [&>button]:!text-muted-foreground [&>button:hover]:!bg-muted/80"
+          className="!rounded-xl !border !border-border !bg-card/95 !shadow-lg !backdrop-blur-sm [&>button]:!border-border [&>button]:!bg-transparent [&>button]:!text-muted-foreground [&>button:hover]:!bg-muted/80"
         />
       </ReactFlow>
     </div>

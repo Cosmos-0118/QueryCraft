@@ -6,6 +6,7 @@ import { useRef, useState, useEffect, useSyncExternalStore, type ReactNode } fro
 import { useAuth } from '@/hooks/use-auth';
 import { useThemeStore, type ThemeMode } from '@/stores/theme-store';
 import { useLoadingStore } from '@/stores/loading-store';
+import { THEME_OPTIONS } from '@/lib/theme';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
   Settings, Moon, Sun, Palette, Sparkles, FunctionSquare,
@@ -36,14 +37,14 @@ const NAV_ITEMS: { label: string; href: string; icon: ReactNode; group?: string 
 
 const NAV_GROUPS = ['Main', 'Labs', 'Theory', 'Account'];
 
-const THEME_OPTIONS: { value: ThemeMode; label: string; icon: ReactNode }[] = [
-  { value: 'light', label: 'Light', icon: <Sun size={14} /> },
-  { value: 'dark', label: 'Dark', icon: <Moon size={14} /> },
-  { value: 'signature', label: 'Signature', icon: <Palette size={14} /> },
-  { value: 'crimson', label: 'Crimson', icon: <Palette size={14} /> },
-  { value: 'aurora', label: 'Aurora', icon: <Palette size={14} /> },
-  { value: 'electric-night', label: 'Electric Night', icon: <Palette size={14} /> },
-];
+const THEME_ICONS: Record<ThemeMode, ReactNode> = {
+  light: <Sun size={14} />,
+  dark: <Moon size={14} />,
+  signature: <Palette size={14} />,
+  crimson: <Palette size={14} />,
+  aurora: <Palette size={14} />,
+  'electric-night': <Palette size={14} />,
+};
 
 function Breadcrumbs() {
   const pathname = usePathname();
@@ -66,8 +67,8 @@ function Breadcrumbs() {
 function SidebarLogo() {
   return (
     <div className="flex h-14 items-center gap-2.5 border-b border-border/60 px-4">
-      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-teal-400 to-cyan-500 shadow-lg shadow-teal-500/30">
-        <CircuitBoard size={14} className="text-black" />
+      <div className="qc-brand-mark flex h-7 w-7 items-center justify-center rounded-lg">
+        <CircuitBoard size={14} />
       </div>
       <Link href="/dashboard" className="text-[15px] font-black tracking-tight text-foreground">
         Query<span className="text-primary">Craft</span>
@@ -92,7 +93,7 @@ function SidebarNav({ pathname, onClose }: { pathname: string; onClose?: () => v
                   href={item.href}
                   onClick={onClose}
                   className={`group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${isActive
-                      ? 'bg-primary/14 text-foreground'
+                      ? 'qc-nav-active'
                       : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
                     }`}
                 >
@@ -148,15 +149,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const initials = user?.displayName?.charAt(0)?.toUpperCase() || '?';
 
   return (
-    <div className="flex min-h-[100svh] overflow-hidden bg-background">
+    <div className="qc-app-shell flex min-h-[100svh] overflow-hidden">
       {/* Desktop sidebar */}
-      <aside className="hidden w-56 shrink-0 flex-col overflow-hidden border-r border-border/60 bg-card lg:flex">
+      <aside className="qc-sidebar hidden w-56 shrink-0 flex-col overflow-hidden border-r border-border/60 lg:flex">
         <SidebarLogo />
         <SidebarNav pathname={pathname} />
         {/* User footer */}
         <div className="border-t border-border/60 p-3">
           <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-[12px] font-bold text-white shadow-md">
+            <div className="qc-avatar flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-bold">
               {initials}
             </div>
             <div className="min-w-0 flex-1">
@@ -170,12 +171,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 flex h-full w-56 flex-col bg-card shadow-2xl">
+          <aside className="qc-sidebar absolute left-0 top-0 flex h-full w-56 flex-col shadow-2xl">
             <SidebarLogo />
             <SidebarNav pathname={pathname} onClose={() => setMobileOpen(false)} />
             <div className="border-t border-border/60 p-3">
               <div className="flex items-center gap-2.5 px-2 py-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-[12px] font-bold text-white">
+                <div className="qc-avatar flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-bold">
                   {initials}
                 </div>
                 <p className="truncate text-xs font-semibold text-foreground/80">{user?.displayName || 'Guest'}</p>
@@ -188,7 +189,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Main area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Topbar */}
-        <header className="relative z-50 flex h-14 shrink-0 items-center justify-between border-b border-border/50 bg-card/60 px-4 backdrop-blur lg:px-6">
+        <header className="qc-topbar relative z-50 flex h-14 shrink-0 items-center justify-between px-4 lg:px-6">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileOpen(true)}
@@ -211,7 +212,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Palette size={16} />
               </button>
               {themeMenuOpen && (
-                <div className="absolute right-0 top-full z-[500] mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card shadow-2xl" style={{ backgroundColor: 'var(--card)' }}>
+                <div className="qc-popover absolute right-0 top-full z-[500] mt-2 w-64 overflow-hidden rounded-xl">
                   <div className="p-2">
                     <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Theme</p>
                     <div className="space-y-1">
@@ -219,13 +220,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <button
                           key={option.value}
                           onClick={() => setTheme(option.value)}
-                          className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${theme === option.value
-                              ? 'bg-muted font-semibold text-foreground'
+                          className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${theme === option.value
+                              ? 'bg-primary/12 font-semibold text-foreground'
                               : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                             }`}
                         >
-                          <span className={theme === option.value ? 'text-primary' : ''}>{option.icon}</span>
-                          {option.label}
+                          <span className="qc-theme-swatch h-5 w-5 shrink-0 rounded-full" data-theme={option.value} />
+                          <span className={theme === option.value ? 'text-primary' : ''}>{THEME_ICONS[option.value]}</span>
+                          <span className="min-w-0">
+                            <span className="block leading-tight">{option.label}</span>
+                            <span className="block truncate text-[10px] font-normal text-muted-foreground">{option.description}</span>
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -238,12 +243,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="relative">
               <button
                 onClick={() => { setUserMenuOpen(!userMenuOpen); setThemeMenuOpen(false); }}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-xs font-bold text-white shadow-md transition-transform hover:scale-105"
+                className="qc-avatar flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-transform hover:scale-105"
               >
                 {initials}
               </button>
               {userMenuOpen && (
-                <div className="absolute right-0 top-full z-[500] mt-2 w-44 overflow-hidden rounded-xl border border-border shadow-2xl" style={{ backgroundColor: 'var(--card)' }}>
+                <div className="qc-popover absolute right-0 top-full z-[500] mt-2 w-44 overflow-hidden rounded-xl">
                   <div className="border-b border-border px-4 py-3">
                     <p className="truncate text-sm font-semibold">{user?.displayName || 'Guest'}</p>
 

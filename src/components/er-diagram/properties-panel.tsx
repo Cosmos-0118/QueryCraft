@@ -26,11 +26,8 @@ export function PropertiesPanel() {
   if (!selected || !nodeType) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <div
-          className="rounded-2xl p-4"
-          style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0.04) 100%)' }}
-        >
-          <MousePointer2 className="h-6 w-6 text-violet-400/50" />
+        <div className="qc-icon-badge rounded-2xl p-4">
+          <MousePointer2 className="h-6 w-6 opacity-50" />
         </div>
         <div>
           <p className="text-sm font-medium text-foreground/80">Select a node</p>
@@ -38,12 +35,12 @@ export function PropertiesPanel() {
         </div>
         <div className="mt-4 w-full space-y-1.5">
           {[
-            { icon: Box, label: 'Entity', desc: 'Rectangle', color: 'text-violet-400' },
-            { icon: Circle, label: 'Attribute', desc: 'Ellipse', color: 'text-muted-foreground/80' },
-            { icon: Diamond, label: 'Relationship', desc: 'Diamond', color: 'text-violet-400' },
-          ].map(({ icon: Icon, label, desc, color }) => (
+            { icon: Box, label: 'Entity', desc: 'Rectangle', cls: 'text-primary' },
+            { icon: Circle, label: 'Attribute', desc: 'Ellipse', cls: 'text-muted-foreground/80' },
+            { icon: Diamond, label: 'Relationship', desc: 'Diamond', cls: 'text-primary' },
+          ].map(({ icon: Icon, label, desc, cls }) => (
             <div key={label} className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-muted-foreground/80">
-              <Icon className={`h-3.5 w-3.5 ${color}`} />
+              <Icon className={`h-3.5 w-3.5 ${cls}`} />
               <span className="font-medium text-foreground/80">{label}</span>
               <span className="ml-auto text-muted-foreground/80">{desc}</span>
             </div>
@@ -64,32 +61,26 @@ export function PropertiesPanel() {
   const inputStyle =
     'w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-1 focus:ring-primary/20';
 
-  const accentColor =
-    nodeType === 'entity'
-      ? entity?.isWeak ? 'amber' : 'violet'
-      : nodeType === 'relationship'
-        ? 'violet'
-        : 'zinc';
+  const isWeakEntity = nodeType === 'entity' && entity?.isWeak;
+  const isAttribute = nodeType === 'attribute';
 
-  const dotColor =
-    accentColor === 'violet' ? 'bg-violet-400' : accentColor === 'amber' ? 'bg-amber-400' : 'bg-zinc-400';
+  const headerBg = isWeakEntity
+    ? 'linear-gradient(135deg, color-mix(in oklab, var(--warning) 14%, var(--card)) 0%, transparent 100%)'
+    : isAttribute
+      ? 'linear-gradient(135deg, color-mix(in oklab, var(--border) 40%, var(--card)) 0%, transparent 100%)'
+      : 'linear-gradient(135deg, color-mix(in oklab, var(--primary) 14%, var(--card)) 0%, transparent 100%)';
+
+  const dotCss = isWeakEntity ? 'var(--warning)' : isAttribute ? 'var(--muted-foreground)' : 'var(--primary)';
 
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
       <div
         className="flex items-center justify-between px-4 py-3"
-        style={{
-          background:
-            accentColor === 'violet'
-              ? 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, transparent 100%)'
-              : accentColor === 'amber'
-                ? 'linear-gradient(135deg, rgba(245,158,11,0.12) 0%, transparent 100%)'
-                : 'linear-gradient(135deg, rgba(148,163,184,0.18) 0%, transparent 100%)',
-        }}
+        style={{ background: headerBg }}
       >
         <div className="flex items-center gap-2.5">
-          <div className={`h-2 w-2 rounded-full ${dotColor}`} />
+          <div className="h-2 w-2 rounded-full" style={{ backgroundColor: dotCss }} />
           <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-foreground/80">
             {nodeType}
           </span>
@@ -130,7 +121,7 @@ export function PropertiesPanel() {
                   onClick={() => store.updateEntity(entity.id, { isWeak: false })}
                   className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-all duration-150 ${
                     !entity.isWeak
-                      ? 'border-violet-300 bg-violet-100 text-violet-700 shadow-sm'
+                      ? 'border-primary/40 bg-primary/12 text-primary shadow-sm'
                       : 'border-border text-muted-foreground hover:bg-muted/80 hover:text-foreground/90'
                   }`}
                 >
@@ -140,7 +131,7 @@ export function PropertiesPanel() {
                   onClick={() => store.updateEntity(entity.id, { isWeak: true })}
                   className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-all duration-150 ${
                     entity.isWeak
-                      ? 'border-amber-300 bg-amber-100 text-amber-700 shadow-sm'
+                      ? 'border-warning/40 bg-warning/12 text-warning shadow-sm'
                       : 'border-border text-muted-foreground hover:bg-muted/80 hover:text-foreground/90'
                   }`}
                 >
@@ -166,11 +157,11 @@ export function PropertiesPanel() {
                         className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs transition-colors hover:bg-muted/80"
                       >
                         {a.kind === 'key' ? (
-                          <KeyRound className="h-3 w-3 text-yellow-600" />
+                          <KeyRound className="h-3 w-3 text-warning" />
                         ) : (
-                          <div className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                          <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
                         )}
-                        <span className={`${a.kind === 'key' ? 'font-semibold text-yellow-700 underline underline-offset-2' : 'text-foreground/80'}`}>
+                        <span className={`${a.kind === 'key' ? 'font-semibold text-warning underline underline-offset-2' : 'text-foreground/80'}`}>
                           {a.name}
                         </span>
                         <span className="ml-auto rounded bg-muted/60 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground/80">
@@ -228,7 +219,7 @@ export function PropertiesPanel() {
                     onClick={() => store.updateRelationship(relationship.id, { cardinality: c })}
                     className={`rounded-lg border px-2 py-2 text-xs font-bold transition-all duration-150 ${
                       relationship.cardinality === c
-                        ? 'border-violet-300 bg-violet-100 text-violet-700 shadow-sm'
+                        ? 'border-primary/40 bg-primary/12 text-primary shadow-sm'
                         : 'border-border text-muted-foreground hover:bg-muted/80 hover:text-foreground/90'
                     }`}
                   >
@@ -247,9 +238,9 @@ export function PropertiesPanel() {
                       key={i}
                       className="flex items-center gap-2.5 rounded-lg border border-border bg-muted px-3 py-2 text-xs"
                     >
-                      <div className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+                      <div className="h-1.5 w-1.5 rounded-full bg-primary/80" />
                       <span className="font-medium text-foreground/80">{ent?.name ?? 'Unknown'}</span>
-                      <span className="ml-auto rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">
+                      <span className="ml-auto rounded bg-primary/12 px-1.5 py-0.5 text-[10px] font-bold text-primary">
                         {i === 0 ? relationship.cardinality.split(':')[0] : relationship.cardinality.split(':')[1]}
                       </span>
                     </div>
@@ -280,7 +271,7 @@ export function PropertiesPanel() {
       <div className="border-t border-border p-3">
         <button
           onClick={() => { store.removeNode(selected.id); store.setSelectedId(null); }}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-rose-300 py-2 text-xs font-medium text-rose-700 transition-all duration-150 hover:border-rose-400 hover:bg-rose-100 hover:text-rose-800"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-danger/35 py-2 text-xs font-medium text-danger transition-all duration-150 hover:border-danger/55 hover:bg-danger/10"
         >
           <Trash2 className="h-3.5 w-3.5" />
           Delete {nodeType}

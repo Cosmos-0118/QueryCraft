@@ -19,11 +19,11 @@ export const EntityNode = memo(function EntityNode({ data, selected }: NodeProps
       {/* Glow effect on select */}
       {selected && (
         <div
-          className="pointer-events-none absolute -inset-1.5 rounded-xl opacity-50 blur-md"
+          className="pointer-events-none absolute -inset-1.5 rounded-xl opacity-60 blur-md"
           style={{
             background: isWeak
-              ? 'linear-gradient(135deg, #f59e0b33, #f59e0b11)'
-              : 'linear-gradient(135deg, #8b5cf633, #8b5cf611)',
+              ? 'linear-gradient(135deg, color-mix(in oklab, var(--warning) 24%, transparent), color-mix(in oklab, var(--warning) 8%, transparent))'
+              : 'linear-gradient(135deg, color-mix(in oklab, var(--primary) 22%, transparent), color-mix(in oklab, var(--primary) 7%, transparent))',
           }}
         />
       )}
@@ -31,30 +31,50 @@ export const EntityNode = memo(function EntityNode({ data, selected }: NodeProps
       <div
         className={`relative overflow-hidden rounded-xl border transition-all duration-200 ${
           selected
-            ? isWeak
-              ? 'border-amber-400/50 shadow-lg shadow-amber-500/10'
-              : 'border-violet-400/50 shadow-lg shadow-violet-500/10'
-            : 'border-border bg-card shadow-sm shadow-black/10 hover:shadow-md hover:shadow-black/20'
+            ? 'shadow-lg'
+            : 'border-border bg-card shadow-sm hover:shadow-md'
         }`}
+        style={selected ? {
+          borderColor: isWeak
+            ? 'color-mix(in oklab, var(--warning) 55%, var(--border))'
+            : 'color-mix(in oklab, var(--primary) 55%, var(--border))',
+          boxShadow: isWeak
+            ? '0 8px 28px -12px color-mix(in oklab, var(--warning) 36%, transparent)'
+            : '0 8px 28px -12px color-mix(in oklab, var(--primary) 32%, transparent)',
+        } : undefined}
       >
         {/* Header */}
         <div
           className="flex items-center gap-2 px-3 py-1.5"
           style={{
             background: isWeak
-              ? 'linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(245,158,11,0.05) 100%)'
-              : 'linear-gradient(135deg, rgba(139,92,246,0.18) 0%, rgba(139,92,246,0.06) 100%)',
+              ? 'linear-gradient(135deg, color-mix(in oklab, var(--warning) 16%, var(--card)) 0%, color-mix(in oklab, var(--warning) 6%, var(--card)) 100%)'
+              : 'linear-gradient(135deg, color-mix(in oklab, var(--primary) 18%, var(--card)) 0%, color-mix(in oklab, var(--primary) 7%, var(--card)) 100%)',
           }}
         >
           {/* Colored dot */}
-          <div className={`h-2 w-2 rounded-full ${isWeak ? 'bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.5)]' : 'bg-violet-400 shadow-[0_0_6px_rgba(139,92,246,0.5)]'}`} />
-          <span className={`text-[10px] font-bold uppercase tracking-[0.08em] ${isWeak ? 'text-amber-400/90' : 'text-violet-400/90'}`}>
+          <div
+            className="h-2 w-2 rounded-full"
+            style={{
+              backgroundColor: isWeak ? 'var(--warning)' : 'var(--primary)',
+              boxShadow: isWeak
+                ? '0 0 6px color-mix(in oklab, var(--warning) 55%, transparent)'
+                : '0 0 6px color-mix(in oklab, var(--primary) 50%, transparent)',
+            }}
+          />
+          <span
+            className="text-[10px] font-bold uppercase tracking-[0.08em]"
+            style={{ color: isWeak ? 'var(--warning)' : 'var(--primary)', opacity: 0.9 }}
+          >
             {isWeak ? 'Weak Entity' : 'Entity'}
           </span>
         </div>
 
         {/* Separator line */}
-        <div className={`h-px ${isWeak ? 'bg-amber-500/20' : 'bg-violet-500/20'}`} />
+        <div
+          className="h-px"
+          style={{ background: isWeak ? 'color-mix(in oklab, var(--warning) 22%, transparent)' : 'color-mix(in oklab, var(--primary) 22%, transparent)' }}
+        />
 
         {/* Body */}
         <div className="bg-card px-4 py-3">

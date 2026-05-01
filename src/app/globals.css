@@ -1,72 +1,93 @@
 @import 'tailwindcss';
 
 :root {
-  --background: #ffffff;
-  --foreground: #0a0a0a;
-  --muted: #f5f5f5;
-  --muted-foreground: #737373;
-  --primary: #6d28d9;
-  --primary-foreground: #ffffff;
-  --secondary: #f3f4f6;
-  --secondary-foreground: #1f2937;
-  --accent: #8b5cf6;
-  --accent-foreground: #ffffff;
-  --border: #e5e7eb;
-  --card: #ffffff;
-  --card-foreground: #0a0a0a;
-  --ring: #6d28d9;
-  --sandbox-shell-gradient-start: #ffffff;
-  --sandbox-shell-gradient-end: #e7eef9;
-  --sandbox-shell-glow-1: rgba(14, 165, 233, 0.16);
-  --sandbox-shell-glow-2: rgba(16, 185, 129, 0.13);
-  --sandbox-surface: rgba(255, 255, 255, 0.86);
-  --sandbox-surface-soft: rgba(242, 247, 255, 0.75);
-  --sandbox-surface-strong: rgba(255, 255, 255, 0.94);
-  --sandbox-border-soft: rgba(65, 92, 132, 0.2);
-  --sandbox-border-strong: rgba(31, 56, 93, 0.32);
-  --sandbox-shadow: 0 28px 58px -40px rgba(15, 35, 65, 0.42);
-  --sandbox-chip-bg: rgba(20, 66, 116, 0.12);
-  --sandbox-chip-fg: #1b4371;
-  --sandbox-muted-pill-bg: rgba(27, 63, 113, 0.08);
-  --sandbox-muted-pill-fg: #3f5476;
-  --sandbox-button-bg: rgba(255, 255, 255, 0.82);
-  --sandbox-button-fg: #17385f;
-  --sandbox-button-border: rgba(58, 84, 121, 0.24);
-  --sandbox-button-hover-bg: rgba(232, 241, 253, 0.92);
-  --sandbox-button-hover-border: rgba(36, 74, 124, 0.35);
-  --sandbox-danger-bg: rgba(190, 24, 93, 0.1);
-  --sandbox-danger-fg: #9f1239;
-  --sandbox-danger-border: rgba(190, 24, 93, 0.32);
-  --sandbox-danger-hover-bg: rgba(190, 24, 93, 0.16);
-  --sandbox-danger-hover-border: rgba(159, 18, 57, 0.5);
-  --sandbox-run-from: #0284c7;
-  --sandbox-run-to: #0369a1;
-  --sandbox-run-shadow: 0 18px 38px -24px rgba(2, 132, 199, 0.54);
-  --sandbox-overlay: rgba(17, 24, 39, 0.44);
-  --sandbox-panel-overlay: rgba(255, 255, 255, 0.84);
-  --sandbox-tone-emerald: #10b981;
-  --sandbox-tone-violet: #7c3aed;
-  --sandbox-tone-cyan: #0891b2;
-  --sandbox-tone-fuchsia: #c026d3;
-  --sandbox-tone-sky: #0284c7;
-  --sandbox-tone-amber: #d97706;
-  --sandbox-tone-rose: #e11d48;
-  --sandbox-editor-bg: #0c1422;
-  --sandbox-editor-bg-2: #0f1b30;
-  --sandbox-editor-gutter: #5f7398;
-  --sandbox-editor-active-line: rgba(90, 115, 152, 0.2);
-  --sandbox-editor-tooltip-bg: rgba(12, 20, 34, 0.98);
-  --sandbox-editor-tooltip-border: rgba(95, 115, 152, 0.52);
-  --sandbox-editor-tooltip-selected: rgba(14, 165, 233, 0.18);
-  --sandbox-editor-tooltip-text: #d8e7ff;
-  --sandbox-editor-tooltip-muted: #8196bb;
-  --sandbox-editor-tooltip-match: #6ec7ff;
-  --sandbox-success-bg: rgba(5, 150, 105, 0.12);
-  --sandbox-success-border: rgba(5, 150, 105, 0.34);
-  --sandbox-success-fg: #046c4e;
-  --sandbox-error-bg: rgba(225, 29, 72, 0.12);
-  --sandbox-error-border: rgba(225, 29, 72, 0.34);
-  --sandbox-error-fg: #9f1239;
+  --background: #070a13;
+  --foreground: #e7edf8;
+  --muted: #111827;
+  --muted-foreground: #92a2bd;
+  --primary: #7dd3fc;
+  --primary-foreground: #04111e;
+  --secondary: #172033;
+  --secondary-foreground: #dce7f8;
+  --accent: #a78bfa;
+  --accent-foreground: #120a2a;
+  --border: #263247;
+  --card: #0d1322;
+  --card-foreground: #edf4ff;
+  --ring: #38bdf8;
+  --surface: #0a1020;
+  --surface-soft: #10182a;
+  --surface-strong: #131d31;
+  --surface-elevated: #162137;
+  --surface-hover: #1a263d;
+  --surface-active: #1f304e;
+  --sidebar: #0a1020;
+  --topbar: #0d1322;
+  --nav-active: #14243a;
+  --nav-active-foreground: #d9f4ff;
+  --overlay: rgba(2, 6, 14, 0.72);
+  --shadow-color: rgba(0, 0, 0, 0.68);
+  --brand-from: #38bdf8;
+  --brand-to: #a78bfa;
+  --brand-text: #06111f;
+  --success: #34d399;
+  --success-foreground: #bbf7d0;
+  --danger: #fb7185;
+  --danger-foreground: #ffe4e6;
+  --warning: #fbbf24;
+  --info: #38bdf8;
+  --sandbox-shell-gradient-start: var(--surface-soft);
+  --sandbox-shell-gradient-end: var(--background);
+  --sandbox-shell-glow-1: color-mix(in oklab, var(--primary) 18%, transparent);
+  --sandbox-shell-glow-2: color-mix(in oklab, var(--accent) 14%, transparent);
+  --sandbox-surface: color-mix(in oklab, var(--surface-strong) 82%, transparent);
+  --sandbox-surface-soft: color-mix(in oklab, var(--surface-soft) 74%, transparent);
+  --sandbox-surface-strong: color-mix(in oklab, var(--surface-elevated) 90%, transparent);
+  --sandbox-border-soft: color-mix(in oklab, var(--border) 80%, transparent);
+  --sandbox-border-strong: color-mix(in oklab, var(--ring) 36%, var(--border));
+  --sandbox-shadow: 0 28px 64px -42px var(--shadow-color);
+  --sandbox-chip-bg: color-mix(in oklab, var(--primary) 14%, transparent);
+  --sandbox-chip-fg: color-mix(in oklab, var(--primary) 70%, var(--foreground));
+  --sandbox-muted-pill-bg: color-mix(in oklab, var(--muted-foreground) 12%, transparent);
+  --sandbox-muted-pill-fg: color-mix(in oklab, var(--muted-foreground) 82%, var(--foreground));
+  --sandbox-button-bg: color-mix(in oklab, var(--surface-strong) 88%, transparent);
+  --sandbox-button-fg: color-mix(in oklab, var(--foreground) 88%, transparent);
+  --sandbox-button-border: color-mix(in oklab, var(--border) 78%, transparent);
+  --sandbox-button-hover-bg: color-mix(in oklab, var(--surface-hover) 92%, transparent);
+  --sandbox-button-hover-border: color-mix(in oklab, var(--ring) 36%, var(--border));
+  --sandbox-danger-bg: color-mix(in oklab, var(--danger) 13%, transparent);
+  --sandbox-danger-fg: var(--danger-foreground);
+  --sandbox-danger-border: color-mix(in oklab, var(--danger) 34%, transparent);
+  --sandbox-danger-hover-bg: color-mix(in oklab, var(--danger) 20%, transparent);
+  --sandbox-danger-hover-border: color-mix(in oklab, var(--danger) 50%, transparent);
+  --sandbox-run-from: var(--primary);
+  --sandbox-run-to: var(--accent);
+  --sandbox-run-shadow: 0 18px 42px -26px color-mix(in oklab, var(--primary) 68%, transparent);
+  --sandbox-overlay: var(--overlay);
+  --sandbox-panel-overlay: color-mix(in oklab, var(--surface-elevated) 74%, transparent);
+  --sandbox-tone-emerald: #34d399;
+  --sandbox-tone-violet: #a78bfa;
+  --sandbox-tone-cyan: #22d3ee;
+  --sandbox-tone-fuchsia: #e879f9;
+  --sandbox-tone-sky: #38bdf8;
+  --sandbox-tone-amber: #fbbf24;
+  --sandbox-tone-rose: #fb7185;
+  --sandbox-editor-bg: #080f1d;
+  --sandbox-editor-bg-2: #0c1526;
+  --sandbox-editor-gutter: #7488ad;
+  --sandbox-editor-active-line: color-mix(in oklab, var(--sandbox-editor-gutter) 18%, transparent);
+  --sandbox-editor-tooltip-bg: color-mix(in oklab, var(--sandbox-editor-bg) 98%, #000000);
+  --sandbox-editor-tooltip-border: color-mix(in oklab, var(--sandbox-editor-gutter) 42%, transparent);
+  --sandbox-editor-tooltip-selected: color-mix(in oklab, var(--primary) 20%, transparent);
+  --sandbox-editor-tooltip-text: var(--foreground);
+  --sandbox-editor-tooltip-muted: var(--muted-foreground);
+  --sandbox-editor-tooltip-match: var(--accent);
+  --sandbox-success-bg: color-mix(in oklab, var(--success) 15%, transparent);
+  --sandbox-success-border: color-mix(in oklab, var(--success) 38%, transparent);
+  --sandbox-success-fg: var(--success-foreground);
+  --sandbox-error-bg: color-mix(in oklab, var(--danger) 16%, transparent);
+  --sandbox-error-border: color-mix(in oklab, var(--danger) 38%, transparent);
+  --sandbox-error-fg: var(--danger-foreground);
 }
 
 @theme inline {
@@ -84,85 +105,173 @@
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-surface-soft: var(--surface-soft);
+  --color-surface-strong: var(--surface-strong);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-active: var(--surface-active);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #09090b;
-    --foreground: #fafafa;
-    --muted: #27272a;
-    --muted-foreground: #a1a1aa;
-    --primary: #7c3aed;
-    --primary-foreground: #ffffff;
-    --secondary: #1e1e22;
-    --secondary-foreground: #fafafa;
-    --accent: #a78bfa;
-    --accent-foreground: #09090b;
-    --border: #27272a;
-    --card: #111113;
-    --card-foreground: #fafafa;
-    --ring: #7c3aed;
-    --sandbox-shell-gradient-start: #0b1324;
-    --sandbox-shell-gradient-end: #070d1a;
-    --sandbox-shell-glow-1: rgba(56, 189, 248, 0.16);
-    --sandbox-shell-glow-2: rgba(59, 130, 246, 0.16);
-    --sandbox-surface: rgba(12, 20, 35, 0.8);
-    --sandbox-surface-soft: rgba(11, 19, 33, 0.65);
-    --sandbox-surface-strong: rgba(8, 14, 26, 0.9);
-    --sandbox-border-soft: rgba(116, 148, 199, 0.22);
-    --sandbox-border-strong: rgba(126, 166, 226, 0.35);
-    --sandbox-shadow: 0 30px 64px -42px rgba(0, 0, 0, 0.82);
-    --sandbox-chip-bg: rgba(56, 189, 248, 0.14);
-    --sandbox-chip-fg: #9edaff;
-    --sandbox-muted-pill-bg: rgba(145, 170, 207, 0.14);
-    --sandbox-muted-pill-fg: #b2c4df;
-    --sandbox-button-bg: rgba(12, 20, 34, 0.82);
-    --sandbox-button-fg: #d9e8ff;
-    --sandbox-button-border: rgba(109, 138, 178, 0.28);
-    --sandbox-button-hover-bg: rgba(20, 34, 56, 0.9);
-    --sandbox-button-hover-border: rgba(126, 168, 232, 0.38);
-    --sandbox-danger-bg: rgba(251, 113, 133, 0.12);
-    --sandbox-danger-fg: #fecdd3;
-    --sandbox-danger-border: rgba(251, 113, 133, 0.3);
-    --sandbox-danger-hover-bg: rgba(251, 113, 133, 0.2);
-    --sandbox-danger-hover-border: rgba(251, 113, 133, 0.48);
-    --sandbox-run-from: #0ea5e9;
-    --sandbox-run-to: #2563eb;
-    --sandbox-run-shadow: 0 18px 40px -25px rgba(14, 165, 233, 0.62);
-    --sandbox-overlay: rgba(2, 6, 14, 0.72);
-    --sandbox-panel-overlay: rgba(9, 15, 27, 0.74);
-    --sandbox-tone-emerald: #34d399;
-    --sandbox-tone-violet: #a78bfa;
-    --sandbox-tone-cyan: #22d3ee;
-    --sandbox-tone-fuchsia: #e879f9;
-    --sandbox-tone-sky: #38bdf8;
-    --sandbox-tone-amber: #fbbf24;
-    --sandbox-tone-rose: #fb7185;
-    --sandbox-editor-bg: #080f1d;
-    --sandbox-editor-bg-2: #0c1526;
-    --sandbox-editor-gutter: #6f85ab;
-    --sandbox-editor-active-line: rgba(111, 133, 171, 0.16);
-    --sandbox-editor-tooltip-bg: rgba(8, 15, 30, 0.98);
-    --sandbox-editor-tooltip-border: rgba(111, 133, 171, 0.42);
-    --sandbox-editor-tooltip-selected: rgba(56, 189, 248, 0.18);
-    --sandbox-editor-tooltip-text: #dbe8ff;
-    --sandbox-editor-tooltip-muted: #7f97bf;
-    --sandbox-editor-tooltip-match: #7dd3fc;
-    --sandbox-success-bg: rgba(52, 211, 153, 0.14);
-    --sandbox-success-border: rgba(52, 211, 153, 0.36);
-    --sandbox-success-fg: #bbf7d0;
-    --sandbox-error-bg: rgba(251, 113, 133, 0.16);
-    --sandbox-error-border: rgba(251, 113, 133, 0.38);
-    --sandbox-error-fg: #fecdd3;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.qc-app-shell {
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in oklab, var(--primary) 14%, transparent), transparent 32rem),
+    radial-gradient(circle at 86% 8%, color-mix(in oklab, var(--accent) 12%, transparent), transparent 28rem),
+    var(--background);
+}
+
+.qc-sidebar {
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--sidebar) 96%, transparent), color-mix(in oklab, var(--surface) 96%, transparent)),
+    var(--sidebar);
+  box-shadow: inset -1px 0 0 color-mix(in oklab, var(--border) 82%, transparent);
+}
+
+.qc-topbar {
+  background: color-mix(in oklab, var(--topbar) 88%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--border) 72%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.qc-popover {
+  border: 1px solid color-mix(in oklab, var(--border) 82%, transparent);
+  background: color-mix(in oklab, var(--surface-elevated) 94%, transparent);
+  box-shadow: 0 22px 60px -34px var(--shadow-color);
+  backdrop-filter: blur(18px);
+}
+
+.qc-brand-mark,
+.qc-avatar,
+.qc-primary-action {
+  background-image: linear-gradient(135deg, var(--brand-from), var(--brand-to));
+  color: var(--brand-text);
+  box-shadow: 0 14px 30px -18px color-mix(in oklab, var(--brand-to) 72%, transparent);
+}
+
+.qc-primary-action {
+  border: 1px solid color-mix(in oklab, var(--brand-to) 42%, var(--border));
+  transition:
+    filter 160ms ease,
+    transform 120ms ease,
+    box-shadow 160ms ease;
+}
+
+.qc-primary-action:hover:not(:disabled) {
+  filter: saturate(1.08) brightness(1.06);
+}
+
+.qc-primary-action:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+}
+
+.qc-secondary-action {
+  border: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+  background: color-mix(in oklab, var(--surface-strong) 86%, transparent);
+  color: color-mix(in oklab, var(--foreground) 88%, transparent);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.qc-secondary-action:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--ring) 38%, var(--border));
+  background: color-mix(in oklab, var(--surface-hover) 92%, transparent);
+  color: var(--foreground);
+}
+
+.qc-nav-active {
+  background: var(--nav-active);
+  color: var(--nav-active-foreground);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ring) 18%, transparent);
+}
+
+.qc-icon-badge,
+.qc-accent-chip {
+  border: 1px solid color-mix(in oklab, var(--ring) 28%, var(--border));
+  background: color-mix(in oklab, var(--primary) 12%, var(--surface-strong));
+  color: color-mix(in oklab, var(--primary) 74%, var(--foreground));
+}
+
+.qc-card {
+  border: 1px solid color-mix(in oklab, var(--border) 86%, transparent);
+  background: color-mix(in oklab, var(--card) 94%, transparent);
+  box-shadow: 0 20px 54px -44px var(--shadow-color);
+}
+
+.qc-card-muted {
+  border: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
+  background: color-mix(in oklab, var(--surface-soft) 84%, transparent);
+}
+
+.qc-field {
+  border: 1px solid color-mix(in oklab, var(--border) 86%, transparent);
+  background: color-mix(in oklab, var(--surface-strong) 86%, transparent);
+  color: var(--foreground);
+}
+
+.qc-field:focus {
+  border-color: color-mix(in oklab, var(--ring) 62%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 16%, transparent);
+}
+
+.qc-kbd {
+  border: 1px solid color-mix(in oklab, var(--border) 84%, transparent);
+  background: color-mix(in oklab, var(--surface-hover) 76%, transparent);
+  color: color-mix(in oklab, var(--foreground) 82%, transparent);
+}
+
+.qc-theme-swatch {
+  background: linear-gradient(135deg, var(--swatch-1), var(--swatch-2) 52%, var(--swatch-3));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, white 22%, transparent);
+}
+
+.qc-theme-swatch[data-theme='light'] {
+  --swatch-1: #f8fafc;
+  --swatch-2: #2563eb;
+  --swatch-3: #06b6d4;
+}
+
+.qc-theme-swatch[data-theme='dark'] {
+  --swatch-1: #070a13;
+  --swatch-2: #7dd3fc;
+  --swatch-3: #a78bfa;
+}
+
+.qc-theme-swatch[data-theme='signature'] {
+  --swatch-1: #061815;
+  --swatch-2: #2dd4bf;
+  --swatch-3: #38bdf8;
+}
+
+.qc-theme-swatch[data-theme='crimson'] {
+  --swatch-1: #18070d;
+  --swatch-2: #fb7185;
+  --swatch-3: #f97316;
+}
+
+.qc-theme-swatch[data-theme='aurora'] {
+  --swatch-1: #041811;
+  --swatch-2: #34d399;
+  --swatch-3: #22d3ee;
+}
+
+.qc-theme-swatch[data-theme='electric-night'] {
+  --swatch-1: #0a0718;
+  --swatch-2: #c084fc;
+  --swatch-3: #f472b6;
 }
 
 .qc-sandbox-page {
@@ -774,12 +883,11 @@ body {
   color: color-mix(in oklab, var(--muted-foreground) 84%, transparent) !important;
 }
 
-/* In light theme, convert teal-cyan action gradients to dark neutral buttons. */
+/* Keep older hardcoded teal action buttons aligned with the active light palette. */
 :root[data-resolved-theme='light'] :is(button, a).bg-gradient-to-r.from-teal-400.to-cyan-500,
 :root[data-resolved-theme='light'] :is(button, a).bg-gradient-to-br.from-teal-400.to-cyan-500 {
-  background-image: none !important;
-  background-color: #374151 !important;
-  border-color: #4b5563 !important;
-  color: #f9fafb !important;
-  box-shadow: 0 10px 24px -14px rgba(17, 24, 39, 0.8) !important;
+  background-image: linear-gradient(135deg, var(--brand-from), var(--brand-to)) !important;
+  border-color: color-mix(in oklab, var(--brand-to) 42%, var(--border)) !important;
+  color: var(--brand-text) !important;
+  box-shadow: 0 12px 28px -18px color-mix(in oklab, var(--brand-to) 68%, transparent) !important;
 }

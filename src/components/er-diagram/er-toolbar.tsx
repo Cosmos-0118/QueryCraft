@@ -170,11 +170,11 @@ function computeRelationshipPosition(
 /* ── Kind / Cardinality Configs ──────────────────────────── */
 
 const ATTR_KINDS: { value: AttributeKind; label: string; icon: typeof Key; color: string; bg: string }[] = [
-  { value: 'regular', label: 'Regular', icon: Circle, color: 'text-muted-foreground', bg: 'bg-muted/80 border-border' },
-  { value: 'key', label: 'Key (PK)', icon: Key, color: 'text-yellow-700', bg: 'bg-yellow-100 border-yellow-300' },
-  { value: 'multivalued', label: 'Multi', icon: Layers, color: 'text-blue-700', bg: 'bg-blue-100 border-blue-300' },
-  { value: 'derived', label: 'Derived', icon: CopySlash, color: 'text-muted-foreground/80', bg: 'bg-muted/80 border-border border-dashed' },
-  { value: 'composite', label: 'Composite', icon: GitFork, color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-300' },
+  { value: 'regular',    label: 'Regular',   icon: Circle,   color: 'text-muted-foreground',  bg: 'bg-muted/80 border-border' },
+  { value: 'key',        label: 'Key (PK)',   icon: Key,      color: 'text-warning',            bg: 'bg-warning/15 border-warning/50' },
+  { value: 'multivalued',label: 'Multi',      icon: Layers,   color: 'text-info',               bg: 'bg-info/15 border-info/50' },
+  { value: 'derived',    label: 'Derived',    icon: CopySlash,color: 'text-muted-foreground/80',bg: 'bg-muted/80 border-border border-dashed' },
+  { value: 'composite',  label: 'Composite',  icon: GitFork,  color: 'text-success',            bg: 'bg-success/15 border-success/50' },
 ];
 
 const CARDINALITIES: { value: Cardinality; label: string; desc: string }[] = [
@@ -334,7 +334,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
           <div
             className="h-1.5 w-1.5 shrink-0 rounded-full"
             style={{
-              background: mode === 'entity' ? '#8b5cf6' : mode === 'attribute' ? '#3b82f6' : '#ec4899',
+              backgroundColor: mode === 'entity' ? 'var(--primary)' : mode === 'attribute' ? 'var(--info)' : 'var(--accent)',
             }}
           />
 
@@ -448,7 +448,7 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
                     title={c.desc}
                     className={`rounded-md border px-2 py-1 text-[10px] font-bold tabular-nums transition-all ${
                       cardinality === c.value
-                        ? 'border-violet-500/40 bg-violet-500/15 text-violet-300'
+                        ? 'border-primary/40 bg-primary/15 text-primary'
                         : 'border-border text-muted-foreground hover:bg-muted/80 hover:text-foreground/90'
                     }`}
                   >
@@ -479,15 +479,12 @@ export function ERToolbar({ onExport }: ERToolbarProps) {
               (mode === 'attribute' && (!attrEntity || store.entities.length === 0)) ||
               (mode === 'relationship' && (!relEntity1 || !relEntity2 || relEntity1 === relEntity2 || store.entities.length < 2))
             }
-            className="inline-flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-semibold text-white transition-all disabled:opacity-30"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all disabled:opacity-30"
             style={{
               background: name.trim()
-                ? mode === 'entity'
-                  ? 'linear-gradient(135deg, #7c3aed, #6d28d9)'
-                  : mode === 'attribute'
-                  ? 'linear-gradient(135deg, #3b82f6, #6d28d9)'
-                  : 'linear-gradient(135deg, #8b5cf6, #ec4899)'
-                : 'rgba(63,63,70,0.5)',
+                ? 'linear-gradient(135deg, var(--brand-from), var(--brand-to))'
+                : 'color-mix(in oklab, var(--muted-foreground) 22%, transparent)',
+              color: name.trim() ? 'var(--brand-text)' : 'var(--muted-foreground)',
             }}
           >
             <Plus className="h-3 w-3" />
