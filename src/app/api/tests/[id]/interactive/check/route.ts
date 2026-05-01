@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getInteractiveCheckContext } from '@/lib/test/test-module-db';
 import { calculateInteractiveQuestionPoints } from '@/lib/test/interactive-quiz';
+import { ensureAttemptAccess, requireTestActor } from '@/lib/security/test-module-security';
 
 interface CheckAnswerBody {
   attempt_id?: string;
@@ -26,6 +27,13 @@ export async function POST(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
 ) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['admin', 'student'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
     const testId = await resolveTestId(context);
     if (!testId) {
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
@@ -34,6 +42,15 @@ export async function POST(
     const body = await req.json().catch(() => ({} as CheckAnswerBody));
     if (!body.attempt_id || typeof body.attempt_id !== 'string') {
       return NextResponse.json({ error: 'attempt_id is required.' }, { status: 400 });
+    }
+
+    const access = await ensureAttemptAccess(actorResult.value, {
+      testId,
+      attemptId: body.attempt_id,
+      allowTeacherOwner: false,
+    });
+    if (!access.ok) {
+      return access.response;
     }
 
     if (!body.question_id || typeof body.question_id !== 'string') {

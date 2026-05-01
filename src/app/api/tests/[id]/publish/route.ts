@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTestById, publishTest } from '@/lib/test/test-module-db';
+import { publishTest } from '@/lib/test/test-module-db';
+import { ensureTeacherOwnsTest, requireTestActor } from '@/lib/security/test-module-security';
 
 // POST /api/tests/:id/publish
 export async function POST(
@@ -7,6 +8,13 @@ export async function POST(
   context: { params: { id: string } } | { params: Promise<{ id: string }> }
 ) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['admin', 'teacher'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
     // Support both Promise and plain object for context.params
     const params = 'then' in context.params ? await context.params : context.params;
     const id = params.id;
@@ -14,19 +22,9 @@ export async function POST(
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
     }
 
-    const viewerRole = req.nextUrl.searchParams.get('role');
-    const viewerId = req.nextUrl.searchParams.get('userId')?.trim();
-    if (viewerRole !== 'teacher' || !viewerId) {
-      return NextResponse.json({ error: 'Teacher userId is required.' }, { status: 400 });
-    }
-
-    const test = await getTestById(id);
-    if (!test) {
-      return NextResponse.json({ error: 'Test not found.' }, { status: 404 });
-    }
-
-    if (test.created_by !== viewerId) {
-      return NextResponse.json({ error: 'You do not have permission to publish this test.' }, { status: 403 });
+    const ownership = await ensureTeacherOwnsTest(actorResult.value, id);
+    if (!ownership.ok) {
+      return ownership.response;
     }
 
     const published = await publishTest(id);

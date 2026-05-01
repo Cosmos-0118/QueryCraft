@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTestModuleTypeById, listLeaderboardEntries } from '@/lib/test/test-module-db';
+import {
+  ensureAttemptAccess,
+  ensureStudentCanAccessTest,
+  ensureTeacherOwnsTest,
+  getLatestAttemptForActor,
+  requireTestActor,
+} from '@/lib/security/test-module-security';
 
 async function resolveTestId(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
@@ -14,9 +21,32 @@ export async function GET(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
 ) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['admin', 'teacher', 'student'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
+    const actor = actorResult.value;
+
     const testId = await resolveTestId(context);
     if (!testId) {
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
+    }
+
+    if (actor.role === 'teacher') {
+      const ownership = await ensureTeacherOwnsTest(actor, testId);
+      if (!ownership.ok) {
+        return ownership.response;
+      }
+    }
+
+    if (actor.role === 'student') {
+      const access = await ensureStudentCanAccessTest(actor, testId);
+      if (!access.ok) {
+        return access.response;
+      }
     }
 
     const moduleType = await getTestModuleTypeById(testId);
@@ -24,7 +54,24 @@ export async function GET(
       return NextResponse.json({ error: 'Test not found.' }, { status: 404 });
     }
 
-    const attemptId = req.nextUrl.searchParams.get('attemptId') ?? undefined;
+    const requestedAttemptId = req.nextUrl.searchParams.get('attemptId') ?? undefined;
+    let attemptIdForCurrentEntry = requestedAttemptId;
+
+    if (actor.role === 'student') {
+      if (requestedAttemptId) {
+        const access = await ensureAttemptAccess(actor, {
+          testId,
+          attemptId: requestedAttemptId,
+          allowTeacherOwner: false,
+        });
+        if (!access.ok) {
+          attemptIdForCurrentEntry = undefined;
+        }
+      } else {
+        const latest = await getLatestAttemptForActor(testId, actor);
+        attemptIdForCurrentEntry = latest?.id;
+      }
+    }
 
     const leaderboard = (await listLeaderboardEntries(testId)).map((attempt, index) => ({
         rank: index + 1,
@@ -35,8 +82,8 @@ export async function GET(
         submitted_at: attempt.submitted_at,
       }));
 
-    const currentEntry = attemptId
-      ? leaderboard.find((entry) => entry.attempt_id === attemptId) ?? null
+    const currentEntry = attemptIdForCurrentEntry
+      ? leaderboard.find((entry) => entry.attempt_id === attemptIdForCurrentEntry) ?? null
       : null;
 
     return NextResponse.json(

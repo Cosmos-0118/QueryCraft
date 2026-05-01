@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { findAccountByEmailWithSecret } from '@/lib/test-auth/accounts-db';
 import { resolveAdminConfig, deriveDisplayName } from '@/lib/test-auth/admin-env';
 import { signTestAuthToken, verifyPassword } from '@/lib/test-auth/crypto';
+import { applyTestAuthCookie } from '@/lib/test-auth/session';
 
 const GENERIC_ERROR = 'Email or password is incorrect.';
 
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
         displayName: adminConfig.displayName,
       });
 
-      return NextResponse.json({
+      const response = NextResponse.json({
         token,
         user: {
           id: adminConfig.pseudoId,
@@ -40,6 +41,9 @@ export async function POST(req: NextRequest) {
           password_set: true,
         },
       });
+
+      applyTestAuthCookie(response, token);
+      return response;
     }
 
     const account = await findAccountByEmailWithSecret(email);
@@ -70,7 +74,7 @@ export async function POST(req: NextRequest) {
       displayName,
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       token,
       user: {
         id: account.id,
@@ -80,6 +84,9 @@ export async function POST(req: NextRequest) {
         password_set: true,
       },
     });
+
+    applyTestAuthCookie(response, token);
+    return response;
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unable to sign in.' },

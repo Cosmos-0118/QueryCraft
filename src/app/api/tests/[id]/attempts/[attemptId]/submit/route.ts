@@ -6,6 +6,7 @@ import {
   submitAttempt,
 } from '@/lib/test/test-module-db';
 import { calculateInteractiveAttemptScore, normalizeInteractiveQuizSettings } from '@/lib/test/interactive-quiz';
+import { ensureAttemptAccess, requireTestActor } from '@/lib/security/test-module-security';
 
 interface SubmitAttemptBody {
   answers?: Record<string, string>;
@@ -48,9 +49,25 @@ export async function POST(
     | { params: Promise<{ id: string; attemptId: string }> },
 ) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['admin', 'student'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
     const { testId, attemptId } = await resolveParams(context);
     if (!testId || !attemptId) {
       return NextResponse.json({ error: 'Test ID and attempt ID are required.' }, { status: 400 });
+    }
+
+    const access = await ensureAttemptAccess(actorResult.value, {
+      testId,
+      attemptId,
+      allowTeacherOwner: false,
+    });
+    if (!access.ok) {
+      return access.response;
     }
 
     const body = await req.json().catch(() => ({} as SubmitAttemptBody));

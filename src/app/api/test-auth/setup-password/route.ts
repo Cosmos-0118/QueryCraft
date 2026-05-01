@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { findAccountByEmailWithSecret, setInitialPasswordForEmail } from '@/lib/test-auth/accounts-db';
 import { signTestAuthToken } from '@/lib/test-auth/crypto';
 import { deriveDisplayName, resolveAdminConfig } from '@/lib/test-auth/admin-env';
+import { applyTestAuthCookie } from '@/lib/test-auth/session';
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
       displayName,
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       token,
       user: {
         id: updated.id,
@@ -79,6 +80,9 @@ export async function POST(req: NextRequest) {
         password_set: true,
       },
     });
+
+    applyTestAuthCookie(response, token);
+    return response;
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unable to set password.' },

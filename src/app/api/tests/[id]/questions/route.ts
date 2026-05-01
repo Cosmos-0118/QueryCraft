@@ -1,36 +1,35 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   addQuestionToTest,
-  getTestOwnerAppUserId,
   getTestById,
   listQuestionsForTest,
   removeQuestionFromTest,
   updateQuestionAnswer,
 } from '@/lib/test/test-module-db';
+import {
+  ensureStudentCanAccessTest,
+  ensureTeacherOwnsTest,
+  requireTestActor,
+} from '@/lib/security/test-module-security';
 
 function normalizeOptionKey(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 1);
 }
 
-async function ensureTeacherAccess(req: Request, testId: string) {
-  const searchParams = new URL(req.url).searchParams;
-  const role = searchParams.get('role');
-  const userId = searchParams.get('userId')?.trim();
-
-  if (role !== 'teacher' || !userId) {
-    return { error: NextResponse.json({ error: 'Teacher userId is required.' }, { status: 400 }) };
+async function ensureTeacherAccess(req: NextRequest, testId: string) {
+  const actorResult = requireTestActor(req, {
+    allowedRoles: ['admin', 'teacher'],
+  });
+  if (!actorResult.ok) {
+    return { error: actorResult.response };
   }
 
-  const ownerUserId = await getTestOwnerAppUserId(testId);
-  if (!ownerUserId) {
-    return { error: NextResponse.json({ error: 'Test not found.' }, { status: 404 }) };
+  const ownership = await ensureTeacherOwnsTest(actorResult.value, testId);
+  if (!ownership.ok) {
+    return { error: ownership.response };
   }
 
-  if (ownerUserId !== userId) {
-    return { error: NextResponse.json({ error: 'You do not have access to this test.' }, { status: 403 }) };
-  }
-
-  return { error: null };
+  return { error: null, actor: actorResult.value };
 }
 
 async function ensureEditableTest(testId: string) {
@@ -51,16 +50,30 @@ async function ensureEditableTest(testId: string) {
   return { error: null };
 }
 
-export async function GET(req: Request, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
   const params = await Promise.resolve(context.params);
-  const searchParams = new URL(req.url).searchParams;
-  const viewParam = searchParams.get('view');
-  const includeAnswer = viewParam === 'teacher' || viewParam === 'result';
-
-  if (searchParams.get('role') === 'teacher') {
-    const access = await ensureTeacherAccess(req, params.id);
-    if (access.error) return access.error;
+  const actorResult = requireTestActor(req, {
+    allowedRoles: ['admin', 'teacher', 'student'],
+  });
+  if (!actorResult.ok) {
+    return actorResult.response;
   }
+
+  const actor = actorResult.value;
+  if (actor.role === 'teacher') {
+    const access = await ensureTeacherOwnsTest(actor, params.id);
+    if (!access.ok) return access.response;
+  }
+
+  if (actor.role === 'student') {
+    const access = await ensureStudentCanAccessTest(actor, params.id);
+    if (!access.ok) return access.response;
+  }
+
+  const viewParam = req.nextUrl.searchParams.get('view');
+  const includeAnswer =
+    (actor.role === 'teacher' || actor.role === 'admin')
+    && (viewParam === 'teacher' || viewParam === 'result');
 
   const questions = (await listQuestionsForTest(params.id)).map((question) => (
     includeAnswer
@@ -74,7 +87,7 @@ export async function GET(req: Request, context: { params: { id: string } } | { 
 }
 
 
-export async function POST(req: Request, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
   const params = await Promise.resolve(context.params);
   const access = await ensureTeacherAccess(req, params.id);
   if (access.error) return access.error;
@@ -194,7 +207,7 @@ export async function POST(req: Request, context: { params: { id: string } } | {
   return NextResponse.json({ question });
 }
 
-export async function PATCH(req: Request, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
+export async function PATCH(req: NextRequest, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
   const params = await Promise.resolve(context.params);
   const access = await ensureTeacherAccess(req, params.id);
   if (access.error) return access.error;
@@ -226,7 +239,7 @@ export async function PATCH(req: Request, context: { params: { id: string } } | 
 }
 
 
-export async function DELETE(req: Request, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, context: { params: { id: string } } | { params: Promise<{ id: string }> }) {
   const params = await Promise.resolve(context.params);
   const access = await ensureTeacherAccess(req, params.id);
   if (access.error) return access.error;

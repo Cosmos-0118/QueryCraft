@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getTestById,
   listReviewSubmissions,
   publishSubmittedResults,
   setSubmissionPublishState,
 } from '@/lib/test/test-module-db';
+import { ensureTeacherOwnsTest, requireTestActor } from '@/lib/security/test-module-security';
 
 async function resolveTestId(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
@@ -19,24 +19,21 @@ export async function GET(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
 ) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['admin', 'teacher'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
     const testId = await resolveTestId(context);
     if (!testId) {
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
     }
 
-    const role = req.nextUrl.searchParams.get('role');
-    const userId = req.nextUrl.searchParams.get('userId')?.trim();
-    if (role !== 'teacher' || !userId) {
-      return NextResponse.json({ error: 'Teacher userId is required.' }, { status: 400 });
-    }
-
-    const test = await getTestById(testId);
-    if (!test) {
-      return NextResponse.json({ error: 'Test not found.' }, { status: 404 });
-    }
-
-    if (test.created_by !== userId) {
-      return NextResponse.json({ error: 'You do not have access to this test.' }, { status: 403 });
+    const ownership = await ensureTeacherOwnsTest(actorResult.value, testId);
+    if (!ownership.ok) {
+      return ownership.response;
     }
 
     const submissions = await listReviewSubmissions(testId);
@@ -55,24 +52,21 @@ export async function POST(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
 ) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['admin', 'teacher'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
     const testId = await resolveTestId(context);
     if (!testId) {
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
     }
 
-    const role = req.nextUrl.searchParams.get('role');
-    const userId = req.nextUrl.searchParams.get('userId')?.trim();
-    if (role !== 'teacher' || !userId) {
-      return NextResponse.json({ error: 'Teacher userId is required.' }, { status: 400 });
-    }
-
-    const test = await getTestById(testId);
-    if (!test) {
-      return NextResponse.json({ error: 'Test not found.' }, { status: 404 });
-    }
-
-    if (test.created_by !== userId) {
-      return NextResponse.json({ error: 'You do not have access to this test.' }, { status: 403 });
+    const ownership = await ensureTeacherOwnsTest(actorResult.value, testId);
+    if (!ownership.ok) {
+      return ownership.response;
     }
 
     const body = await req.json();

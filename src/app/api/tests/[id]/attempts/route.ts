@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getAttemptById,
   getLatestAttemptForStudent,
   startOrResumeAttempt,
 } from '@/lib/test/test-module-db';
+import {
+  ensureAttemptAccess,
+  ensureTeacherOwnsTest,
+  getLatestAttemptForActor,
+  requireTestActor,
+} from '@/lib/security/test-module-security';
 
 async function resolveTestId(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
@@ -18,27 +23,54 @@ export async function GET(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
 ) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['admin', 'teacher', 'student'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
+    const actor = actorResult.value;
+
     const testId = await resolveTestId(context);
     if (!testId) {
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
     }
 
     const attemptId = req.nextUrl.searchParams.get('attemptId');
-    const studentId = req.nextUrl.searchParams.get('studentId');
 
     if (attemptId) {
-      const attempt = await getAttemptById(testId, attemptId);
-      if (!attempt) {
-        return NextResponse.json({ error: 'Attempt not found.' }, { status: 404 });
+      const access = await ensureAttemptAccess(actor, {
+        testId,
+        attemptId,
+        allowTeacherOwner: true,
+      });
+
+      if (!access.ok) {
+        return access.response;
       }
+
+      return NextResponse.json({ attempt: access.value }, { status: 200 });
+    }
+
+    if (actor.role === 'student') {
+      const attempt = await getLatestAttemptForActor(testId, actor);
       return NextResponse.json({ attempt }, { status: 200 });
     }
 
-    if (!studentId) {
-      return NextResponse.json({ error: 'studentId is required.' }, { status: 400 });
+    if (actor.role === 'teacher') {
+      const ownership = await ensureTeacherOwnsTest(actor, testId);
+      if (!ownership.ok) {
+        return ownership.response;
+      }
     }
 
-    const attempt = await getLatestAttemptForStudent(testId, studentId);
+    const studentIdParam = req.nextUrl.searchParams.get('studentId')?.trim();
+    if (!studentIdParam) {
+      return NextResponse.json({ error: 'studentId is required for teacher/admin lookup.' }, { status: 400 });
+    }
+
+    const attempt = await getLatestAttemptForStudent(testId, studentIdParam.toLowerCase());
     return NextResponse.json({ attempt }, { status: 200 });
   } catch (error) {
     return NextResponse.json(
@@ -54,26 +86,55 @@ export async function POST(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
 ) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['student'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
+    const actor = actorResult.value;
+
     const testId = await resolveTestId(context);
     if (!testId) {
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
     }
 
-    const body = await req.json();
-    if (!body?.student_id || typeof body.student_id !== 'string') {
-      return NextResponse.json({ error: 'student_id is required.' }, { status: 400 });
-    }
-    if (!body?.student_name || typeof body.student_name !== 'string') {
-      return NextResponse.json({ error: 'student_name is required.' }, { status: 400 });
+    const existing = await getLatestAttemptForActor(testId, actor);
+    if (existing) {
+      return NextResponse.json({ attempt: existing }, { status: 200 });
     }
 
-    const attempt = await startOrResumeAttempt({
-      testId,
-      studentId: body.student_id,
-      studentName: body.student_name,
-    });
+    // Body is optional for backward compatibility with older clients.
+    await req.json().catch(() => null);
 
-    return NextResponse.json({ attempt }, { status: 200 });
+    try {
+      const attempt = await startOrResumeAttempt({
+        testId,
+        studentId: actor.primaryUserId,
+        studentName: actor.displayName,
+      });
+
+      return NextResponse.json({ attempt }, { status: 200 });
+    } catch (primaryError) {
+      const fallbackId = actor.userIdAliases.find((candidate) => candidate !== actor.primaryUserId);
+
+      if (fallbackId) {
+        try {
+          const fallbackAttempt = await startOrResumeAttempt({
+            testId,
+            studentId: fallbackId,
+            studentName: actor.displayName,
+          });
+
+          return NextResponse.json({ attempt: fallbackAttempt }, { status: 200 });
+        } catch {
+          throw primaryError;
+        }
+      }
+
+      throw primaryError;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to start attempt.';
     const status = message.toLowerCase().includes('code') ? 403 : 400;

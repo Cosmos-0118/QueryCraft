@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTestById, updateDraftTest } from '@/lib/test/test-module-db';
 import type { InteractiveQuizSettings, TestModuleType } from '@/lib/test/interactive-quiz';
+import {
+  ensureStudentCanAccessTest,
+  ensureTeacherOwnsTest,
+  requireTestActor,
+} from '@/lib/security/test-module-security';
 
 type QuestionMode = 'mcq_only' | 'sql_only' | 'mixed';
 
@@ -75,16 +80,6 @@ function parseOptionalPercent(value: unknown, fieldName: 'mix_mcq_percent' | 'mi
   return Math.round(value);
 }
 
-function resolveViewer(req: NextRequest): { role?: 'teacher' | 'student'; userId?: string } {
-  const roleParam = req.nextUrl.searchParams.get('role');
-  const role = roleParam === 'teacher' || roleParam === 'student'
-    ? roleParam
-    : undefined;
-  const userId = req.nextUrl.searchParams.get('userId')?.trim() || undefined;
-
-  return { role, userId };
-}
-
 function getParamId(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
 ) {
@@ -97,6 +92,13 @@ export async function GET(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },
 ) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['admin', 'teacher', 'student'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
     const id = await getParamId(context);
     if (!id) {
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
@@ -107,14 +109,19 @@ export async function GET(
       return NextResponse.json({ error: 'Test not found.' }, { status: 404 });
     }
 
-    const viewer = resolveViewer(req);
-    if (viewer.role === 'teacher') {
-      if (!viewer.userId) {
-        return NextResponse.json({ error: 'userId is required for teacher access.' }, { status: 400 });
-      }
+    const actor = actorResult.value;
 
-      if (test.created_by !== viewer.userId) {
-        return NextResponse.json({ error: 'You do not have access to this test.' }, { status: 403 });
+    if (actor.role === 'teacher') {
+      const ownership = await ensureTeacherOwnsTest(actor, id);
+      if (!ownership.ok) {
+        return ownership.response;
+      }
+    }
+
+    if (actor.role === 'student') {
+      const access = await ensureStudentCanAccessTest(actor, id);
+      if (!access.ok) {
+        return access.response;
       }
     }
 
@@ -136,23 +143,21 @@ export async function PATCH(
   context: { params: { id: string } } | { params: Promise<{ id: string }> }
 ) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['admin', 'teacher'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
     const id = await getParamId(context);
     if (!id) {
       return NextResponse.json({ error: 'Test ID is required.' }, { status: 400 });
     }
 
-    const viewer = resolveViewer(req);
-    if (viewer.role !== 'teacher' || !viewer.userId) {
-      return NextResponse.json({ error: 'Teacher userId is required.' }, { status: 400 });
-    }
-
-    const current = await getTestById(id);
-    if (!current) {
-      return NextResponse.json({ error: 'Test not found.' }, { status: 404 });
-    }
-
-    if (current.created_by !== viewer.userId) {
-      return NextResponse.json({ error: 'You do not have permission to modify this test.' }, { status: 403 });
+    const ownership = await ensureTeacherOwnsTest(actorResult.value, id);
+    if (!ownership.ok) {
+      return ownership.response;
     }
 
     const body = await req.json().catch(() => ({} as Record<string, unknown>));

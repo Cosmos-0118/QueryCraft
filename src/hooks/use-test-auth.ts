@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTestAuthStore, type TestAuthUser } from '@/stores/test-auth-store';
 
@@ -32,10 +32,35 @@ export function useTestAuth() {
   const clearSession = useTestAuthStore((state) => state.clearSession);
   const setSession = useTestAuthStore((state) => state.setSession);
   const router = useRouter();
+  const lastSyncedTokenRef = useRef<string | null>(null);
 
   const compatUser = useMemo(() => toCompat(user), [user]);
 
+  useEffect(() => {
+    if (!token) {
+      lastSyncedTokenRef.current = null;
+      return;
+    }
+
+    if (lastSyncedTokenRef.current === token) {
+      return;
+    }
+
+    lastSyncedTokenRef.current = token;
+    void fetch('/api/test-auth/session', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }).catch(() => {
+      // Ignore sync failures; API calls can still pass Authorization directly when needed.
+    });
+  }, [token]);
+
   const logout = () => {
+    void fetch('/api/test-auth/logout', { method: 'POST' }).catch(() => {
+      // Clear local auth state even if server cookie cleanup fails.
+    });
     clearSession();
     router.push('/tests/login');
   };

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordAttemptViolationEvent } from '@/lib/test/test-module-db';
+import { ensureAttemptAccess, requireTestActor } from '@/lib/security/test-module-security';
 
 async function resolveParams(
   context:
@@ -21,9 +22,25 @@ export async function POST(
     | { params: Promise<{ id: string; attemptId: string }> },
 ) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['admin', 'student'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
     const { testId, attemptId } = await resolveParams(context);
     if (!testId || !attemptId) {
       return NextResponse.json({ error: 'Test ID and attempt ID are required.' }, { status: 400 });
+    }
+
+    const access = await ensureAttemptAccess(actorResult.value, {
+      testId,
+      attemptId,
+      allowTeacherOwner: false,
+    });
+    if (!access.ok) {
+      return access.response;
     }
 
     const body = await req.json().catch(() => null);
