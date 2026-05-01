@@ -103,6 +103,8 @@ export function NormalizerCanvas() {
 
     const [positions, setPositions] = useState<Record<string, Point>>({});
     const [dimensions, setDimensions] = useState<Record<string, NodeDimensions>>({});
+    const stableNodeTypes = useMemo(() => nodeTypes, []);
+    const stableEdgeTypes = useMemo(() => edgeTypes, []);
 
     const nodes = useMemo<Node[]>(() => {
         return activeTables.map((table, index) => {
@@ -217,8 +219,8 @@ export function NormalizerCanvas() {
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
-                nodeTypes={nodeTypes}
-                edgeTypes={edgeTypes}
+                nodeTypes={stableNodeTypes}
+                edgeTypes={stableEdgeTypes}
                 onNodesChange={onNodesChange}
                 fitView
                 fitViewOptions={{ padding: 0.2 }}

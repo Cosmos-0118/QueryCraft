@@ -11,6 +11,7 @@ import {
   findCandidateKeys,
   minimalCover,
   normalize,
+  verifyNormalFormStrict,
   verifyDependencyPreservation,
   verifyLosslessJoin,
 } from '@/lib/engine/normalizer-engine';
@@ -190,6 +191,63 @@ describe('normal form detection', () => {
     });
 
     expectNF(table, '5NF');
+  });
+
+  it('strict verifier does not over-claim 5NF without explicit dependencies', () => {
+    const table = makeTable({
+      name: 'Student',
+      columns: ['id', 'name', 'department'],
+      sampleData: [
+        ['1', 'Alice', 'CS'],
+        ['2', 'Bob', 'IT'],
+        ['3', 'Charlie', 'ECE'],
+      ],
+    });
+
+    expect(detectNormalForm(table)).toBe('5NF');
+
+    const strict = verifyNormalFormStrict(table);
+    expect(strict.detectedNF).toBe('1NF');
+    expect(strict.confidence).toBe('low');
+    expect(strict.warnings.join(' ')).toMatch(/functional dependencies/i);
+  });
+
+  it('strict verifier caps at BCNF when MVD/JD evidence is not provided', () => {
+    const table = makeTable({
+      name: 'Student',
+      columns: ['id', 'name', 'department'],
+      primaryKey: ['id'],
+      fds: [{ determinant: ['id'], dependent: ['name', 'department'] }],
+      sampleData: [
+        ['1', 'Alice', 'CS'],
+        ['2', 'Bob', 'Math'],
+      ],
+    });
+
+    const strict = verifyNormalFormStrict(table);
+    expect(strict.detectedNF).toBe('BCNF');
+    expect(strict.confidence).toBe('medium');
+    expect(strict.warnings.join(' ')).toMatch(/multivalued dependencies/i);
+  });
+
+  it('strict verifier reaches 5NF when FD/MVD/JD evidence is explicit and valid', () => {
+    const table = makeTable({
+      name: 'Student',
+      columns: ['id', 'name', 'department'],
+      primaryKey: ['id'],
+      fds: [{ determinant: ['id'], dependent: ['name', 'department'] }],
+      mvds: [{ determinant: ['id'], dependent: ['name'] }],
+      joinDependencies: [{ components: [['id', 'name'], ['id', 'department'], ['name', 'department']] }],
+      sampleData: [
+        ['1', 'Alice', 'CS'],
+        ['2', 'Bob', 'Math'],
+      ],
+    });
+
+    const strict = verifyNormalFormStrict(table);
+    expect(strict.detectedNF).toBe('5NF');
+    expect(strict.confidence).toBe('high');
+    expect(strict.warnings).toHaveLength(0);
   });
 });
 

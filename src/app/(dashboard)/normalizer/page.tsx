@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
     addEdge,
     applyEdgeChanges,
@@ -21,7 +21,9 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
+    Check,
     CheckCircle2,
+    ChevronDown,
     Database,
     Download,
     Plus,
@@ -31,7 +33,7 @@ import {
     XCircle,
 } from 'lucide-react';
 import { generateTableDataRows, type GeneratorTableDef } from '@/lib/engine/data-generator';
-import { detectNormalForm } from '@/lib/engine/normalizer-engine';
+import { verifyNormalFormStrict, type VerificationConfidence } from '@/lib/engine/normalizer-engine';
 import { useGeneratorStore } from '@/stores/generator-store';
 import type { Column, NormalForm, TableSchema } from '@/types/normalizer';
 
@@ -50,7 +52,9 @@ interface StageCanvas {
 interface TableVerification {
     tableName: string;
     detected: NormalForm;
+    confidence: VerificationConfidence;
     ok: boolean;
+    warnings: string[];
     reason?: string;
 }
 
@@ -449,6 +453,18 @@ function stageSatisfied(stage: CanvasStage, detected: NormalForm): boolean {
     return ENGINE_ORDER.indexOf(detected) >= STAGE_MIN_INDEX[stage];
 }
 
+function formatDetectedForStage(stage: CanvasStage, detected: NormalForm): string {
+    if (stage === 'UNF') return detected;
+
+    const detectedIndex = ENGINE_ORDER.indexOf(detected);
+    const stageIndex = STAGE_MIN_INDEX[stage];
+    if (detectedIndex > stageIndex) {
+        return `${stage}+`;
+    }
+
+    return detected;
+}
+
 function buildFailureReason(stage: CanvasStage, detected: NormalForm): string {
     if (stage === 'UNF') {
         return `Expected UNF, but detected ${detected}. This table appears more normalized than UNF and does not contain repeating or multi-valued groups.`;
@@ -485,9 +501,20 @@ export default function NormalizerPage() {
     const [draftTableName, setDraftTableName] = useState('');
     const [draftTableText, setDraftTableText] = useState('');
     const [selectedGeneratorIndex, setSelectedGeneratorIndex] = useState('0');
+    const [isGeneratorMenuOpen, setIsGeneratorMenuOpen] = useState(false);
     const [createTableError, setCreateTableError] = useState('');
+    const generatorMenuRef = useRef<HTMLDivElement | null>(null);
 
     const activeCanvas = canvases[activeStage];
+    const stableNodeTypes = useMemo(() => NODE_TYPES, []);
+    const selectedGeneratorTable = useMemo(() => {
+        const index = Number(selectedGeneratorIndex);
+        if (!Number.isInteger(index) || index < 0 || index >= generatorTables.length) {
+            return null;
+        }
+        return generatorTables[index] as GeneratorTableDef;
+    }, [generatorTables, selectedGeneratorIndex]);
+
     const activeCanvasNodes = useMemo(
         () => activeCanvas.nodes.map((node) => (node.type === 'table' ? node : { ...node, type: 'table' })),
         [activeCanvas.nodes],
@@ -583,6 +610,7 @@ export default function NormalizerPage() {
         setIsCreateDialogOpen(true);
         setCreateTableError('');
         setSelectedGeneratorIndex('0');
+        setIsGeneratorMenuOpen(false);
     }, []);
 
     const createFromPastedData = useCallback(() => {
@@ -630,7 +658,32 @@ export default function NormalizerPage() {
         closeCreateDialog();
         setDraftTableName('');
         setDraftTableText('');
+        setIsGeneratorMenuOpen(false);
     }, [activeCanvas.nodes.length, addTableToActiveCanvas, closeCreateDialog, draftTableName, generatorTables, selectedGeneratorIndex]);
+
+    useEffect(() => {
+        if (!isGeneratorMenuOpen) return;
+
+        const handlePointerDown = (event: MouseEvent) => {
+            if (!(event.target instanceof Element) || !generatorMenuRef.current?.contains(event.target)) {
+                setIsGeneratorMenuOpen(false);
+            }
+        };
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setIsGeneratorMenuOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isGeneratorMenuOpen]);
 
     const removeSelected = useCallback(() => {
         if (!selectedNodeId) return;
@@ -654,13 +707,24 @@ export default function NormalizerPage() {
                 .filter((node) => isCanvasNodeData(node.data))
                 .map((node) => {
                     const table = node.data.table;
-                    const detected = detectNormalForm(table);
+                    const verification = verifyNormalFormStrict(table);
+                    const detected = verification.detectedNF;
                     const ok = stageSatisfied(stage, detected);
+
+                    const warningText = verification.warnings.join(' ');
+                    const failureReason = buildFailureReason(stage, detected);
+
                     return {
                         tableName: table.name,
                         detected,
+                        confidence: verification.confidence,
                         ok,
-                        reason: ok ? undefined : buildFailureReason(stage, detected),
+                        warnings: verification.warnings,
+                        reason: ok
+                            ? undefined
+                            : warningText.length > 0
+                                ? `${failureReason} ${warningText}`
+                                : failureReason,
                     };
                 });
 
@@ -764,7 +828,7 @@ export default function NormalizerPage() {
                     <ReactFlow
                         nodes={activeCanvasNodes}
                         edges={activeCanvas.edges}
-                        nodeTypes={NODE_TYPES}
+                        nodeTypes={stableNodeTypes}
                         onNodesChange={onNodesChange}
                         onEdgesChange={onEdgesChange}
                         onConnect={onConnect}
@@ -908,7 +972,14 @@ export default function NormalizerPage() {
                                                                     <span className="truncate text-foreground/90">{check.tableName}</span>
 
                                                                     <div className="flex items-center gap-2">
-                                                                        <span className={check.ok ? 'text-emerald-300' : 'text-rose-300'}>{check.detected}</span>
+                                                                        <span
+                                                                            className={check.ok ? 'text-emerald-300' : 'text-rose-300'}
+                                                                            title={check.warnings.length > 0
+                                                                                ? `Strict verifier (${check.confidence} confidence): ${check.detected}. ${check.warnings.join(' ')}`
+                                                                                : `Strict verifier (${check.confidence} confidence): ${check.detected}`}
+                                                                        >
+                                                                            {formatDetectedForStage(stage.stage, check.detected)}
+                                                                        </span>
 
                                                                         {!check.ok && check.reason && (
                                                                             <button
@@ -941,7 +1012,7 @@ export default function NormalizerPage() {
 
                 {isCreateDialogOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
-                        <div className="w-full max-w-4xl min-h-[620px] rounded-2xl border border-border bg-card shadow-2xl">
+                        <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
                             <div className="flex items-center justify-between border-b border-border px-4 py-3">
                                 <div>
                                     <h2 className="text-sm font-bold text-foreground">Add table</h2>
@@ -957,7 +1028,7 @@ export default function NormalizerPage() {
                                 </button>
                             </div>
 
-                            <div className="space-y-4 p-4">
+                            <div className="max-h-[calc(92vh-4.5rem)] space-y-4 overflow-y-auto p-4">
                                 <input
                                     value={draftTableName}
                                     onChange={(event) => setDraftTableName(event.target.value)}
@@ -981,22 +1052,75 @@ export default function NormalizerPage() {
                                     {generatorTables.length === 0 ? (
                                         <p className="text-xs text-muted-foreground">No tables available. Create and save tables in Generator first.</p>
                                     ) : (
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <select
-                                                value={selectedGeneratorIndex}
-                                                onChange={(event) => setSelectedGeneratorIndex(event.target.value)}
-                                                className="min-w-[320px] flex-1 rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground outline-none"
-                                            >
-                                                {generatorTables.map((table, index) => (
-                                                    <option key={`${table.name}_${index}`} value={String(index)}>
-                                                        {table.name} ({table.columns.length} cols, {table.rowCount} rows)
-                                                    </option>
-                                                ))}
-                                            </select>
+                                        <div className="flex flex-wrap items-start gap-2">
+                                            <div className="relative min-w-[320px] flex-1" ref={generatorMenuRef}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsGeneratorMenuOpen((open) => !open)}
+                                                    className="group flex w-full items-center justify-between rounded-xl border border-border/80 bg-card px-3 py-2.5 text-left transition-all hover:border-sky-500/45 hover:bg-sky-500/5"
+                                                    aria-haspopup="listbox"
+                                                    aria-expanded={isGeneratorMenuOpen}
+                                                    aria-label="Select table from Table Generator"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-xs font-semibold text-foreground">
+                                                            {selectedGeneratorTable?.name ?? 'Select a generator table'}
+                                                        </p>
+                                                        <p className="truncate text-[11px] text-muted-foreground">
+                                                            {selectedGeneratorTable
+                                                                ? `${selectedGeneratorTable.columns.length} columns • ${selectedGeneratorTable.rowCount} rows`
+                                                                : 'Choose one table to import into the current stage'}
+                                                        </p>
+                                                    </div>
+
+                                                    <ChevronDown
+                                                        className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${isGeneratorMenuOpen ? 'rotate-180 text-sky-300' : 'group-hover:text-sky-300'
+                                                            }`}
+                                                    />
+                                                </button>
+
+                                                {isGeneratorMenuOpen && (
+                                                    <div className="absolute inset-x-0 top-[calc(100%+0.35rem)] z-20 rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-xl backdrop-blur-sm">
+                                                        <div className="max-h-56 space-y-1 overflow-y-auto pr-1" role="listbox" aria-label="Generator tables">
+                                                            {generatorTables.map((table, index) => {
+                                                                const value = String(index);
+                                                                const isSelected = value === selectedGeneratorIndex;
+
+                                                                return (
+                                                                    <button
+                                                                        key={`${table.name}_${index}`}
+                                                                        type="button"
+                                                                        role="option"
+                                                                        aria-selected={isSelected}
+                                                                        onClick={() => {
+                                                                            setSelectedGeneratorIndex(value);
+                                                                            setCreateTableError('');
+                                                                            setIsGeneratorMenuOpen(false);
+                                                                        }}
+                                                                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors ${isSelected
+                                                                            ? 'border border-sky-500/35 bg-sky-500/15'
+                                                                            : 'border border-transparent hover:bg-muted/70'
+                                                                            }`}
+                                                                    >
+                                                                        <div className="min-w-0">
+                                                                            <p className="truncate text-xs font-semibold text-foreground">{table.name}</p>
+                                                                            <p className="truncate text-[11px] text-muted-foreground">
+                                                                                {table.columns.length} cols • {table.rowCount} rows
+                                                                            </p>
+                                                                        </div>
+
+                                                                        {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-sky-300" />}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
 
                                             <button
                                                 onClick={importFromGenerator}
-                                                className="inline-flex items-center gap-2 rounded-lg border border-sky-500/35 bg-sky-500/15 px-3 py-2 text-xs font-semibold text-sky-300"
+                                                className="inline-flex min-h-[46px] min-w-[320px] flex-1 items-center justify-center gap-2 rounded-xl border border-sky-500/35 bg-sky-500/15 px-3 py-2.5 text-xs font-semibold text-sky-300"
                                             >
                                                 <Download className="h-3.5 w-3.5" />
                                                 Import table

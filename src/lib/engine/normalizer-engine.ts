@@ -15,6 +15,21 @@ const NF_ORDER: NormalForm[] = ['UNF', '1NF', '2NF', '3NF', 'BCNF', '4NF', '5NF'
 const MULTI_VALUE_CELL_REGEX = /[|;,]/;
 const TUPLE_SEPARATOR = '\u241F';
 
+export type VerificationConfidence = 'low' | 'medium' | 'high';
+
+export interface StrictNormalFormVerification {
+  detectedNF: NormalForm;
+  confidence: VerificationConfidence;
+  warnings: string[];
+  evidence: {
+    hasExplicitPrimaryKey: boolean;
+    hasExplicitFDs: boolean;
+    hasExplicitMVDs: boolean;
+    hasExplicitJoinDependencies: boolean;
+    sampleRowCount: number;
+  };
+}
+
 function uniq(values: string[]): string[] {
   return Array.from(new Set(values.filter((value) => value.trim().length > 0).map((value) => value.trim())));
 }
@@ -240,6 +255,11 @@ function resolveFDs(table: TableSchema): FunctionalDependency[] {
   return inferFunctionalDependencies(columnNames(table), table.sampleData);
 }
 
+function resolveStrictFDs(table: TableSchema): FunctionalDependency[] {
+  if (table.fds.length === 0) return [];
+  return minimalCover(table.fds);
+}
+
 function resolveCandidateKeys(table: TableSchema, fds: FunctionalDependency[]): string[][] {
   const attrs = columnNames(table);
   if (attrs.length === 0) return [];
@@ -255,6 +275,43 @@ function resolveCandidateKeys(table: TableSchema, fds: FunctionalDependency[]): 
 
   if (inferredPrimary.length > 0) return [inferredPrimary];
   return [attrs];
+}
+
+function resolveCandidateKeysStrict(table: TableSchema, fds: FunctionalDependency[]): string[][] {
+  const attrs = columnNames(table);
+  if (attrs.length === 0) return [];
+
+  if (table.primaryKey.length > 0) {
+    const explicitPrimary = orderByColumns(table.primaryKey, attrs);
+    if (explicitPrimary.length > 0) return [explicitPrimary];
+  }
+
+  if (fds.length > 0) {
+    const keys = findCandidateKeys(attrs, fds).map((key) => orderByColumns(key, attrs));
+    if (keys.length > 0) return keys;
+  }
+
+  return [attrs];
+}
+
+function withStrictVerificationMetadata(table: TableSchema): TableSchema {
+  const cleaned = sanitizeTable(table);
+  const attrs = columnNames(cleaned);
+  const fds = resolveStrictFDs(cleaned);
+
+  const primaryKey = cleaned.primaryKey.length > 0
+    ? orderByColumns(cleaned.primaryKey, attrs)
+    : [];
+
+  return {
+    ...cleaned,
+    fds,
+    primaryKey,
+    columns: cleaned.columns.map((column) => ({
+      ...column,
+      isKey: primaryKey.includes(column.name),
+    })),
+  };
 }
 
 function buildPrimeSet(candidateKeys: string[][]): Set<string> {
@@ -979,6 +1036,114 @@ export function detectNormalForm(table: TableSchema): NormalForm {
   if (getMVDViolations(source, fds).length > 0) return 'BCNF';
   if (getJDViolations(source, fds).length > 0) return '4NF';
   return '5NF';
+}
+
+export function verifyNormalFormStrict(table: TableSchema): StrictNormalFormVerification {
+  const source = withStrictVerificationMetadata(table);
+
+  const evidence = {
+    hasExplicitPrimaryKey: source.primaryKey.length > 0,
+    hasExplicitFDs: source.fds.length > 0,
+    hasExplicitMVDs: source.mvds.length > 0,
+    hasExplicitJoinDependencies: (source.joinDependencies?.length ?? 0) > 0,
+    sampleRowCount: source.sampleData?.length ?? 0,
+  };
+
+  const warnings: string[] = [];
+
+  if (hasMultiValuedCells(source)) {
+    return {
+      detectedNF: 'UNF',
+      confidence: 'high',
+      warnings,
+      evidence,
+    };
+  }
+
+  if (!evidence.hasExplicitFDs) {
+    warnings.push('No explicit functional dependencies were provided. Strict verification cannot prove 2NF or higher.');
+    return {
+      detectedNF: '1NF',
+      confidence: 'low',
+      warnings,
+      evidence,
+    };
+  }
+
+  const fds = resolveStrictFDs(source);
+  const candidateKeys = resolveCandidateKeysStrict(source, fds);
+
+  if (getPartialViolations(source, fds, candidateKeys).length > 0) {
+    return {
+      detectedNF: '1NF',
+      confidence: 'high',
+      warnings,
+      evidence,
+    };
+  }
+
+  if (getTransitiveViolations(source, fds, candidateKeys).length > 0) {
+    return {
+      detectedNF: '2NF',
+      confidence: 'high',
+      warnings,
+      evidence,
+    };
+  }
+
+  if (getBCNFViolations(source, fds).length > 0) {
+    return {
+      detectedNF: '3NF',
+      confidence: 'high',
+      warnings,
+      evidence,
+    };
+  }
+
+  if (!evidence.hasExplicitMVDs) {
+    warnings.push('No explicit multivalued dependencies were provided. Strict verification is capped at BCNF.');
+    return {
+      detectedNF: 'BCNF',
+      confidence: 'medium',
+      warnings,
+      evidence,
+    };
+  }
+
+  if (getMVDViolations(source, fds).length > 0) {
+    return {
+      detectedNF: 'BCNF',
+      confidence: 'high',
+      warnings,
+      evidence,
+    };
+  }
+
+  if (!evidence.hasExplicitJoinDependencies) {
+    warnings.push('No explicit join dependencies were provided. Strict verification is capped at 4NF.');
+    return {
+      detectedNF: '4NF',
+      confidence: 'medium',
+      warnings,
+      evidence,
+    };
+  }
+
+  if (getJDViolations(source, fds).length > 0) {
+    return {
+      detectedNF: '4NF',
+      confidence: 'high',
+      warnings,
+      evidence,
+    };
+  }
+
+  return {
+    detectedNF: '5NF',
+    confidence: 'high',
+    warnings,
+    evidence,
+  };
 }
 
 export function decomposeTo1NF(table: TableSchema): TableSchema {

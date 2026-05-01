@@ -32,6 +32,8 @@ export function ERCanvas() {
   const store = useERStore();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState<Record<string, { width?: number; height?: number }>>({});
+  const stableNodeTypes = useMemo(() => nodeTypes, []);
+  const stableEdgeTypes = useMemo(() => edgeTypes, []);
 
   // Keyboard shortcuts for undo/redo
   useEffect(() => {
@@ -130,7 +132,7 @@ export function ERCanvas() {
       e.push({ id: `rel-${rel.id}-${e2}`, source: rel.id, target: e2, type: 'floating', label: labelParts[1], ...relEdge });
     }
     return e;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.attributes, store.relationships, resolvedTheme]);
 
   const onNodesChange: OnNodesChange = useCallback(
@@ -183,8 +185,8 @@ export function ERCanvas() {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
+        nodeTypes={stableNodeTypes}
+        edgeTypes={stableEdgeTypes}
         onNodesChange={onNodesChange}
         fitView
         fitViewOptions={{ padding: 0.3 }}
