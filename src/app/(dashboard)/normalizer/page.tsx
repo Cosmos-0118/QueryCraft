@@ -32,10 +32,15 @@ import {
     X,
     XCircle,
 } from 'lucide-react';
-import { generateTableDataRows, type GeneratorTableDef } from '@/lib/engine/data-generator';
+import {
+    generateMultiTableDataRows,
+    generateTableDataRows,
+    inferForeignKeys,
+    type GeneratorTableDef,
+} from '@/lib/engine/data-generator';
 import { verifyNormalForm, type VerificationConfidence } from '@/lib/engine/normalizer-engine';
 import { useGeneratorStore } from '@/stores/generator-store';
-import type { Column, NormalForm, TableSchema } from '@/types/normalizer';
+import type { Column, FunctionalDependency, NormalForm, TableSchema } from '@/types/normalizer';
 
 type CanvasStage = 'UNF' | '1NF' | '2NF' | '3NF' | '4NF' | '5NF';
 
@@ -288,8 +293,151 @@ function buildBlankTable(name: string, fallbackIndex: number): TableSchema {
     };
 }
 
-function buildTableFromGenerator(source: GeneratorTableDef, fallbackIndex: number, overrideName?: string): TableSchema {
-    const sampleData = generateTableDataRows(source);
+function normalizeGeneratorToken(value: string): string {
+    return value
+        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function singularizeGeneratorToken(value: string): string {
+    if (value.endsWith('ies') && value.length > 3) {
+        return `${value.slice(0, -3)}y`;
+    }
+
+    if (value.endsWith('ses') && value.length > 3) {
+        return value.slice(0, -2);
+    }
+
+    if (value.endsWith('s') && !value.endsWith('ss') && value.length > 2) {
+        return value.slice(0, -1);
+    }
+
+    return value;
+}
+
+function dependencyHolds(
+    determinant: string[],
+    dependent: string[],
+    columnIndexes: Map<string, number>,
+    rows: string[][],
+): boolean {
+    if (rows.length === 0) return true;
+
+    const determinantIndexes = determinant.map((attribute) => columnIndexes.get(attribute) ?? -1);
+    const dependentIndexes = dependent.map((attribute) => columnIndexes.get(attribute) ?? -1);
+    if (determinantIndexes.some((index) => index < 0) || dependentIndexes.some((index) => index < 0)) {
+        return false;
+    }
+
+    const observed = new Map<string, string>();
+    for (const row of rows) {
+        const key = determinantIndexes.map((index) => row[index] ?? '').join('\u241F');
+        const value = dependentIndexes.map((index) => row[index] ?? '').join('\u241F');
+        const previous = observed.get(key);
+        if (previous !== undefined && previous !== value) {
+            return false;
+        }
+        observed.set(key, value);
+    }
+
+    return true;
+}
+
+function buildGeneratorDependencies(
+    table: GeneratorTableDef,
+    primaryKey: string[],
+    foreignKeys: Array<{ columns: string[]; referencesTable: string; referencesColumns: string[] }>,
+    sampleData: string[][],
+): FunctionalDependency[] {
+    const columnNames = table.columns.map((column) => column.name);
+    const columnIndexes = new Map(columnNames.map((column, index) => [column, index]));
+    const dependencies: FunctionalDependency[] = [];
+    const seen = new Set<string>();
+
+    const addDependency = (determinant: string[], dependent: string[]) => {
+        const normalizedDeterminant = Array.from(new Set(determinant)).filter((attribute) => columnIndexes.has(attribute));
+        const normalizedDependent = Array.from(new Set(dependent))
+            .filter((attribute) => columnIndexes.has(attribute) && !normalizedDeterminant.includes(attribute));
+
+        if (normalizedDeterminant.length === 0 || normalizedDependent.length === 0) return;
+
+        const key = `${[...normalizedDeterminant].sort().join('::')}->${[...normalizedDependent].sort().join('::')}`;
+        if (seen.has(key)) return;
+
+        seen.add(key);
+        dependencies.push({
+            determinant: normalizedDeterminant,
+            dependent: normalizedDependent,
+        });
+    };
+
+    if (primaryKey.length > 0) {
+        addDependency(
+            primaryKey,
+            columnNames.filter((columnName) => !primaryKey.includes(columnName)),
+        );
+    }
+
+    const idLikeColumns = columnNames.filter((columnName) => /(^id$|_id$)/i.test(columnName));
+    for (const determinant of idLikeColumns) {
+        const normalized = normalizeGeneratorToken(determinant);
+        const prefix = normalized === 'id'
+            ? ''
+            : normalized.endsWith('_id')
+                ? normalized.slice(0, -3)
+                : normalized;
+        if (!prefix) continue;
+
+        const dependents = columnNames.filter((columnName) => {
+            const normalizedColumn = normalizeGeneratorToken(columnName);
+            if (columnName === determinant) return false;
+            if (normalizedColumn.endsWith('_id')) return false;
+            return normalizedColumn.startsWith(`${prefix}_`);
+        });
+
+        const consistentDependents = dependents.filter((dependent) =>
+            dependencyHolds([determinant], [dependent], columnIndexes, sampleData),
+        );
+
+        addDependency([determinant], consistentDependents);
+    }
+
+    for (const foreignKey of foreignKeys) {
+        if (foreignKey.columns.length !== 1) continue;
+
+        const localKeyColumn = foreignKey.columns[0];
+        const parentPrefix = singularizeGeneratorToken(normalizeGeneratorToken(foreignKey.referencesTable));
+        if (!parentPrefix) continue;
+
+        const dependents = columnNames.filter((columnName) => {
+            if (columnName === localKeyColumn) return false;
+            const normalized = normalizeGeneratorToken(columnName);
+            if (normalized.endsWith('_id')) return false;
+            return normalized.startsWith(`${parentPrefix}_`);
+        });
+
+        const consistentDependents = dependents.filter((dependent) =>
+            dependencyHolds([localKeyColumn], [dependent], columnIndexes, sampleData),
+        );
+
+        addDependency([localKeyColumn], consistentDependents);
+    }
+
+    return dependencies;
+}
+
+function buildTableFromGenerator(
+    allGeneratorTables: GeneratorTableDef[],
+    sourceIndex: number,
+    fallbackIndex: number,
+    overrideName?: string,
+): TableSchema {
+    const resolvedTables = inferForeignKeys(allGeneratorTables);
+    const source = resolvedTables[sourceIndex] ?? allGeneratorTables[sourceIndex];
+    const sampleDataByTable = generateMultiTableDataRows(resolvedTables);
+    const sampleData = sampleDataByTable[source.name] ?? generateTableDataRows(source);
     const columnNames = source.columns.map((column) => column.name);
     const sourcePrimaryKey = source.columns.filter((column) => column.primaryKey).map((column) => column.name);
     const primaryKey = sourcePrimaryKey.length > 0
@@ -310,13 +458,15 @@ function buildTableFromGenerator(source: GeneratorTableDef, fallbackIndex: numbe
             referencesColumns: [column.foreignKey!.column],
         }));
 
+    const fds = buildGeneratorDependencies(source, primaryKey, foreignKeys, sampleData);
+
     return {
         id: uid('table'),
         name: (overrideName ?? source.name).trim() || `Table_${fallbackIndex}`,
         columns,
         primaryKey,
         foreignKeys,
-        fds: [],
+        fds,
         mvds: [],
         sampleData,
     };
@@ -654,8 +804,12 @@ export default function NormalizerPage() {
             return;
         }
 
-        const source = generatorTables[index];
-        const table = buildTableFromGenerator(source, activeCanvas.nodes.length + 1, draftTableName);
+        const table = buildTableFromGenerator(
+            generatorTables,
+            index,
+            activeCanvas.nodes.length + 1,
+            draftTableName,
+        );
 
         addTableToActiveCanvas(table);
         closeCreateDialog();

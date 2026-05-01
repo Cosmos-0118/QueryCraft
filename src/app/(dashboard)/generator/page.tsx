@@ -5,6 +5,7 @@ import { useGeneratorStore } from '@/stores/generator-store';
 import { useThemeStore } from '@/stores/theme-store';
 import {
   TABLE_TEMPLATES,
+  inferForeignKeys,
   type ColumnType,
   type SemanticHint,
 } from '@/lib/engine/data-generator';
@@ -115,6 +116,14 @@ export default function GeneratorPage() {
     return Object.entries(groups);
   }, []);
 
+  const inferredForeignKeyCount = useMemo(() => {
+    const resolved = inferForeignKeys(store.tables);
+    return resolved.reduce(
+      (count, table) => count + table.columns.filter((column) => !!column.foreignKey).length,
+      0,
+    );
+  }, [store.tables]);
+
   useEffect(() => {
     const onDocumentClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -180,6 +189,8 @@ export default function GeneratorPage() {
               <span className="text-muted-foreground/80">&middot;</span>
               <span>{store.tables.reduce((a, t) => a + t.columns.length, 0)} columns</span>
               <span className="text-muted-foreground/80">&middot;</span>
+              <span>{inferredForeignKeyCount} FK link{inferredForeignKeyCount !== 1 ? 's' : ''}</span>
+              <span className="text-muted-foreground/80">&middot;</span>
               <span>Smart data generation</span>
             </div>
           </div>
@@ -239,292 +250,292 @@ export default function GeneratorPage() {
 
       {/* Main Area */}
       <div className="flex flex-1 flex-col gap-3 overflow-auto">
-          {store.tables.map((table, ti) => {
-            const isExpanded = expandedTables.has(ti);
-            return (
-              <div
-                key={ti}
-                className="rounded-xl border border-border/60 bg-muted/80 backdrop-blur-sm"
-              >
-                {/* Table Header */}
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <button
-                    onClick={() => toggleTable(ti)}
-                    className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground/80 transition-colors hover:bg-muted hover:text-foreground/80"
-                  >
-                    {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
+        {store.tables.map((table, ti) => {
+          const isExpanded = expandedTables.has(ti);
+          return (
+            <div
+              key={ti}
+              className="rounded-xl border border-border/60 bg-muted/80 backdrop-blur-sm"
+            >
+              {/* Table Header */}
+              <div className="flex items-center gap-3 px-4 py-3">
+                <button
+                  onClick={() => toggleTable(ti)}
+                  className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground/80 transition-colors hover:bg-muted hover:text-foreground/80"
+                >
+                  {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
 
-                  <Table2 className="h-4 w-4 text-violet-400" />
+                <Table2 className="h-4 w-4 text-violet-400" />
 
-                  <input
-                    type="text"
-                    value={table.name}
-                    onChange={(e) => store.updateTableName(ti, e.target.value)}
-                    className="flex-1 bg-transparent font-mono text-sm font-semibold text-foreground/90 outline-none placeholder:text-muted-foreground/60 focus:text-violet-300"
-                    placeholder="table_name"
-                  />
+                <input
+                  type="text"
+                  value={table.name}
+                  onChange={(e) => store.updateTableName(ti, e.target.value)}
+                  className="flex-1 bg-transparent font-mono text-sm font-semibold text-foreground/90 outline-none placeholder:text-muted-foreground/60 focus:text-violet-300"
+                  placeholder="table_name"
+                />
 
-                  <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
-                      Rows:
-                      <input
-                        type="number"
-                        min={1}
-                        max={1000}
-                        value={table.rowCount}
-                        onChange={(e) => store.updateTableRowCount(ti, Number(e.target.value))}
-                        className="w-16 rounded-lg border border-border/50 bg-card/60 px-2 py-1 text-center text-xs text-foreground/90 outline-none focus:border-violet-500/50"
-                      />
-                    </label>
-                    {store.tables.length > 1 && (
-                      <button
-                        onClick={() => store.removeTable(ti)}
-                        className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/60 transition-all hover:bg-red-500/10 hover:text-red-400"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
+                    Rows:
+                    <input
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={table.rowCount}
+                      onChange={(e) => store.updateTableRowCount(ti, Number(e.target.value))}
+                      className="w-16 rounded-lg border border-border/50 bg-card/60 px-2 py-1 text-center text-xs text-foreground/90 outline-none focus:border-violet-500/50"
+                    />
+                  </label>
+                  {store.tables.length > 1 && (
+                    <button
+                      onClick={() => store.removeTable(ti)}
+                      className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/60 transition-all hover:bg-red-500/10 hover:text-red-400"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
+              </div>
 
-                {/* Table Columns */}
-                {isExpanded && (
-                  <div className="border-t border-border/40 px-4 py-3">
-                    {/* Column headers */}
-                    <div className="mb-2 grid grid-cols-[1fr_90px_120px_40px_28px] gap-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                      <span>Column Name</span>
-                      <span>Type</span>
-                      <span>Data Pattern</span>
-                      <span className="text-center">PK</span>
-                      <span />
-                    </div>
+              {/* Table Columns */}
+              {isExpanded && (
+                <div className="border-t border-border/40 px-4 py-3">
+                  {/* Column headers */}
+                  <div className="mb-2 grid grid-cols-[1fr_90px_120px_40px_28px] gap-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    <span>Column Name</span>
+                    <span>Type</span>
+                    <span>Data Pattern</span>
+                    <span className="text-center">PK</span>
+                    <span />
+                  </div>
 
-                    <div className="space-y-1.5">
-                      {table.columns.map((col, ci) => {
-                        const typeOpt = TYPE_OPTIONS.find((t) => t.value === col.type);
-                        const hintOpt = HINT_OPTIONS.find((h) => h.value === col.hint);
-                        const isTypeOpen =
-                          openMenu?.kind === 'type' &&
-                          openMenu.tableIndex === ti &&
-                          openMenu.colIndex === ci;
-                        const isHintOpen =
-                          openMenu?.kind === 'hint' &&
-                          openMenu.tableIndex === ti &&
-                          openMenu.colIndex === ci;
-                        return (
-                          <div
-                            key={ci}
-                            className="group grid grid-cols-[1fr_90px_120px_40px_28px] items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-2 py-1.5 transition-colors hover:border-border/60"
-                          >
-                            {/* Name */}
-                            <input
-                              type="text"
-                              value={col.name}
-                              onChange={(e) => store.updateColumn(ti, ci, { name: e.target.value })}
-                              className="w-full bg-transparent font-mono text-sm text-foreground/90 outline-none placeholder:text-muted-foreground/60"
-                              placeholder="column_name"
-                            />
+                  <div className="space-y-1.5">
+                    {table.columns.map((col, ci) => {
+                      const typeOpt = TYPE_OPTIONS.find((t) => t.value === col.type);
+                      const hintOpt = HINT_OPTIONS.find((h) => h.value === col.hint);
+                      const isTypeOpen =
+                        openMenu?.kind === 'type' &&
+                        openMenu.tableIndex === ti &&
+                        openMenu.colIndex === ci;
+                      const isHintOpen =
+                        openMenu?.kind === 'hint' &&
+                        openMenu.tableIndex === ti &&
+                        openMenu.colIndex === ci;
+                      return (
+                        <div
+                          key={ci}
+                          className="group grid grid-cols-[1fr_90px_120px_40px_28px] items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-2 py-1.5 transition-colors hover:border-border/60"
+                        >
+                          {/* Name */}
+                          <input
+                            type="text"
+                            value={col.name}
+                            onChange={(e) => store.updateColumn(ti, ci, { name: e.target.value })}
+                            className="w-full bg-transparent font-mono text-sm text-foreground/90 outline-none placeholder:text-muted-foreground/60"
+                            placeholder="column_name"
+                          />
 
-                            {/* Type popup */}
-                            <div className="relative" data-popup-root="true">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setOpenMenu((prev) =>
-                                    prev && prev.kind === 'type' && prev.tableIndex === ti && prev.colIndex === ci
-                                      ? null
-                                      : { kind: 'type', tableIndex: ti, colIndex: ci },
-                                  )
-                                }
+                          {/* Type popup */}
+                          <div className="relative" data-popup-root="true">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenMenu((prev) =>
+                                  prev && prev.kind === 'type' && prev.tableIndex === ti && prev.colIndex === ci
+                                    ? null
+                                    : { kind: 'type', tableIndex: ti, colIndex: ci },
+                                )
+                              }
+                              className={cn(
+                                'flex w-full items-center justify-between rounded-lg px-2 py-1 text-[11px] font-semibold outline-none transition-colors',
+                                isLightTheme
+                                  ? 'border border-border bg-muted/80 text-foreground/80 hover:border-border/80 hover:bg-muted'
+                                  : typeOpt?.color || 'bg-muted text-muted-foreground',
+                              )}
+                            >
+                              <span>{typeOpt?.label ?? 'TEXT'}</span>
+                              <ChevronDown
                                 className={cn(
-                                  'flex w-full items-center justify-between rounded-lg px-2 py-1 text-[11px] font-semibold outline-none transition-colors',
+                                  'h-3 w-3 transition-transform',
+                                  'text-muted-foreground/80',
+                                  isTypeOpen && 'rotate-180',
+                                )}
+                              />
+                            </button>
+                            {isTypeOpen && (
+                              <div
+                                className={cn(
+                                  'absolute left-0 top-[calc(100%+6px)] z-30 w-44 overflow-hidden rounded-xl p-1 backdrop-blur-sm',
                                   isLightTheme
-                                    ? 'border border-border bg-muted/80 text-foreground/80 hover:border-border/80 hover:bg-muted'
-                                    : typeOpt?.color || 'bg-muted text-muted-foreground',
+                                    ? 'border border-border bg-card shadow-xl shadow-slate-900/10'
+                                    : 'border border-border/60 bg-muted/95 shadow-2xl',
                                 )}
                               >
-                                <span>{typeOpt?.label ?? 'TEXT'}</span>
-                                <ChevronDown
-                                  className={cn(
-                                    'h-3 w-3 transition-transform',
-                                    'text-muted-foreground/80',
-                                    isTypeOpen && 'rotate-180',
-                                  )}
-                                />
-                              </button>
-                              {isTypeOpen && (
-                                <div
-                                  className={cn(
-                                    'absolute left-0 top-[calc(100%+6px)] z-30 w-44 overflow-hidden rounded-xl p-1 backdrop-blur-sm',
-                                    isLightTheme
-                                      ? 'border border-border bg-card shadow-xl shadow-slate-900/10'
-                                      : 'border border-border/60 bg-muted/95 shadow-2xl',
-                                  )}
-                                >
-                                  {TYPE_OPTIONS.map((t) => (
-                                    <button
-                                      key={t.value}
-                                      type="button"
-                                      onClick={() => {
-                                        store.updateColumn(ti, ci, { type: t.value });
-                                        setOpenMenu(null);
-                                      }}
-                                      className={cn(
-                                        'flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors',
-                                        isLightTheme
-                                          ? col.type === t.value
-                                            ? 'bg-primary text-white'
-                                            : 'text-foreground/80 hover:bg-muted/80'
-                                          : col.type === t.value
-                                            ? 'bg-violet-500/15 text-violet-200'
-                                            : 'text-foreground/80 hover:bg-muted/80',
-                                      )}
-                                    >
-                                      <span>{t.label}</span>
-                                      {col.type === t.value && (
-                                        <Check className={cn('h-3 w-3', 'text-violet-300')} />
-                                      )}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Hint popup */}
-                            <div className="relative" data-popup-root="true">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setOpenMenu((prev) =>
-                                    prev && prev.kind === 'hint' && prev.tableIndex === ti && prev.colIndex === ci
-                                      ? null
-                                      : { kind: 'hint', tableIndex: ti, colIndex: ci },
-                                  )
-                                }
-                                className="flex w-full items-center justify-between rounded-lg border border-border/40 bg-muted/70 px-2 py-1 text-[11px] text-foreground/80 outline-none transition-colors hover:border-zinc-600/60"
-                              >
-                                <span className="truncate">{hintOpt?.label ?? 'Auto-detect'}</span>
-                                <ChevronDown className={cn('h-3 w-3 shrink-0 text-muted-foreground/80 transition-transform', isHintOpen && 'rotate-180')} />
-                              </button>
-                              {isHintOpen && (
-                                <div className="absolute left-0 top-[calc(100%+6px)] z-30 max-h-64 w-60 overflow-auto rounded-xl border border-border/60 bg-muted/95 p-1 shadow-2xl backdrop-blur-sm">
-                                  {groupedHints.map(([group, hints]) => (
-                                    <div key={group} className="pb-1">
-                                      <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-                                        {group}
-                                      </p>
-                                      {hints.map((h) => (
-                                        <button
-                                          key={h.value}
-                                          type="button"
-                                          onClick={() => {
-                                            store.updateColumn(ti, ci, { hint: h.value });
-                                            setOpenMenu(null);
-                                          }}
-                                          className={cn(
-                                            'flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] transition-colors',
-                                            col.hint === h.value
-                                              ? 'bg-violet-500/15 font-medium text-violet-200'
-                                              : 'text-foreground/80 hover:bg-muted/80',
-                                          )}
-                                        >
-                                          <span>{h.label}</span>
-                                          {col.hint === h.value && <Check className="h-3 w-3 text-violet-300" />}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* PK */}
-                            <div className="flex justify-center">
-                              <input
-                                type="checkbox"
-                                checked={col.primaryKey}
-                                onChange={(e) => store.updateColumn(ti, ci, { primaryKey: e.target.checked })}
-                                className="h-3.5 w-3.5 cursor-pointer rounded"
-                              />
-                            </div>
-
-                            {/* Remove */}
-                            {table.columns.length > 1 && (
-                              <button
-                                onClick={() => store.removeColumn(ti, ci)}
-                                className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
-                              >
-                                <Trash2 className="h-2.5 w-2.5" />
-                              </button>
+                                {TYPE_OPTIONS.map((t) => (
+                                  <button
+                                    key={t.value}
+                                    type="button"
+                                    onClick={() => {
+                                      store.updateColumn(ti, ci, { type: t.value });
+                                      setOpenMenu(null);
+                                    }}
+                                    className={cn(
+                                      'flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors',
+                                      isLightTheme
+                                        ? col.type === t.value
+                                          ? 'bg-primary text-white'
+                                          : 'text-foreground/80 hover:bg-muted/80'
+                                        : col.type === t.value
+                                          ? 'bg-violet-500/15 text-violet-200'
+                                          : 'text-foreground/80 hover:bg-muted/80',
+                                    )}
+                                  >
+                                    <span>{t.label}</span>
+                                    {col.type === t.value && (
+                                      <Check className={cn('h-3 w-3', 'text-violet-300')} />
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
                             )}
                           </div>
-                        );
-                      })}
-                    </div>
 
-                    <button
-                      onClick={() => store.addColumn(ti)}
-                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground/80 transition-all hover:bg-muted/50 hover:text-violet-300"
-                    >
-                      <Plus className="h-3 w-3" /> Add Column
-                    </button>
+                          {/* Hint popup */}
+                          <div className="relative" data-popup-root="true">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenMenu((prev) =>
+                                  prev && prev.kind === 'hint' && prev.tableIndex === ti && prev.colIndex === ci
+                                    ? null
+                                    : { kind: 'hint', tableIndex: ti, colIndex: ci },
+                                )
+                              }
+                              className="flex w-full items-center justify-between rounded-lg border border-border/40 bg-muted/70 px-2 py-1 text-[11px] text-foreground/80 outline-none transition-colors hover:border-zinc-600/60"
+                            >
+                              <span className="truncate">{hintOpt?.label ?? 'Auto-detect'}</span>
+                              <ChevronDown className={cn('h-3 w-3 shrink-0 text-muted-foreground/80 transition-transform', isHintOpen && 'rotate-180')} />
+                            </button>
+                            {isHintOpen && (
+                              <div className="absolute left-0 top-[calc(100%+6px)] z-30 max-h-64 w-60 overflow-auto rounded-xl border border-border/60 bg-muted/95 p-1 shadow-2xl backdrop-blur-sm">
+                                {groupedHints.map(([group, hints]) => (
+                                  <div key={group} className="pb-1">
+                                    <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                                      {group}
+                                    </p>
+                                    {hints.map((h) => (
+                                      <button
+                                        key={h.value}
+                                        type="button"
+                                        onClick={() => {
+                                          store.updateColumn(ti, ci, { hint: h.value });
+                                          setOpenMenu(null);
+                                        }}
+                                        className={cn(
+                                          'flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] transition-colors',
+                                          col.hint === h.value
+                                            ? 'bg-violet-500/15 font-medium text-violet-200'
+                                            : 'text-foreground/80 hover:bg-muted/80',
+                                        )}
+                                      >
+                                        <span>{h.label}</span>
+                                        {col.hint === h.value && <Check className="h-3 w-3 text-violet-300" />}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* PK */}
+                          <div className="flex justify-center">
+                            <input
+                              type="checkbox"
+                              checked={col.primaryKey}
+                              onChange={(e) => store.updateColumn(ti, ci, { primaryKey: e.target.checked })}
+                              className="h-3.5 w-3.5 cursor-pointer rounded"
+                            />
+                          </div>
+
+                          {/* Remove */}
+                          {table.columns.length > 1 && (
+                            <button
+                              onClick={() => store.removeColumn(ti, ci)}
+                              className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                            >
+                              <Trash2 className="h-2.5 w-2.5" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-              </div>
-            );
-          })}
 
-          {/* Add table button */}
-          <button
-            onClick={handleAddTable}
-            className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border/50 py-3 text-sm text-muted-foreground/80 transition-all hover:border-violet-500/30 hover:bg-violet-500/5 hover:text-violet-300"
-          >
-            <Plus className="h-4 w-4" />
-            Add Table
-          </button>
-          {store.generatedSQL && (
-            <div className="rounded-xl border border-border/60 bg-muted/70 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <Database className="h-4 w-4 text-violet-400" />
-                  <p className="text-sm font-semibold text-foreground/90">SQL generated successfully</p>
-                  <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
-                    {store.generatedSQL.split('\n').length} lines
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
                   <button
-                    onClick={handleCopy}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-1.5 text-[11px] font-medium text-foreground/80 transition-all hover:border-zinc-600 hover:bg-muted/60 hover:text-foreground"
-                    title="Copy SQL to clipboard"
+                    onClick={() => store.addColumn(ti)}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground/80 transition-all hover:bg-muted/50 hover:text-violet-300"
                   >
-                    {copied ? (
-                      <>
-                        <Check className="h-3.5 w-3.5 text-green-400" />
-                        <span className="text-green-400">Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-3.5 w-3.5" />
-                        Copy SQL
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setShowSqlModal(true)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    View SQL
+                    <Plus className="h-3 w-3" /> Add Column
                   </button>
                 </div>
-              </div>
-              <p className="mt-2 text-[11px] text-muted-foreground/80">
-                Preview is moved to a modal to keep the editor area uncluttered.
-              </p>
+              )}
             </div>
-          )}
+          );
+        })}
+
+        {/* Add table button */}
+        <button
+          onClick={handleAddTable}
+          className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border/50 py-3 text-sm text-muted-foreground/80 transition-all hover:border-violet-500/30 hover:bg-violet-500/5 hover:text-violet-300"
+        >
+          <Plus className="h-4 w-4" />
+          Add Table
+        </button>
+        {store.generatedSQL && (
+          <div className="rounded-xl border border-border/60 bg-muted/70 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <Database className="h-4 w-4 text-violet-400" />
+                <p className="text-sm font-semibold text-foreground/90">SQL generated successfully</p>
+                <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+                  {store.generatedSQL.split('\n').length} lines
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCopy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-1.5 text-[11px] font-medium text-foreground/80 transition-all hover:border-zinc-600 hover:bg-muted/60 hover:text-foreground"
+                  title="Copy SQL to clipboard"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-green-400" />
+                      <span className="text-green-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy SQL
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowSqlModal(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-all hover:border-violet-500/50 hover:bg-violet-500/20"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  View SQL
+                </button>
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground/80">
+              Preview is moved to a modal to keep the editor area uncluttered.
+            </p>
+          </div>
+        )}
       </div>
 
       {showSqlModal && store.generatedSQL && (

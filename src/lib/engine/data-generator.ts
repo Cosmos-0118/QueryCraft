@@ -133,6 +133,222 @@ export function detectHint(columnName: string): { hint: SemanticHint; suggestedT
   return { hint: 'auto', suggestedType: 'text' };
 }
 
+function normalizeTableName(tableName: string): string {
+  return normalizeColumnName(tableName);
+}
+
+function singularizeName(value: string): string {
+  if (value.endsWith('ies') && value.length > 3) {
+    return `${value.slice(0, -3)}y`;
+  }
+
+  if (value.endsWith('ses') && value.length > 3) {
+    return value.slice(0, -2);
+  }
+
+  if (value.endsWith('s') && !value.endsWith('ss') && value.length > 2) {
+    return value.slice(0, -1);
+  }
+
+  return value;
+}
+
+function cloneTableDef(table: GeneratorTableDef): GeneratorTableDef {
+  return {
+    ...table,
+    columns: table.columns.map((column) => ({
+      ...column,
+      foreignKey: column.foreignKey
+        ? {
+            table: column.foreignKey.table,
+            column: column.foreignKey.column,
+          }
+        : undefined,
+    })),
+  };
+}
+
+function explicitPrimaryKeys(table: GeneratorTableDef): GeneratorColumnDef[] {
+  return table.columns.filter((column) => column.primaryKey);
+}
+
+interface ForeignKeyCandidate {
+  score: number;
+  table: string;
+  column: string;
+}
+
+function chooseForeignKeyCandidate(
+  currentTableIndex: number,
+  column: GeneratorColumnDef,
+  tables: GeneratorTableDef[],
+): ForeignKeyCandidate | null {
+  const normalizedColumn = normalizeColumnName(column.name);
+  const candidates: ForeignKeyCandidate[] = [];
+
+  for (let index = 0; index < tables.length; index += 1) {
+    if (index === currentTableIndex) continue;
+
+    const parent = tables[index];
+    const parentName = normalizeTableName(parent.name);
+    const parentSingular = singularizeName(parentName);
+    const parentPrimaryKeys = explicitPrimaryKeys(parent);
+    if (parentPrimaryKeys.length === 0) continue;
+
+    for (const parentPrimaryKey of parentPrimaryKeys) {
+      const normalizedParentPk = normalizeColumnName(parentPrimaryKey.name);
+      let score = 0;
+
+      if (normalizedColumn === normalizedParentPk) {
+        score = Math.max(score, 100);
+      }
+
+      if (normalizedParentPk === 'id' && normalizedColumn === `${parentSingular}_id`) {
+        score = Math.max(score, 95);
+      }
+
+      if (normalizedParentPk === 'id' && normalizedColumn === `${parentName}_id`) {
+        score = Math.max(score, 92);
+      }
+
+      if (normalizedColumn === `${parentSingular}_${normalizedParentPk}`) {
+        score = Math.max(score, 82);
+      }
+
+      if (normalizedColumn === `${parentName}_${normalizedParentPk}`) {
+        score = Math.max(score, 78);
+      }
+
+      if (score > 0) {
+        candidates.push({
+          score,
+          table: parent.name,
+          column: parentPrimaryKey.name,
+        });
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  candidates.sort((left, right) => right.score - left.score);
+  const best = candidates[0];
+
+  const hasAmbiguousBest = candidates.some(
+    (candidate, index) =>
+      index > 0 &&
+      candidate.score === best.score &&
+      (candidate.table !== best.table || candidate.column !== best.column),
+  );
+
+  return hasAmbiguousBest ? null : best;
+}
+
+/**
+ * Infers missing foreign keys from naming conventions and explicit parent primary keys.
+ * Existing explicit foreign keys are preserved.
+ */
+export function inferForeignKeys(tables: GeneratorTableDef[]): GeneratorTableDef[] {
+  const cloned = tables.map(cloneTableDef);
+
+  for (let tableIndex = 0; tableIndex < cloned.length; tableIndex += 1) {
+    const table = cloned[tableIndex];
+
+    table.columns = table.columns.map((column) => {
+      if (column.foreignKey) {
+        return column;
+      }
+
+      const candidate = chooseForeignKeyCandidate(tableIndex, column, cloned);
+      if (!candidate) {
+        return column;
+      }
+
+      return {
+        ...column,
+        foreignKey: {
+          table: candidate.table,
+          column: candidate.column,
+        },
+      };
+    });
+  }
+
+  return cloned;
+}
+
+function buildUniqueTableIndexByName(tables: GeneratorTableDef[]): Map<string, number> {
+  const counts = new Map<string, number>();
+
+  for (const table of tables) {
+    const key = normalizeTableName(table.name);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  const unique = new Map<string, number>();
+  tables.forEach((table, index) => {
+    const key = normalizeTableName(table.name);
+    if ((counts.get(key) ?? 0) !== 1) return;
+    unique.set(key, index);
+  });
+
+  return unique;
+}
+
+function orderTablesByDependencies(tables: GeneratorTableDef[]): GeneratorTableDef[] {
+  if (tables.length <= 1) return [...tables];
+
+  const nameToIndex = buildUniqueTableIndexByName(tables);
+  const indegree = new Array<number>(tables.length).fill(0);
+  const outgoing = new Map<number, Set<number>>();
+
+  tables.forEach((table, childIndex) => {
+    for (const column of table.columns) {
+      if (!column.foreignKey) continue;
+      const parentIndex = nameToIndex.get(normalizeTableName(column.foreignKey.table));
+      if (parentIndex === undefined || parentIndex === childIndex) continue;
+
+      const edges = outgoing.get(parentIndex) ?? new Set<number>();
+      if (!edges.has(childIndex)) {
+        edges.add(childIndex);
+        outgoing.set(parentIndex, edges);
+        indegree[childIndex] += 1;
+      }
+    }
+  });
+
+  const queue: number[] = [];
+  for (let index = 0; index < indegree.length; index += 1) {
+    if (indegree[index] === 0) queue.push(index);
+  }
+
+  const orderedIndexes: number[] = [];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    orderedIndexes.push(current);
+
+    const edges = outgoing.get(current);
+    if (!edges) continue;
+
+    for (const nextIndex of edges) {
+      indegree[nextIndex] -= 1;
+      if (indegree[nextIndex] === 0) {
+        queue.push(nextIndex);
+      }
+    }
+  }
+
+  if (orderedIndexes.length !== tables.length) {
+    for (let index = 0; index < tables.length; index += 1) {
+      if (!orderedIndexes.includes(index)) {
+        orderedIndexes.push(index);
+      }
+    }
+  }
+
+  return orderedIndexes.map((index) => tables[index]);
+}
+
 /* ── Smart Value Generation ──────────────────────────────── */
 
 const SEMESTERS = [
@@ -330,9 +546,29 @@ export function generateTableDataRows(table: GeneratorTableDef): string[][] {
 
   for (let i = 0; i < table.rowCount; i++) {
     const row = table.columns.map((c) => {
-      if (c.primaryKey && c.type === 'integer' && c.hint === 'id') {
+      if (c.primaryKey) {
+        if (c.hint === 'register_number') {
+          return generateRegisterNumber(i);
+        }
+
+        if (c.hint === 'uuid') {
+          return faker.string.uuid();
+        }
+
+        if (c.type === 'date') {
+          const date = new Date(Date.UTC(2000, 0, 1));
+          date.setUTCDate(date.getUTCDate() + i);
+          return date.toISOString().split('T')[0];
+        }
+
+        if (c.type === 'text') {
+          const normalized = normalizeColumnName(c.name) || 'key';
+          return `${normalized}_${i + 1}`;
+        }
+
         return String(i + 1);
       }
+
       const val = generateSmartValue(c.hint, c.type, i);
       return String(val ?? '');
     });
@@ -343,7 +579,109 @@ export function generateTableDataRows(table: GeneratorTableDef): string[][] {
   return rows;
 }
 
-export function generateTableSQL(table: GeneratorTableDef): string {
+function generateRowsForResolvedTables(tables: GeneratorTableDef[]): Record<string, string[][]> {
+  const rowsByTableName: Record<string, string[][]> = {};
+  const rowsByNormalizedName = new Map<string, string[][]>();
+  const columnsByNormalizedName = new Map<string, GeneratorColumnDef[]>();
+  const uniqueTableLookup = buildUniqueTableIndexByName(tables);
+  const orderedTables = orderTablesByDependencies(tables);
+
+  const resolveForeignKeyValue = (
+    column: GeneratorColumnDef,
+    rowIndex: number,
+  ): string | null => {
+    if (!column.foreignKey) return null;
+
+    const parentNameKey = normalizeTableName(column.foreignKey.table);
+    const parentRows = rowsByNormalizedName.get(parentNameKey);
+    const parentColumns = columnsByNormalizedName.get(parentNameKey);
+
+    if (parentRows && parentRows.length > 0 && parentColumns) {
+      const targetColumnIndex = parentColumns.findIndex((candidate) => candidate.name === column.foreignKey!.column);
+      if (targetColumnIndex >= 0) {
+        const parentRow = parentRows[rowIndex % parentRows.length];
+        return parentRow[targetColumnIndex] ?? null;
+      }
+    }
+
+    const parentIndex = uniqueTableLookup.get(parentNameKey);
+    const parentTable = parentIndex === undefined ? null : tables[parentIndex];
+    if (!parentTable || parentTable.rowCount <= 0) return null;
+
+    const parentColumn = parentTable.columns.find((candidate) => candidate.name === column.foreignKey!.column);
+    if (!parentColumn) return null;
+
+    if (parentColumn.type === 'text') {
+      const normalized = normalizeColumnName(parentColumn.name) || 'ref';
+      return `${normalized}_${(rowIndex % parentTable.rowCount) + 1}`;
+    }
+
+    if (parentColumn.type === 'date') {
+      const date = new Date(Date.UTC(2000, 0, 1));
+      date.setUTCDate(date.getUTCDate() + (rowIndex % parentTable.rowCount));
+      return date.toISOString().split('T')[0];
+    }
+
+    return String((rowIndex % parentTable.rowCount) + 1);
+  };
+
+  for (const table of orderedTables) {
+    const rows: string[][] = [];
+
+    for (let rowIndex = 0; rowIndex < table.rowCount; rowIndex += 1) {
+      const row = table.columns.map((column) => {
+        const fkValue = resolveForeignKeyValue(column, rowIndex);
+        if (fkValue !== null) {
+          return fkValue;
+        }
+
+        if (column.primaryKey) {
+          if (column.hint === 'register_number') {
+            return generateRegisterNumber(rowIndex);
+          }
+
+          if (column.hint === 'uuid') {
+            return faker.string.uuid();
+          }
+
+          if (column.type === 'date') {
+            const date = new Date(Date.UTC(2000, 0, 1));
+            date.setUTCDate(date.getUTCDate() + rowIndex);
+            return date.toISOString().split('T')[0];
+          }
+
+          if (column.type === 'text') {
+            const normalized = normalizeColumnName(column.name) || 'key';
+            return `${normalized}_${rowIndex + 1}`;
+          }
+
+          return String(rowIndex + 1);
+        }
+
+        const value = generateSmartValue(column.hint, column.type, rowIndex);
+        return String(value ?? '');
+      });
+
+      rows.push(row);
+    }
+
+    rowsByTableName[table.name] = rows;
+    rowsByNormalizedName.set(normalizeTableName(table.name), rows);
+    columnsByNormalizedName.set(normalizeTableName(table.name), table.columns);
+  }
+
+  return rowsByTableName;
+}
+
+/**
+ * Generates sample rows for a set of tables while honoring explicit and inferred foreign keys.
+ */
+export function generateMultiTableDataRows(tables: GeneratorTableDef[]): Record<string, string[][]> {
+  const resolvedTables = inferForeignKeys(tables);
+  return generateRowsForResolvedTables(resolvedTables);
+}
+
+export function generateTableSQL(table: GeneratorTableDef, precomputedRows?: string[][]): string {
   const lines: string[] = [];
 
   // CREATE TABLE
@@ -367,8 +705,21 @@ export function generateTableSQL(table: GeneratorTableDef): string {
   lines.push('');
 
   // INSERT statements
-  for (const row of generateTableDataRows(table)) {
-    const values = row.map((value) => escapeSQL(value));
+  const rows = precomputedRows ?? generateTableDataRows(table);
+  for (const row of rows) {
+    const values = row.map((value, index) => {
+      const column = table.columns[index];
+      if (!column) return escapeSQL(value);
+
+      if ((column.type === 'integer' || column.type === 'real' || column.type === 'boolean') && value !== '') {
+        const numeric = Number(value);
+        if (!Number.isNaN(numeric)) {
+          return escapeSQL(numeric);
+        }
+      }
+
+      return escapeSQL(value);
+    });
     lines.push(`INSERT INTO "${table.name}" VALUES (${values.join(', ')});`);
   }
 
@@ -376,7 +727,13 @@ export function generateTableSQL(table: GeneratorTableDef): string {
 }
 
 export function generateMultiTableSQL(tables: GeneratorTableDef[]): string {
-  return tables.map(generateTableSQL).join('\n\n');
+  const resolvedTables = inferForeignKeys(tables);
+  const rowsByTable = generateRowsForResolvedTables(resolvedTables);
+  const orderedTables = orderTablesByDependencies(resolvedTables);
+
+  return orderedTables
+    .map((table) => generateTableSQL(table, rowsByTable[table.name]))
+    .join('\n\n');
 }
 
 /* ── Template Presets ─────────────────────────────────────── */
