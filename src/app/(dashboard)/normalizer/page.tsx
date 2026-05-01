@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import {
     addEdge,
     applyEdgeChanges,
@@ -16,6 +16,8 @@ import {
     type EdgeChange,
     type Node,
     type NodeChange,
+    type NodeProps,
+    type NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -49,6 +51,7 @@ interface TableVerification {
     tableName: string;
     detected: NormalForm;
     ok: boolean;
+    reason?: string;
 }
 
 interface StageVerification {
@@ -76,6 +79,14 @@ const STAGE_MIN_INDEX: Record<CanvasStage, number> = {
     '5NF': 6,
 };
 
+const STAGE_FAILURE_HINTS: Record<Exclude<CanvasStage, 'UNF'>, string> = {
+    '1NF': 'still contains repeating groups or multi-valued attributes.',
+    '2NF': 'still has partial dependency issues on composite keys.',
+    '3NF': 'still has transitive dependency issues.',
+    '4NF': 'still has multivalued dependency issues.',
+    '5NF': 'still has unresolved join dependency issues.',
+};
+
 function createEmptyCanvases(): Record<CanvasStage, StageCanvas> {
     return {
         UNF: { nodes: [], edges: [] },
@@ -101,10 +112,60 @@ function parseLines(input: string): string[] {
         .filter((line) => line.length > 0);
 }
 
+function countDelimiterOutsideQuotes(line: string, delimiter: ',' | '\t'): number {
+    let count = 0;
+    let inQuotes = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+        if (char === '"') {
+            const nextChar = line[index + 1];
+            if (inQuotes && nextChar === '"') {
+                index += 1;
+                continue;
+            }
+            inQuotes = !inQuotes;
+            continue;
+        }
+
+        if (!inQuotes && char === delimiter) {
+            count += 1;
+        }
+    }
+
+    return count;
+}
+
 function parseRow(line: string, delimiter: ',' | '\t'): string[] {
-    return line
-        .split(delimiter)
-        .map((value) => value.trim());
+    const values: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+
+        if (char === '"') {
+            const nextChar = line[index + 1];
+            if (inQuotes && nextChar === '"') {
+                current += '"';
+                index += 1;
+                continue;
+            }
+            inQuotes = !inQuotes;
+            continue;
+        }
+
+        if (!inQuotes && char === delimiter) {
+            values.push(current.trim());
+            current = '';
+            continue;
+        }
+
+        current += char;
+    }
+
+    values.push(current.trim());
+    return values;
 }
 
 function normalizeHeaderRow(headerRow: string[]): string[] {
@@ -120,7 +181,9 @@ function normalizeHeaderRow(headerRow: string[]): string[] {
 }
 
 function detectDelimiter(header: string): ',' | '\t' {
-    if (header.includes('\t')) return '\t';
+    const commaCount = countDelimiterOutsideQuotes(header, ',');
+    const tabCount = countDelimiterOutsideQuotes(header, '\t');
+    if (tabCount > commaCount) return '\t';
     return ',';
 }
 
@@ -256,75 +319,150 @@ function rowCount(table: TableSchema): number {
     return table.sampleData?.length ?? 0;
 }
 
-function renderTablePreviewRows(table: TableSchema): string[][] {
-    return (table.sampleData ?? []).slice(0, 4);
+function estimateColumnWidths(table: TableSchema): number[] {
+    const rows = table.sampleData ?? [];
+
+    return table.columns.map((column, columnIndex) => {
+        let maxLength = column.name.length;
+
+        for (const row of rows) {
+            const valueLength = (row[columnIndex] ?? '').length;
+            if (valueLength > maxLength) {
+                maxLength = valueLength;
+            }
+        }
+
+        const widthFromChars = maxLength * 8.2 + 56;
+        return Math.max(170, Math.min(460, widthFromChars));
+    });
 }
 
 function renderTableLabel(table: TableSchema): ReactNode {
-    const previewRows = renderTablePreviewRows(table);
+    const rows = table.sampleData ?? [];
     const totalRows = rowCount(table);
-    const hiddenRowCount = Math.max(0, totalRows - previewRows.length);
+    const columnCount = Math.max(1, table.columns.length);
+    const columnWidths = estimateColumnWidths(table);
+    const tableWidth = columnWidths.reduce((sum, width) => sum + width, 0);
+    const cardWidth = Math.max(560, tableWidth + 32);
 
     return (
-        <div className="min-w-[260px] max-w-[320px] rounded-xl border border-amber-500/25 bg-card/95 p-2 text-left shadow-md">
-            <div className="mb-1.5 flex items-center justify-between border-b border-border/80 pb-1.5">
-                <span className="truncate text-xs font-bold text-foreground">{table.name}</span>
-                <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+        <div
+            className="rounded-2xl border border-amber-400/35 bg-card/95 p-3 text-left shadow-[0_24px_52px_-34px_rgba(245,158,11,0.7)] backdrop-blur-sm"
+            style={{ width: `${cardWidth}px` }}
+        >
+            <div className="mb-2.5 flex items-center justify-between border-b border-border/85 pb-2.5">
+                <div className="min-w-0">
+                    <h3 className="truncate text-[24px] font-extrabold tracking-tight text-foreground">{table.name}</h3>
+                    <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">
+                        {table.columns.length} columns
+                    </p>
+                </div>
+                <span className="rounded-xl border border-amber-400/35 bg-amber-500/16 px-2.5 py-1 text-[14px] font-bold text-amber-300">
                     {totalRows} rows
                 </span>
             </div>
 
-            <div className="overflow-hidden rounded-lg border border-border/80">
-                <table className="w-full border-collapse text-[10px]">
-                    <thead>
-                        <tr className="bg-muted/60">
-                            {table.columns.map((column) => (
-                                <th key={`${table.id}_head_${column.name}`} className="border-b border-border/80 px-1.5 py-1 text-left font-semibold text-foreground/90">
-                                    {column.name}
-                                </th>
+            <div className="overflow-hidden rounded-xl border border-border/85 bg-card/80">
+                <div className="max-h-[360px] overflow-x-hidden overflow-y-auto">
+                    <table className="table-fixed border-separate border-spacing-0 text-xs" style={{ width: `${tableWidth}px`, minWidth: '100%' }}>
+                        <colgroup>
+                            {columnWidths.map((width, index) => (
+                                <col key={`${table.id}_col_${index}`} style={{ width: `${width}px` }} />
                             ))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {previewRows.length === 0 ? (
-                            <tr>
-                                <td colSpan={Math.max(1, table.columns.length)} className="px-1.5 py-1.5 text-muted-foreground">
-                                    No rows yet
-                                </td>
+                        </colgroup>
+                        <thead className="sticky top-0 z-10">
+                            <tr className="bg-muted/75 backdrop-blur-sm">
+                                {table.columns.map((column) => (
+                                    <th
+                                        key={`${table.id}_head_${column.name}`}
+                                        className="border-b border-border/90 px-3 py-2 text-left text-[12px] font-bold text-foreground"
+                                    >
+                                        <span className="block whitespace-pre-wrap break-words">{column.name}</span>
+                                    </th>
+                                ))}
                             </tr>
-                        ) : (
-                            previewRows.map((row, rowIndex) => (
-                                <tr key={`${table.id}_row_${rowIndex}`} className="border-b border-border/70 last:border-b-0">
-                                    {table.columns.map((column, columnIndex) => (
-                                        <td key={`${table.id}_cell_${rowIndex}_${column.name}`} className="px-1.5 py-1 text-muted-foreground">
-                                            {row[columnIndex] || '-'}
-                                        </td>
-                                    ))}
+                        </thead>
+                        <tbody>
+                            {rows.length === 0 ? (
+                                <tr>
+                                    <td
+                                        colSpan={columnCount}
+                                        className="px-3 py-3 text-[12px] font-medium text-muted-foreground"
+                                    >
+                                        No rows yet
+                                    </td>
                                 </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
+                            ) : (
+                                rows.map((row, rowIndex) => (
+                                    <tr
+                                        key={`${table.id}_row_${rowIndex}`}
+                                        className={rowIndex % 2 === 0
+                                            ? 'bg-card/30'
+                                            : 'bg-muted/15'}
+                                    >
+                                        {table.columns.map((column, columnIndex) => (
+                                            <td
+                                                key={`${table.id}_cell_${rowIndex}_${column.name}`}
+                                                className="border-b border-border/70 px-3 py-2 align-top text-[12px] leading-relaxed text-foreground/85"
+                                            >
+                                                <span className="block min-h-[1.2rem] whitespace-pre-wrap break-words">
+                                                    {row[columnIndex] || '-'}
+                                                </span>
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <div className="mt-1.5 flex flex-wrap gap-1">
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {table.primaryKey.map((column) => (
-                    <span key={`${table.id}_pk_${column}`} className="rounded bg-amber-500/12 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+                    <span
+                        key={`${table.id}_pk_${column}`}
+                        className="rounded-lg border border-amber-400/35 bg-amber-500/12 px-2 py-1 text-xs font-bold text-amber-300"
+                    >
                         PK: {column}
                     </span>
                 ))}
             </div>
-
-            {hiddenRowCount > 0 && (
-                <p className="mt-1 text-[10px] text-muted-foreground">+{hiddenRowCount} more rows</p>
-            )}
         </div>
     );
 }
 
+function TableCanvasNode({ data, selected }: NodeProps<Node<CanvasNodeData>>) {
+    return (
+        <div className={selected ? 'rounded-[1.15rem] ring-2 ring-amber-300/45' : undefined}>
+            {data.label}
+        </div>
+    );
+}
+
+const NODE_TYPES = {
+    table: TableCanvasNode,
+} satisfies NodeTypes;
+
 function stageSatisfied(stage: CanvasStage, detected: NormalForm): boolean {
     if (stage === 'UNF') return detected === 'UNF';
     return ENGINE_ORDER.indexOf(detected) >= STAGE_MIN_INDEX[stage];
+}
+
+function buildFailureReason(stage: CanvasStage, detected: NormalForm): string {
+    if (stage === 'UNF') {
+        return `Expected UNF, but detected ${detected}. This table appears more normalized than UNF and does not contain repeating or multi-valued groups.`;
+    }
+
+    const expectedIndex = STAGE_MIN_INDEX[stage];
+    const detectedIndex = ENGINE_ORDER.indexOf(detected);
+    const base = `Expected at least ${stage}, but detected ${detected}.`;
+
+    if (detectedIndex < expectedIndex) {
+        return `${base} It likely ${STAGE_FAILURE_HINTS[stage]}`;
+    }
+
+    return base;
 }
 
 function isCanvasNodeData(data: unknown): data is CanvasNodeData {
@@ -340,6 +478,8 @@ export default function NormalizerPage() {
     const [activeStage, setActiveStage] = useState<CanvasStage>('UNF');
     const [canvases, setCanvases] = useState<Record<CanvasStage, StageCanvas>>(createEmptyCanvases);
     const [verification, setVerification] = useState<VerificationSummary | null>(null);
+    const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+    const [openFailureReasons, setOpenFailureReasons] = useState<Record<string, boolean>>({});
 
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [draftTableName, setDraftTableName] = useState('');
@@ -348,6 +488,10 @@ export default function NormalizerPage() {
     const [createTableError, setCreateTableError] = useState('');
 
     const activeCanvas = canvases[activeStage];
+    const activeCanvasNodes = useMemo(
+        () => activeCanvas.nodes.map((node) => (node.type === 'table' ? node : { ...node, type: 'table' })),
+        [activeCanvas.nodes],
+    );
     const selectedNodeId = activeCanvas.nodes.find((node) => node.selected)?.id ?? null;
 
     const updateActiveCanvas = useCallback(
@@ -406,6 +550,7 @@ export default function NormalizerPage() {
 
         const node: Node<CanvasNodeData> = {
             id: table.id,
+            type: 'table',
             position: {
                 x: 80 + activeCanvas.nodes.length * 36,
                 y: 70 + activeCanvas.nodes.length * 28,
@@ -510,10 +655,12 @@ export default function NormalizerPage() {
                 .map((node) => {
                     const table = node.data.table;
                     const detected = detectNormalForm(table);
+                    const ok = stageSatisfied(stage, detected);
                     return {
                         tableName: table.name,
                         detected,
-                        ok: stageSatisfied(stage, detected),
+                        ok,
+                        reason: ok ? undefined : buildFailureReason(stage, detected),
                     };
                 });
 
@@ -528,7 +675,17 @@ export default function NormalizerPage() {
             allPass: stages.every((stage) => stage.pass),
             stages,
         });
+
+        setOpenFailureReasons({});
+        setIsVerificationModalOpen(true);
     }, [canvases]);
+
+    const toggleFailureReason = useCallback((key: string) => {
+        setOpenFailureReasons((previous) => ({
+            ...previous,
+            [key]: !previous[key],
+        }));
+    }, []);
 
     return (
         <ReactFlowProvider>
@@ -605,11 +762,13 @@ export default function NormalizerPage() {
 
                 <div className="normalizer-canvas-wrapper min-h-[460px] flex-1 overflow-hidden rounded-2xl border border-border bg-card/70">
                     <ReactFlow
-                        nodes={activeCanvas.nodes}
+                        nodes={activeCanvasNodes}
                         edges={activeCanvas.edges}
+                        nodeTypes={NODE_TYPES}
                         onNodesChange={onNodesChange}
                         onEdgesChange={onEdgesChange}
                         onConnect={onConnect}
+                        nodesConnectable={false}
                         fitView
                         fitViewOptions={{ padding: 0.25 }}
                         minZoom={0.2}
@@ -660,48 +819,122 @@ export default function NormalizerPage() {
                     </button>
                 </div>
 
-                {verification && (
-                    <div className="rounded-2xl border border-border bg-card/70 p-3">
-                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                            {verification.allPass
-                                ? <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-                                : <XCircle className="h-4 w-4 text-rose-300" />}
-                            {verification.allPass ? 'All canvases verified' : 'Verification failed'}
-                        </div>
+                {isVerificationModalOpen && verification && (
+                    <div
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+                        onClick={() => setIsVerificationModalOpen(false)}
+                    >
+                        <div
+                            className="w-full max-w-5xl max-h-[86vh] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="flex items-start justify-between border-b border-border px-5 py-4">
+                                <div>
+                                    <h2 className="text-lg font-bold text-foreground">Verification Summary</h2>
+                                    <p className="mt-1 text-xs text-muted-foreground">Review pass/fail by stage and inspect failure reasons.</p>
+                                </div>
 
-                        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                            {verification.stages.map((stage) => (
-                                <div
-                                    key={stage.stage}
-                                    className="rounded-xl border px-3 py-2"
-                                    style={{
-                                        borderColor: stage.pass
-                                            ? 'color-mix(in oklab, var(--success) 45%, var(--border))'
-                                            : 'color-mix(in oklab, var(--danger) 45%, var(--border))',
-                                        background: stage.pass
-                                            ? 'color-mix(in oklab, var(--success) 10%, transparent)'
-                                            : 'color-mix(in oklab, var(--danger) 10%, transparent)',
-                                    }}
+                                <button
+                                    onClick={() => setIsVerificationModalOpen(false)}
+                                    className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                                    aria-label="Close verification popup"
                                 >
-                                    <div className="mb-1 flex items-center justify-between text-xs font-semibold text-foreground">
-                                        <span>{stage.stage}</span>
-                                        <span>{stage.checks.filter((item) => item.ok).length}/{stage.checks.length}</span>
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+
+                            <div className="max-h-[calc(86vh-88px)] overflow-y-auto p-4">
+                                <div className="mb-4 grid gap-3 md:grid-cols-3">
+                                    <div className="rounded-xl border border-border bg-muted/25 px-3 py-2">
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Overall</p>
+                                        <p className="mt-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                                            {verification.allPass
+                                                ? <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+                                                : <XCircle className="h-4 w-4 text-rose-300" />}
+                                            {verification.allPass ? 'Passed' : 'Failed'}
+                                        </p>
                                     </div>
 
-                                    {stage.checks.length === 0 ? (
-                                        <p className="text-[11px] text-muted-foreground">No tables in this canvas.</p>
-                                    ) : (
-                                        <div className="space-y-1">
-                                            {stage.checks.map((check) => (
-                                                <div key={`${stage.stage}_${check.tableName}`} className="flex items-center justify-between text-[11px]">
-                                                    <span className="truncate text-foreground/90">{check.tableName}</span>
-                                                    <span className={check.ok ? 'text-emerald-300' : 'text-rose-300'}>{check.detected}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+                                    <div className="rounded-xl border border-border bg-muted/25 px-3 py-2">
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Stages Passed</p>
+                                        <p className="mt-1 text-sm font-semibold text-foreground">
+                                            {verification.stages.filter((stage) => stage.pass).length}/{verification.stages.length}
+                                        </p>
+                                    </div>
+
+                                    <div className="rounded-xl border border-border bg-muted/25 px-3 py-2">
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Tables Checked</p>
+                                        <p className="mt-1 text-sm font-semibold text-foreground">
+                                            {verification.stages.reduce((total, stage) => total + stage.checks.length, 0)}
+                                        </p>
+                                    </div>
                                 </div>
-                            ))}
+
+                                <div className="grid gap-3 lg:grid-cols-2">
+                                    {verification.stages.map((stage) => (
+                                        <div
+                                            key={stage.stage}
+                                            className="rounded-xl border px-3 py-3"
+                                            style={{
+                                                borderColor: stage.pass
+                                                    ? 'color-mix(in oklab, var(--success) 45%, var(--border))'
+                                                    : 'color-mix(in oklab, var(--danger) 45%, var(--border))',
+                                                background: stage.pass
+                                                    ? 'color-mix(in oklab, var(--success) 10%, transparent)'
+                                                    : 'color-mix(in oklab, var(--danger) 10%, transparent)',
+                                            }}
+                                        >
+                                            <div className="mb-2 flex items-center justify-between">
+                                                <span className="text-xs font-semibold text-foreground">{stage.stage}</span>
+                                                <span className="text-xs font-semibold text-foreground">
+                                                    {stage.checks.filter((item) => item.ok).length}/{stage.checks.length}
+                                                </span>
+                                            </div>
+
+                                            {stage.checks.length === 0 ? (
+                                                <p className="text-[11px] text-muted-foreground">No tables in this canvas.</p>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    {stage.checks.map((check, index) => {
+                                                        const reasonKey = `${stage.stage}_${check.tableName}_${index}`;
+                                                        const isReasonOpen = !!openFailureReasons[reasonKey];
+
+                                                        return (
+                                                            <div
+                                                                key={reasonKey}
+                                                                className="rounded-lg border border-border/75 bg-card/70 px-2.5 py-2"
+                                                            >
+                                                                <div className="flex items-center justify-between gap-2 text-[11px]">
+                                                                    <span className="truncate text-foreground/90">{check.tableName}</span>
+
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={check.ok ? 'text-emerald-300' : 'text-rose-300'}>{check.detected}</span>
+
+                                                                        {!check.ok && check.reason && (
+                                                                            <button
+                                                                                onClick={() => toggleFailureReason(reasonKey)}
+                                                                                className="rounded-md border border-rose-500/35 bg-rose-500/12 px-2 py-1 text-[10px] font-semibold text-rose-300 hover:bg-rose-500/20"
+                                                                            >
+                                                                                {isReasonOpen ? 'Hide reason' : 'Reason'}
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {!check.ok && check.reason && isReasonOpen && (
+                                                                    <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1.5 text-[11px] text-rose-200">
+                                                                        {check.reason}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
