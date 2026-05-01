@@ -68,6 +68,7 @@ export const STORAGE_BASE_KEYS = {
   trc: 'trc',
   er: 'er',
   normalizer: 'normalizer',
+  normalizerStudio: 'normalizer-studio',
   generator: 'generator',
   session: 'session',
   engineState: 'engine-state',

@@ -19,6 +19,10 @@ import {
     type NodeChange,
     type NodeProps,
     type NodeTypes,
+    type OnInit,
+    type OnMoveEnd,
+    type ReactFlowInstance,
+    type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -40,6 +44,8 @@ import {
     type GeneratorTableDef,
 } from '@/lib/engine/data-generator';
 import { verifyNormalForm, type VerificationConfidence } from '@/lib/engine/normalizer-engine';
+import { getUserKeyForId, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
+import { useAuthStore } from '@/stores/auth-store';
 import { useGeneratorStore } from '@/stores/generator-store';
 import type { Column, FunctionalDependency, NormalForm, TableSchema } from '@/types/normalizer';
 
@@ -53,6 +59,7 @@ interface CanvasNodeData extends Record<string, unknown> {
 interface StageCanvas {
     nodes: Node<CanvasNodeData>[];
     edges: Edge[];
+    viewport?: Viewport;
 }
 
 interface TableVerification {
@@ -86,6 +93,47 @@ interface GeneratorMenuLayout {
     bottom?: number;
 }
 
+interface PersistedCanvasNode {
+    id: string;
+    position: { x: number; y: number };
+    size?: {
+        width?: number;
+        height?: number;
+    };
+    table: TableSchema;
+    selected: boolean;
+}
+
+interface PersistedCanvasEdge {
+    id: string;
+    source: string;
+    target: string;
+    label?: string;
+}
+
+interface PersistedStageCanvas {
+    nodes: PersistedCanvasNode[];
+    edges: PersistedCanvasEdge[];
+    viewport?: Viewport;
+}
+
+interface PersistedNormalizerStudioState {
+    version: number;
+    savedAt: number;
+    activeStage: CanvasStage;
+    canvases: Record<CanvasStage, PersistedStageCanvas>;
+}
+
+interface PendingNormalizerStudioWrite {
+    storageKey: string;
+    payload: PersistedNormalizerStudioState;
+}
+
+const NORMALIZER_STUDIO_PERSIST_VERSION = 1;
+const NORMALIZER_STUDIO_PERSIST_DELAY_MS = 220;
+const NORMALIZER_STUDIO_FALLBACK_STAGE: CanvasStage = 'UNF';
+const DEFAULT_CANVAS_VIEWPORT: Viewport = { x: 0, y: 0, zoom: 1 };
+
 const STAGES: CanvasStage[] = ['UNF', '1NF', '2NF', '3NF', '4NF', '5NF'];
 const ENGINE_ORDER: NormalForm[] = ['UNF', '1NF', '2NF', '3NF', 'BCNF', '4NF', '5NF'];
 const TABLE_HINT_TEXT = 'Paste CSV or Excel rows. First row must be column names.';
@@ -116,6 +164,598 @@ function createEmptyCanvases(): Record<CanvasStage, StageCanvas> {
         '3NF': { nodes: [], edges: [] },
         '4NF': { nodes: [], edges: [] },
         '5NF': { nodes: [], edges: [] },
+    };
+}
+
+function createEmptyPersistedCanvases(): Record<CanvasStage, PersistedStageCanvas> {
+    return {
+        UNF: { nodes: [], edges: [] },
+        '1NF': { nodes: [], edges: [] },
+        '2NF': { nodes: [], edges: [] },
+        '3NF': { nodes: [], edges: [] },
+        '4NF': { nodes: [], edges: [] },
+        '5NF': { nodes: [], edges: [] },
+    };
+}
+
+const CANVAS_NODE_STYLE = {
+    border: 'none',
+    background: 'transparent',
+    padding: 0,
+} as const;
+
+const CANVAS_EDGE_STYLE = {
+    stroke: 'color-mix(in oklab, var(--warning) 55%, var(--border))',
+    strokeWidth: 1.6,
+} as const;
+
+const CANVAS_EDGE_LABEL_STYLE = {
+    fill: 'var(--muted-foreground)',
+    fontSize: 11,
+    fontWeight: 600,
+} as const;
+
+function getNormalizerStudioStorageKey(storageScopeId: string): string {
+    return getUserKeyForId(storageScopeId, STORAGE_BASE_KEYS.normalizerStudio);
+}
+
+function isCanvasStage(value: unknown): value is CanvasStage {
+    return typeof value === 'string' && (STAGES as readonly string[]).includes(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function cleanString(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
+function toFiniteNumber(value: unknown, fallback = 0): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+}
+
+function sanitizeNodeDimension(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+        return clampNumber(value, 80, 8000);
+    }
+
+    if (typeof value === 'string') {
+        const parsed = Number.parseFloat(value);
+        if (Number.isFinite(parsed) && parsed > 0) {
+            return clampNumber(parsed, 80, 8000);
+        }
+    }
+
+    return null;
+}
+
+function sanitizeViewport(value: unknown): Viewport | null {
+    if (!isRecord(value)) return null;
+
+    const x = clampNumber(toFiniteNumber(value.x, 0), -200_000, 200_000);
+    const y = clampNumber(toFiniteNumber(value.y, 0), -200_000, 200_000);
+    const zoom = clampNumber(toFiniteNumber(value.zoom, 1), 0.05, 4);
+
+    return { x, y, zoom };
+}
+
+function extractNodeSize(node: Node<CanvasNodeData>): PersistedCanvasNode['size'] | undefined {
+    const styleWidth = sanitizeNodeDimension(node.style?.width);
+    const styleHeight = sanitizeNodeDimension(node.style?.height);
+    const widthFallback = sanitizeNodeDimension((node as { width?: unknown }).width);
+    const heightFallback = sanitizeNodeDimension((node as { height?: unknown }).height);
+    const measured = (node as { measured?: { width?: unknown; height?: unknown } }).measured;
+    const measuredWidth = sanitizeNodeDimension(measured?.width);
+    const measuredHeight = sanitizeNodeDimension(measured?.height);
+
+    const width = styleWidth ?? widthFallback ?? measuredWidth;
+    const height = styleHeight ?? heightFallback ?? measuredHeight;
+
+    if (!width && !height) return undefined;
+    return {
+        ...(width ? { width } : {}),
+        ...(height ? { height } : {}),
+    };
+}
+
+function toSanitizedCell(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    if (Array.isArray(value)) {
+        return value.map((entry) => toSanitizedCell(entry)).join('|');
+    }
+    if (typeof value === 'object') {
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return '';
+        }
+    }
+    return String(value);
+}
+
+function normalizeUniqueStrings(value: unknown, maxItems = 128): string[] {
+    if (!Array.isArray(value)) return [];
+
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+
+    for (const entry of value) {
+        const next = cleanString(entry);
+        if (!next || seen.has(next)) continue;
+        seen.add(next);
+        normalized.push(next);
+        if (normalized.length >= maxItems) break;
+    }
+
+    return normalized;
+}
+
+function sanitizeColumn(column: unknown): Column | null {
+    if (!isRecord(column)) return null;
+    const name = cleanString(column.name);
+    if (!name) return null;
+
+    const type = cleanString(column.type);
+    return {
+        name,
+        ...(type ? { type } : {}),
+        isKey: column.isKey === true,
+    };
+}
+
+function sanitizeFunctionalDependency(
+    dependency: unknown,
+    validColumns: Set<string>,
+): FunctionalDependency | null {
+    if (!isRecord(dependency)) return null;
+
+    const determinant = normalizeUniqueStrings(dependency.determinant).filter((attribute) =>
+        validColumns.has(attribute),
+    );
+    const dependent = normalizeUniqueStrings(dependency.dependent)
+        .filter((attribute) => validColumns.has(attribute) && !determinant.includes(attribute));
+
+    if (determinant.length === 0 || dependent.length === 0) return null;
+    return { determinant, dependent };
+}
+
+function sanitizeMultivaluedDependency(
+    dependency: unknown,
+    validColumns: Set<string>,
+): TableSchema['mvds'][number] | null {
+    if (!isRecord(dependency)) return null;
+
+    const determinant = normalizeUniqueStrings(dependency.determinant).filter((attribute) =>
+        validColumns.has(attribute),
+    );
+    const dependent = normalizeUniqueStrings(dependency.dependent)
+        .filter((attribute) => validColumns.has(attribute) && !determinant.includes(attribute));
+
+    if (determinant.length === 0 || dependent.length === 0) return null;
+    return { determinant, dependent };
+}
+
+function sanitizeJoinDependency(
+    dependency: unknown,
+    validColumns: Set<string>,
+): NonNullable<TableSchema['joinDependencies']>[number] | null {
+    if (!isRecord(dependency)) return null;
+
+    const rawComponents = dependency.components;
+    if (!Array.isArray(rawComponents)) return null;
+
+    const components: string[][] = [];
+    for (const component of rawComponents) {
+        const normalized = normalizeUniqueStrings(component).filter((attribute) => validColumns.has(attribute));
+        if (normalized.length > 0) {
+            components.push(normalized);
+        }
+    }
+
+    if (components.length < 2) return null;
+    return { components };
+}
+
+function sanitizeForeignKey(
+    foreignKey: unknown,
+    validColumns: Set<string>,
+): TableSchema['foreignKeys'][number] | null {
+    if (!isRecord(foreignKey)) return null;
+
+    const columns = normalizeUniqueStrings(foreignKey.columns).filter((column) => validColumns.has(column));
+    const referencesColumns = normalizeUniqueStrings(foreignKey.referencesColumns);
+    const referencesTable = cleanString(foreignKey.referencesTable);
+
+    if (columns.length === 0 || referencesColumns.length === 0 || !referencesTable) {
+        return null;
+    }
+
+    return {
+        columns,
+        referencesTable,
+        referencesColumns,
+    };
+}
+
+function sanitizeSampleData(sampleData: unknown, columnCount: number): string[][] {
+    if (!Array.isArray(sampleData) || columnCount <= 0) return [];
+
+    const rows: string[][] = [];
+    const maxRows = 4000;
+    const maxCellLength = 600;
+
+    for (const row of sampleData) {
+        if (!Array.isArray(row)) continue;
+
+        const normalizedRow = Array.from({ length: columnCount }, (_, index) =>
+            toSanitizedCell(row[index]).slice(0, maxCellLength),
+        );
+
+        if (normalizedRow.some((value) => value.trim().length > 0)) {
+            rows.push(normalizedRow);
+            if (rows.length >= maxRows) break;
+        }
+    }
+
+    return rows;
+}
+
+function sanitizeTableSchema(table: unknown): TableSchema | null {
+    if (!isRecord(table)) return null;
+
+    const rawColumns = Array.isArray(table.columns) ? table.columns : [];
+    const columns: Column[] = [];
+    const seenColumns = new Set<string>();
+
+    for (const rawColumn of rawColumns) {
+        const next = sanitizeColumn(rawColumn);
+        if (!next || seenColumns.has(next.name)) continue;
+        seenColumns.add(next.name);
+        columns.push(next);
+    }
+
+    if (columns.length === 0) return null;
+
+    const columnNames = columns.map((column) => column.name);
+    const columnSet = new Set(columnNames);
+    const fallbackPrimaryKey = columnSet.has('id') ? ['id'] : [columnNames[0]];
+
+    const primaryKey = normalizeUniqueStrings(table.primaryKey).filter((attribute) =>
+        columnSet.has(attribute),
+    );
+    const resolvedPrimaryKey = primaryKey.length > 0 ? primaryKey : fallbackPrimaryKey;
+
+    const rawForeignKeys = Array.isArray(table.foreignKeys) ? table.foreignKeys : [];
+    const foreignKeys = dedupeForeignKeys(
+        rawForeignKeys
+            .map((foreignKey) => sanitizeForeignKey(foreignKey, columnSet))
+            .filter((foreignKey): foreignKey is TableSchema['foreignKeys'][number] => foreignKey !== null),
+    );
+
+    const rawFds = Array.isArray(table.fds) ? table.fds : [];
+    const explicitDependencies = rawFds
+        .map((dependency) => sanitizeFunctionalDependency(dependency, columnSet))
+        .filter((dependency): dependency is FunctionalDependency => dependency !== null);
+    const fds = mergeFunctionalDependencies(
+        buildPrimaryKeyDependencies(columnNames, resolvedPrimaryKey),
+        explicitDependencies,
+    );
+
+    const rawMvds = Array.isArray(table.mvds) ? table.mvds : [];
+    const mvds = rawMvds
+        .map((dependency) => sanitizeMultivaluedDependency(dependency, columnSet))
+        .filter((dependency): dependency is TableSchema['mvds'][number] => dependency !== null);
+
+    const rawJoinDependencies = Array.isArray(table.joinDependencies)
+        ? table.joinDependencies
+        : [];
+    const joinDependencies = rawJoinDependencies
+        .map((dependency) => sanitizeJoinDependency(dependency, columnSet))
+        .filter(
+            (
+                dependency,
+            ): dependency is NonNullable<TableSchema['joinDependencies']>[number] => dependency !== null,
+        );
+
+    const id = cleanString(table.id) ?? uid('table');
+    const name = cleanString(table.name) ?? id;
+    const sampleData = sanitizeSampleData(table.sampleData, columns.length);
+
+    return {
+        id,
+        name,
+        columns: columns.map((column) => ({
+            ...column,
+            isKey: resolvedPrimaryKey.includes(column.name),
+        })),
+        primaryKey: resolvedPrimaryKey,
+        foreignKeys,
+        fds,
+        mvds,
+        ...(joinDependencies.length > 0 ? { joinDependencies } : {}),
+        sampleData,
+    };
+}
+
+function sanitizePersistedNode(node: unknown): PersistedCanvasNode | null {
+    if (!isRecord(node)) return null;
+
+    const table = sanitizeTableSchema(node.table);
+    if (!table) return null;
+
+    const fallbackId = table.id;
+    const id = cleanString(node.id) ?? fallbackId;
+    if (!id) return null;
+
+    const rawPosition = isRecord(node.position) ? node.position : null;
+    const x = clampNumber(toFiniteNumber(rawPosition?.x, 0), -40_000, 40_000);
+    const y = clampNumber(toFiniteNumber(rawPosition?.y, 0), -40_000, 40_000);
+    const rawSize = isRecord(node.size) ? node.size : null;
+    const width = sanitizeNodeDimension(rawSize?.width);
+    const height = sanitizeNodeDimension(rawSize?.height);
+
+    return {
+        id,
+        position: { x, y },
+        ...(width || height
+            ? {
+                size: {
+                    ...(width ? { width } : {}),
+                    ...(height ? { height } : {}),
+                },
+            }
+            : {}),
+        table,
+        selected: node.selected === true,
+    };
+}
+
+function sanitizePersistedEdge(edge: unknown, nodeIds: Set<string>): PersistedCanvasEdge | null {
+    if (!isRecord(edge)) return null;
+
+    const source = cleanString(edge.source);
+    const target = cleanString(edge.target);
+
+    if (!source || !target || !nodeIds.has(source) || !nodeIds.has(target)) {
+        return null;
+    }
+
+    const id = cleanString(edge.id) ?? `edge_${source}_${target}`;
+    const label = cleanString(edge.label) ?? undefined;
+
+    return { id, source, target, label };
+}
+
+function createCanvasNodeFromPersistedNode(node: PersistedCanvasNode): Node<CanvasNodeData> {
+    const width = sanitizeNodeDimension(node.size?.width);
+    const height = sanitizeNodeDimension(node.size?.height);
+
+    return {
+        id: node.id,
+        type: 'table',
+        position: node.position,
+        data: {
+            table: node.table,
+            label: renderTableLabel(node.table),
+        },
+        style: {
+            ...CANVAS_NODE_STYLE,
+            ...(width ? { width } : {}),
+            ...(height ? { height } : {}),
+        },
+        ...(width ? { width } : {}),
+        ...(height ? { height } : {}),
+        draggable: true,
+        selectable: true,
+        selected: node.selected,
+    };
+}
+
+function createCanvasEdgeFromPersistedEdge(edge: PersistedCanvasEdge): Edge {
+    return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        type: 'smoothstep',
+        animated: true,
+        ...(edge.label ? { label: edge.label } : {}),
+        style: CANVAS_EDGE_STYLE,
+        labelStyle: CANVAS_EDGE_LABEL_STYLE,
+    };
+}
+
+function serializeCanvasesForPersistence(
+    canvases: Record<CanvasStage, StageCanvas>,
+): Record<CanvasStage, PersistedStageCanvas> {
+    const persisted = createEmptyPersistedCanvases();
+
+    for (const stage of STAGES) {
+        const sourceCanvas = canvases[stage];
+        const nodes: PersistedCanvasNode[] = [];
+        const seenNodeIds = new Set<string>();
+
+        for (const node of sourceCanvas.nodes) {
+            if (!isCanvasNodeData(node.data)) continue;
+
+            const table = sanitizeTableSchema(node.data.table);
+            if (!table) continue;
+
+            const id = cleanString(node.id) ?? table.id;
+            if (!id || seenNodeIds.has(id)) continue;
+
+            seenNodeIds.add(id);
+            const size = extractNodeSize(node);
+            nodes.push({
+                id,
+                position: {
+                    x: clampNumber(toFiniteNumber(node.position.x, 0), -40_000, 40_000),
+                    y: clampNumber(toFiniteNumber(node.position.y, 0), -40_000, 40_000),
+                },
+                ...(size ? { size } : {}),
+                table,
+                selected: node.selected === true,
+            });
+        }
+
+        const nodeIds = new Set(nodes.map((node) => node.id));
+        const edges: PersistedCanvasEdge[] = [];
+        const seenEdgeIds = new Set<string>();
+
+        for (const edge of sourceCanvas.edges) {
+            const source = cleanString(edge.source);
+            const target = cleanString(edge.target);
+            if (!source || !target || !nodeIds.has(source) || !nodeIds.has(target)) continue;
+
+            const id = cleanString(edge.id) ?? `edge_${source}_${target}`;
+            if (seenEdgeIds.has(id)) continue;
+            seenEdgeIds.add(id);
+
+            const label = cleanString(edge.label) ?? undefined;
+            edges.push({ id, source, target, ...(label ? { label } : {}) });
+        }
+
+        const viewport = sanitizeViewport(sourceCanvas.viewport);
+
+        persisted[stage] = {
+            nodes,
+            edges,
+            ...(viewport ? { viewport } : {}),
+        };
+    }
+
+    return persisted;
+}
+
+function deserializeCanvasesFromPersistence(
+    value: unknown,
+): Record<CanvasStage, StageCanvas> | null {
+    if (!isRecord(value)) return null;
+
+    const canvases = createEmptyCanvases();
+
+    for (const stage of STAGES) {
+        const rawStage = value[stage];
+        if (!isRecord(rawStage)) continue;
+
+        const rawNodes = Array.isArray(rawStage.nodes) ? rawStage.nodes : [];
+        const persistedNodes: PersistedCanvasNode[] = [];
+        const seenNodeIds = new Set<string>();
+
+        for (const rawNode of rawNodes) {
+            const node = sanitizePersistedNode(rawNode);
+            if (!node || seenNodeIds.has(node.id)) continue;
+
+            seenNodeIds.add(node.id);
+            persistedNodes.push(node);
+        }
+
+        const nodeIds = new Set(persistedNodes.map((node) => node.id));
+        const rawEdges = Array.isArray(rawStage.edges) ? rawStage.edges : [];
+        const persistedEdges: PersistedCanvasEdge[] = [];
+        const seenEdgeIds = new Set<string>();
+
+        for (const rawEdge of rawEdges) {
+            const edge = sanitizePersistedEdge(rawEdge, nodeIds);
+            if (!edge || seenEdgeIds.has(edge.id)) continue;
+
+            seenEdgeIds.add(edge.id);
+            persistedEdges.push(edge);
+        }
+
+        const viewport = sanitizeViewport(rawStage.viewport);
+
+        canvases[stage] = {
+            nodes: persistedNodes.map(createCanvasNodeFromPersistedNode),
+            edges: persistedEdges.map(createCanvasEdgeFromPersistedEdge),
+            ...(viewport ? { viewport } : {}),
+        };
+    }
+
+    return canvases;
+}
+
+function writePersistedNormalizerStudioState(
+    storageKey: string,
+    payload: PersistedNormalizerStudioState,
+): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+        localStorage.setItem(storageKey, JSON.stringify(payload));
+    } catch {
+        // localStorage unavailable or quota exceeded.
+    }
+}
+
+function clearPersistedNormalizerStudioState(storageKey: string): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+        localStorage.removeItem(storageKey);
+    } catch {
+        // localStorage unavailable.
+    }
+}
+
+function readPersistedNormalizerStudioState(
+    storageKey: string,
+): { activeStage: CanvasStage; canvases: Record<CanvasStage, StageCanvas> } | null {
+    if (typeof window === 'undefined') return null;
+
+    try {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw) as unknown;
+        if (!isRecord(parsed)) {
+            clearPersistedNormalizerStudioState(storageKey);
+            return null;
+        }
+
+        const version = typeof parsed.version === 'number'
+            ? parsed.version
+            : NORMALIZER_STUDIO_PERSIST_VERSION;
+        if (version !== NORMALIZER_STUDIO_PERSIST_VERSION) {
+            clearPersistedNormalizerStudioState(storageKey);
+            return null;
+        }
+
+        const activeStage = isCanvasStage(parsed.activeStage)
+            ? parsed.activeStage
+            : NORMALIZER_STUDIO_FALLBACK_STAGE;
+        const canvases = deserializeCanvasesFromPersistence(parsed.canvases);
+
+        if (!canvases) {
+            clearPersistedNormalizerStudioState(storageKey);
+            return null;
+        }
+
+        return {
+            activeStage,
+            canvases,
+        };
+    } catch {
+        clearPersistedNormalizerStudioState(storageKey);
+        return null;
+    }
+}
+
+function buildPersistedNormalizerStudioState(
+    activeStage: CanvasStage,
+    canvases: Record<CanvasStage, StageCanvas>,
+): PersistedNormalizerStudioState {
+    return {
+        version: NORMALIZER_STUDIO_PERSIST_VERSION,
+        savedAt: Date.now(),
+        activeStage,
+        canvases: serializeCanvasesForPersistence(canvases),
     };
 }
 
@@ -1035,15 +1675,8 @@ function buildForeignKeyEdgesForNode(
             type: 'smoothstep',
             animated: true,
             label: `FK: ${foreignKey.columns.join(', ')} -> ${foreignKey.referencesTable}`,
-            style: {
-                stroke: 'color-mix(in oklab, var(--warning) 55%, var(--border))',
-                strokeWidth: 1.6,
-            },
-            labelStyle: {
-                fill: 'var(--muted-foreground)',
-                fontSize: 11,
-                fontWeight: 600,
-            },
+            style: CANVAS_EDGE_STYLE,
+            labelStyle: CANVAS_EDGE_LABEL_STYLE,
         });
     }
 
@@ -1115,7 +1748,6 @@ const NODE_TYPES = Object.freeze({
     table: TableCanvasNode,
 }) satisfies NodeTypes;
 
-const FLOW_FIT_VIEW_OPTIONS = { padding: 0.25 } as const;
 const FLOW_PRO_OPTIONS = { hideAttribution: true } as const;
 
 function stageSatisfied(stage: CanvasStage, detected: NormalForm): boolean {
@@ -1159,6 +1791,7 @@ function isCanvasNodeData(data: unknown): data is CanvasNodeData {
 }
 
 export default function NormalizerPage() {
+    const storageScopeId = useAuthStore((state) => state.user?.id ?? 'guest');
     const generatorTables = useGeneratorStore((state) => state.tables);
 
     const [activeStage, setActiveStage] = useState<CanvasStage>('UNF');
@@ -1178,6 +1811,99 @@ export default function NormalizerPage() {
     const generatorMenuRef = useRef<HTMLDivElement | null>(null);
     const generatorMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
     const generatorMenuDropdownRef = useRef<HTMLDivElement | null>(null);
+    const normalizerStudioHydratedRef = useRef(false);
+    const skipNextNormalizerStudioPersistRef = useRef(true);
+    const normalizerStudioWriteTimerRef = useRef<number | null>(null);
+    const pendingNormalizerStudioWriteRef = useRef<PendingNormalizerStudioWrite | null>(null);
+    const reactFlowInstanceRef = useRef<ReactFlowInstance<Node<CanvasNodeData>, Edge> | null>(null);
+
+    const flushPendingNormalizerStudioWrite = useCallback(() => {
+        if (typeof window === 'undefined') return;
+
+        if (normalizerStudioWriteTimerRef.current !== null) {
+            window.clearTimeout(normalizerStudioWriteTimerRef.current);
+            normalizerStudioWriteTimerRef.current = null;
+        }
+
+        const pending = pendingNormalizerStudioWriteRef.current;
+        if (!pending) return;
+
+        writePersistedNormalizerStudioState(pending.storageKey, pending.payload);
+        pendingNormalizerStudioWriteRef.current = null;
+    }, []);
+
+    useEffect(() => {
+        normalizerStudioHydratedRef.current = false;
+        skipNextNormalizerStudioPersistRef.current = true;
+        flushPendingNormalizerStudioWrite();
+
+        const storageKey = getNormalizerStudioStorageKey(storageScopeId);
+        const restored = readPersistedNormalizerStudioState(storageKey);
+        let cancelled = false;
+
+        queueMicrotask(() => {
+            if (cancelled) return;
+
+            if (restored) {
+                setActiveStage(restored.activeStage);
+                setCanvases(reconcileCanvasesWithContext(restored.canvases));
+            } else {
+                setActiveStage(NORMALIZER_STUDIO_FALLBACK_STAGE);
+                setCanvases(createEmptyCanvases());
+            }
+
+            setVerification(null);
+            setIsVerificationModalOpen(false);
+            setOpenFailureReasons({});
+            normalizerStudioHydratedRef.current = true;
+        });
+
+        return () => {
+            cancelled = true;
+            flushPendingNormalizerStudioWrite();
+        };
+    }, [flushPendingNormalizerStudioWrite, storageScopeId]);
+
+    useEffect(() => {
+        if (!normalizerStudioHydratedRef.current || typeof window === 'undefined') return;
+
+        if (skipNextNormalizerStudioPersistRef.current) {
+            skipNextNormalizerStudioPersistRef.current = false;
+            return;
+        }
+
+        const storageKey = getNormalizerStudioStorageKey(storageScopeId);
+        const payload = buildPersistedNormalizerStudioState(activeStage, canvases);
+
+        pendingNormalizerStudioWriteRef.current = { storageKey, payload };
+
+        if (normalizerStudioWriteTimerRef.current !== null) {
+            window.clearTimeout(normalizerStudioWriteTimerRef.current);
+        }
+
+        normalizerStudioWriteTimerRef.current = window.setTimeout(() => {
+            const pending = pendingNormalizerStudioWriteRef.current;
+            if (!pending) return;
+
+            writePersistedNormalizerStudioState(pending.storageKey, pending.payload);
+            pendingNormalizerStudioWriteRef.current = null;
+            normalizerStudioWriteTimerRef.current = null;
+        }, NORMALIZER_STUDIO_PERSIST_DELAY_MS);
+    }, [activeStage, canvases, storageScopeId]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const flushOnUnload = () => {
+            flushPendingNormalizerStudioWrite();
+        };
+
+        window.addEventListener('beforeunload', flushOnUnload);
+        return () => {
+            window.removeEventListener('beforeunload', flushOnUnload);
+            flushPendingNormalizerStudioWrite();
+        };
+    }, [flushPendingNormalizerStudioWrite]);
 
     const activeCanvas = canvases[activeStage];
     const previousStageTables = useMemo(() => {
@@ -1297,6 +2023,43 @@ export default function NormalizerPage() {
         [updateActiveCanvas],
     );
 
+    const onFlowMoveEnd = useCallback<OnMoveEnd>(
+        (_event, viewport) => {
+            const normalizedViewport = sanitizeViewport(viewport);
+            if (!normalizedViewport) return;
+
+            updateActiveCanvas((canvas) => {
+                const currentViewport = sanitizeViewport(canvas.viewport);
+                if (
+                    currentViewport
+                    && Math.abs(currentViewport.x - normalizedViewport.x) < 0.01
+                    && Math.abs(currentViewport.y - normalizedViewport.y) < 0.01
+                    && Math.abs(currentViewport.zoom - normalizedViewport.zoom) < 0.0001
+                ) {
+                    return canvas;
+                }
+
+                return {
+                    ...canvas,
+                    viewport: normalizedViewport,
+                };
+            });
+        },
+        [updateActiveCanvas],
+    );
+
+    const onFlowInit = useCallback<OnInit<Node<CanvasNodeData>, Edge>>((instance) => {
+        reactFlowInstanceRef.current = instance;
+    }, []);
+
+    useEffect(() => {
+        const instance = reactFlowInstanceRef.current;
+        if (!instance) return;
+
+        const targetViewport = sanitizeViewport(activeCanvas.viewport) ?? DEFAULT_CANVAS_VIEWPORT;
+        void instance.setViewport(targetViewport, { duration: 0 });
+    }, [activeCanvas.viewport, activeStage]);
+
     const onConnect = useCallback(
         (connection: Connection) => {
             updateActiveCanvas((canvas) => ({
@@ -1306,10 +2069,7 @@ export default function NormalizerPage() {
                         ...connection,
                         type: 'smoothstep',
                         animated: true,
-                        style: {
-                            stroke: 'color-mix(in oklab, var(--warning) 55%, var(--border))',
-                            strokeWidth: 1.6,
-                        },
+                        style: CANVAS_EDGE_STYLE,
                     },
                     canvas.edges,
                 ),
@@ -1321,25 +2081,15 @@ export default function NormalizerPage() {
     const addTableToActiveCanvas = useCallback((table: TableSchema) => {
         setVerification(null);
 
-        const node: Node<CanvasNodeData> = {
+        const node = createCanvasNodeFromPersistedNode({
             id: table.id,
-            type: 'table',
             position: {
                 x: 80 + activeCanvas.nodes.length * 36,
                 y: 70 + activeCanvas.nodes.length * 28,
             },
-            data: {
-                table,
-                label: renderTableLabel(table),
-            },
-            style: {
-                border: 'none',
-                background: 'transparent',
-                padding: 0,
-            },
-            draggable: true,
-            selectable: true,
-        };
+            table,
+            selected: false,
+        });
 
         updateActiveCanvas((canvas) => {
             const nextNodes = [...canvas.nodes, node];
@@ -1622,12 +2372,12 @@ export default function NormalizerPage() {
                         nodes={activeCanvasNodes}
                         edges={activeCanvas.edges}
                         nodeTypes={NODE_TYPES}
+                        onInit={onFlowInit}
                         onNodesChange={onNodesChange}
                         onEdgesChange={onEdgesChange}
+                        onMoveEnd={onFlowMoveEnd}
                         onConnect={onConnect}
                         nodesConnectable={false}
-                        fitView
-                        fitViewOptions={FLOW_FIT_VIEW_OPTIONS}
                         minZoom={0.2}
                         maxZoom={2.5}
                         nodeDragThreshold={1}
