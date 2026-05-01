@@ -4,7 +4,12 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
-import { getSuspiciousShortcutDescriptor, getViewportCoverageRatio } from '@/lib/test/tamper-detection';
+import {
+  createClipboardIntegrityManager,
+  getSuspiciousShortcutDescriptor,
+  getViewportCoverageRatio,
+  isEditableClipboardTarget,
+} from '@/lib/test/tamper-detection';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -160,6 +165,7 @@ export default function InteractiveQuizAttemptPage() {
 
   const [tabSwitchPopup, setTabSwitchPopup] = useState<TabSwitchPopupState | null>(null);
   const [autoSubmitTriggered, setAutoSubmitTriggered] = useState(false);
+  const [integrityNotice, setIntegrityNotice] = useState<string | null>(null);
 
   const questionStartedAtRef = useRef<number>(Date.now());
   const advancingRef = useRef(false);
@@ -169,6 +175,8 @@ export default function InteractiveQuizAttemptPage() {
   const viewportDropStartedAtRef = useRef<number | null>(null);
   const maxViewportCoverageRef = useRef(0);
   const hadFullscreenRef = useRef(false);
+  const clipboardEventLastAtRef = useRef<Record<string, number>>({});
+  const clipboardManagerRef = useRef(createClipboardIntegrityManager());
   const forceSubmitInProgressRef = useRef(false);
   const answersRef = useRef<Record<string, string>>({});
   const timingRef = useRef<Record<string, number>>({});
@@ -240,8 +248,8 @@ export default function InteractiveQuizAttemptPage() {
 
   const recordViolation = useCallback(
     async (
-      eventType: 'tab_switch' | 'blur',
-      actionTaken: 'warned' | 'force_submitted',
+      eventType: 'tab_switch' | 'blur' | 'copy' | 'paste' | 'cut' | 'context_menu',
+      actionTaken: 'warned' | 'force_submitted' | 'logged' | 'blocked',
       payload?: Record<string, unknown>,
     ) => {
       if (!attemptId || !testId) return;
@@ -358,6 +366,18 @@ export default function InteractiveQuizAttemptPage() {
 
     return () => window.clearTimeout(timeoutId);
   }, [advanceAfterFeedback, feedback]);
+
+  useEffect(() => {
+    if (!integrityNotice) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIntegrityNotice(null);
+    }, 4500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [integrityNotice]);
 
   useEffect(() => {
     if (!testId || !user || !isStudent) {
@@ -483,9 +503,33 @@ export default function InteractiveQuizAttemptPage() {
     }
 
     const PRIMARY_VIOLATION_COOLDOWN_MS = 1400;
+    const MAX_WARNINGS = 3;
     const BLUR_MIN_DURATION_MS = 900;
     const VIEWPORT_DROP_THRESHOLD = 0.14;
     const VIEWPORT_DROP_MIN_DURATION_MS = 1600;
+
+    const logClipboardEvent = (options: {
+      eventType: 'copy' | 'paste' | 'cut' | 'context_menu';
+      actionTaken: 'logged' | 'blocked';
+      payload: Record<string, unknown>;
+      notice?: string;
+      throttleMs?: number;
+    }) => {
+      const now = Date.now();
+      const key = `${options.eventType}:${options.actionTaken}`;
+      const previous = clipboardEventLastAtRef.current[key] ?? 0;
+      const throttleMs = options.throttleMs ?? 1200;
+      if (now - previous < throttleMs) {
+        return;
+      }
+
+      clipboardEventLastAtRef.current[key] = now;
+      if (options.notice) {
+        setIntegrityNotice(options.notice);
+      }
+
+      void recordViolation(options.eventType, options.actionTaken, options.payload);
+    };
 
     const raisePrimaryViolation = (
       eventType: 'tab_switch' | 'blur',
@@ -506,18 +550,21 @@ export default function InteractiveQuizAttemptPage() {
 
       const nextCount = violationCountRef.current + 1;
       violationCountRef.current = nextCount;
-      const action = nextCount >= 2 ? 'force_submitted' : 'warned';
+      const action = nextCount > MAX_WARNINGS ? 'force_submitted' : 'warned';
 
-      if (nextCount === 1) {
+      if (nextCount <= MAX_WARNINGS) {
+        const warningsLeft = MAX_WARNINGS - nextCount;
         setTabSwitchPopup({
           step: 1,
-          message: 'Warning: focus loss detected. Another integrity violation will auto-submit your quiz.',
+          message: warningsLeft > 0
+            ? `Warning ${nextCount}/${MAX_WARNINGS}: focus loss detected. ${warningsLeft} warning${warningsLeft === 1 ? '' : 's'} left before auto-submit.`
+            : `Final warning (${MAX_WARNINGS}/${MAX_WARNINGS}): next integrity violation will auto-submit your quiz.`,
           dismissible: true,
         });
       } else {
         setTabSwitchPopup({
           step: 2,
-          message: 'Repeated integrity violations detected. Auto-submitting your quiz now.',
+          message: `Integrity violation ${nextCount} detected. Auto-submitting your quiz now.`,
         });
       }
 
@@ -530,7 +577,7 @@ export default function InteractiveQuizAttemptPage() {
         ...payload,
       });
 
-      if (nextCount >= 2) {
+      if (nextCount > MAX_WARNINGS) {
         void forceSubmitForViolation();
       }
     };
@@ -620,6 +667,81 @@ export default function InteractiveQuizAttemptPage() {
       });
     };
 
+    const onCopy = (event: ClipboardEvent) => {
+      const capture = clipboardManagerRef.current.captureInternalClipboardEvent(event, 'copy');
+      if (!capture) {
+        return;
+      }
+
+      logClipboardEvent({
+        eventType: 'copy',
+        actionTaken: 'logged',
+        payload: {
+          source: 'interactive_quiz_ui',
+          outcome: 'internal_copy_allowed',
+          digest: capture.digest,
+          text_length: capture.textLength,
+        },
+      });
+    };
+
+    const onCut = (event: ClipboardEvent) => {
+      const capture = clipboardManagerRef.current.captureInternalClipboardEvent(event, 'cut');
+      if (!capture) {
+        return;
+      }
+
+      logClipboardEvent({
+        eventType: 'cut',
+        actionTaken: 'logged',
+        payload: {
+          source: 'interactive_quiz_ui',
+          outcome: 'internal_cut_allowed',
+          digest: capture.digest,
+          text_length: capture.textLength,
+        },
+      });
+    };
+
+    const onPaste = (event: ClipboardEvent) => {
+      if (!isEditableClipboardTarget(event.target)) {
+        return;
+      }
+
+      const decision = clipboardManagerRef.current.evaluatePasteEvent(event);
+      if (decision.allow) {
+        if (decision.reason === 'internal_match') {
+          logClipboardEvent({
+            eventType: 'paste',
+            actionTaken: 'logged',
+            payload: {
+              source: 'interactive_quiz_ui',
+              outcome: 'internal_paste_allowed',
+              reason: decision.reason,
+              digest: decision.digest,
+              text_length: decision.textLength,
+              match_age_ms: decision.matchAgeMs ?? null,
+            },
+          });
+        }
+        return;
+      }
+
+      event.preventDefault();
+      logClipboardEvent({
+        eventType: 'paste',
+        actionTaken: 'blocked',
+        payload: {
+          source: 'interactive_quiz_ui',
+          outcome: 'external_paste_blocked',
+          reason: decision.reason,
+          digest: decision.digest,
+          text_length: decision.textLength,
+        },
+        notice: 'External paste is blocked during this quiz. Copy inside QueryCraft to paste.',
+      });
+    };
+
     const pollFocusAndViewport = () => {
       if (submitting || autoSubmitTriggered || forceSubmitInProgressRef.current) {
         blurStartedAtRef.current = null;
@@ -673,6 +795,9 @@ export default function InteractiveQuizAttemptPage() {
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('copy', onCopy);
+    document.addEventListener('cut', onCut);
+    document.addEventListener('paste', onPaste);
     window.addEventListener('blur', onWindowBlur);
     window.addEventListener('focus', onWindowFocus);
     window.addEventListener('pagehide', onPageHide);
@@ -683,6 +808,9 @@ export default function InteractiveQuizAttemptPage() {
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('copy', onCopy);
+      document.removeEventListener('cut', onCut);
+      document.removeEventListener('paste', onPaste);
       window.removeEventListener('blur', onWindowBlur);
       window.removeEventListener('focus', onWindowFocus);
       window.removeEventListener('pagehide', onPageHide);
@@ -924,6 +1052,12 @@ export default function InteractiveQuizAttemptPage() {
         </div>
       </div>
 
+      {integrityNotice && (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+          {integrityNotice}
+        </div>
+      )}
+
       <section className="rounded-2xl border border-border/70 bg-card/90 p-5 shadow-xl shadow-black/10">
         <div className="mb-4 flex items-center justify-between gap-3">
           <p className="text-sm font-semibold text-muted-foreground">
@@ -949,13 +1083,13 @@ export default function InteractiveQuizAttemptPage() {
                 disabled={disabled}
                 aria-pressed={isPending}
                 className={`group rounded-xl border px-4 py-3 text-left text-sm transition disabled:cursor-not-allowed ${isPending
-                    ? 'border-orange-400/60 bg-orange-400/15 text-foreground shadow-[0_0_0_1px_rgba(251,146,60,0.35)]'
-                    : 'border-border/70 bg-background/70 hover:border-orange-300/40 hover:bg-orange-400/[0.06]'
+                  ? 'border-orange-400/60 bg-orange-400/15 text-foreground shadow-[0_0_0_1px_rgba(251,146,60,0.35)]'
+                  : 'border-border/70 bg-background/70 hover:border-orange-300/40 hover:bg-orange-400/[0.06]'
                   } ${disabled && !isPending ? 'opacity-60' : ''}`}
               >
                 <span className={`inline-flex w-7 shrink-0 rounded-md border px-2 py-0.5 text-xs font-semibold ${isPending
-                    ? 'border-orange-400/60 bg-orange-400/20 text-orange-100'
-                    : 'border-border/70 bg-background/80 text-muted-foreground'
+                  ? 'border-orange-400/60 bg-orange-400/20 text-orange-100'
+                  : 'border-border/70 bg-background/80 text-muted-foreground'
                   }`}>
                   {option.key}
                 </span>
@@ -1040,8 +1174,8 @@ export default function InteractiveQuizAttemptPage() {
             </p>
 
             <div className={`mt-4 rounded-xl border px-3 py-2 text-sm font-semibold ${feedback.isCorrect
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-                : 'border-rose-500/30 bg-rose-500/10 text-rose-200'
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+              : 'border-rose-500/30 bg-rose-500/10 text-rose-200'
               }`}>
               {feedback.isCorrect ? `+${feedback.points} points` : '+0 points'}
             </div>

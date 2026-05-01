@@ -4,7 +4,12 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
-import { getSuspiciousShortcutDescriptor, getViewportCoverageRatio } from '@/lib/test/tamper-detection';
+import {
+  createClipboardIntegrityManager,
+  getSuspiciousShortcutDescriptor,
+  getViewportCoverageRatio,
+  isEditableClipboardTarget,
+} from '@/lib/test/tamper-detection';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -131,11 +136,11 @@ function formatViolationEventType(eventType: ViolationEvent['event_type']) {
     case 'blur':
       return 'Focus loss';
     case 'copy':
-      return 'Copy blocked';
+      return 'Copy';
     case 'paste':
-      return 'Paste blocked';
+      return 'Paste';
     case 'cut':
-      return 'Cut blocked';
+      return 'Cut';
     case 'context_menu':
       return 'Right-click blocked';
     default:
@@ -179,6 +184,7 @@ export default function TestAttemptPage() {
   const maxViewportCoverageRef = useRef(0);
   const hadFullscreenRef = useRef(false);
   const blockedEventLastAtRef = useRef<Record<string, number>>({});
+  const clipboardManagerRef = useRef(createClipboardIntegrityManager());
   const forceSubmitInProgressRef = useRef(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -596,27 +602,32 @@ export default function TestAttemptPage() {
     if (loading || submitted || !attemptId || !testId) return;
 
     const PRIMARY_VIOLATION_COOLDOWN_MS = 1400;
+    const MAX_WARNINGS = 3;
     const BLUR_MIN_DURATION_MS = 900;
     const VIEWPORT_DROP_THRESHOLD = 0.14;
     const VIEWPORT_DROP_MIN_DURATION_MS = 1600;
 
-    const logBlocked = (
-      eventType: Extract<ViolationEvent['event_type'], 'copy' | 'paste' | 'cut' | 'context_menu'>,
-      event: Event,
-    ) => {
-      event.preventDefault();
-
+    const logClipboardEvent = (options: {
+      eventType: Extract<ViolationEvent['event_type'], 'copy' | 'paste' | 'cut' | 'context_menu'>;
+      actionTaken: Extract<ViolationEvent['action_taken'], 'logged' | 'blocked'>;
+      payload: Record<string, unknown>;
+      notice?: string;
+      throttleMs?: number;
+    }) => {
       const now = Date.now();
-      const previous = blockedEventLastAtRef.current[eventType] ?? 0;
-      if (now - previous < 1200) {
+      const key = `${options.eventType}:${options.actionTaken}`;
+      const previous = blockedEventLastAtRef.current[key] ?? 0;
+      const throttleMs = options.throttleMs ?? 1200;
+      if (now - previous < throttleMs) {
         return;
       }
 
-      blockedEventLastAtRef.current[eventType] = now;
-      setIntegrityNotice(`${formatViolationEventType(eventType)} is disabled during an active attempt.`);
-      void recordViolation(eventType, 'blocked', {
-        source: 'attempt_ui',
-      });
+      blockedEventLastAtRef.current[key] = now;
+      if (options.notice) {
+        setIntegrityNotice(options.notice);
+      }
+
+      void recordViolation(options.eventType, options.actionTaken, options.payload);
     };
 
     const raisePrimaryViolation = (
@@ -637,21 +648,26 @@ export default function TestAttemptPage() {
       blurStartedAtRef.current = null;
 
       const nextCount = violationCountRef.current + 1;
-      const actionTaken: ViolationEvent['action_taken'] = nextCount >= 2 ? 'force_submitted' : 'warned';
+      const actionTaken: ViolationEvent['action_taken'] = nextCount > MAX_WARNINGS
+        ? 'force_submitted'
+        : 'warned';
 
       violationCountRef.current = nextCount;
       setViolationCount(nextCount);
 
-      if (nextCount === 1) {
+      if (nextCount <= MAX_WARNINGS) {
+        const warningsLeft = MAX_WARNINGS - nextCount;
         setTabSwitchPopup({
           step: 1,
-          message: 'Warning: focus loss detected. Another integrity violation will auto-submit your attempt.',
+          message: warningsLeft > 0
+            ? `Warning ${nextCount}/${MAX_WARNINGS}: focus loss detected. ${warningsLeft} warning${warningsLeft === 1 ? '' : 's'} left before auto-submit.`
+            : `Final warning (${MAX_WARNINGS}/${MAX_WARNINGS}): next integrity violation will auto-submit your attempt.`,
           dismissible: true,
         });
       } else {
         setTabSwitchPopup({
           step: 2,
-          message: 'Repeated integrity violations detected. Auto-submitting your attempt now.',
+          message: `Integrity violation ${nextCount} detected. Auto-submitting your attempt now.`,
         });
       }
 
@@ -664,7 +680,7 @@ export default function TestAttemptPage() {
         ...payload,
       });
 
-      if (nextCount >= 2) {
+      if (nextCount > MAX_WARNINGS) {
         void forceSubmitForViolation();
       }
     };
@@ -800,19 +816,91 @@ export default function TestAttemptPage() {
     };
 
     const onCopy = (event: ClipboardEvent) => {
-      logBlocked('copy', event);
+      const capture = clipboardManagerRef.current.captureInternalClipboardEvent(event, 'copy');
+      if (!capture) {
+        return;
+      }
+
+      logClipboardEvent({
+        eventType: 'copy',
+        actionTaken: 'logged',
+        payload: {
+          source: 'attempt_ui',
+          outcome: 'internal_copy_allowed',
+          digest: capture.digest,
+          text_length: capture.textLength,
+        },
+      });
     };
 
     const onPaste = (event: ClipboardEvent) => {
-      logBlocked('paste', event);
+      if (!isEditableClipboardTarget(event.target)) {
+        return;
+      }
+
+      const decision = clipboardManagerRef.current.evaluatePasteEvent(event);
+      if (decision.allow) {
+        if (decision.reason === 'internal_match') {
+          logClipboardEvent({
+            eventType: 'paste',
+            actionTaken: 'logged',
+            payload: {
+              source: 'attempt_ui',
+              outcome: 'internal_paste_allowed',
+              reason: decision.reason,
+              digest: decision.digest,
+              text_length: decision.textLength,
+              match_age_ms: decision.matchAgeMs ?? null,
+            },
+          });
+        }
+        return;
+      }
+
+      event.preventDefault();
+      logClipboardEvent({
+        eventType: 'paste',
+        actionTaken: 'blocked',
+        payload: {
+          source: 'attempt_ui',
+          outcome: 'external_paste_blocked',
+          reason: decision.reason,
+          digest: decision.digest,
+          text_length: decision.textLength,
+        },
+        notice: 'External paste is blocked during an active attempt. Copy from this attempt page to paste.',
+      });
     };
 
     const onCut = (event: ClipboardEvent) => {
-      logBlocked('cut', event);
+      const capture = clipboardManagerRef.current.captureInternalClipboardEvent(event, 'cut');
+      if (!capture) {
+        return;
+      }
+
+      logClipboardEvent({
+        eventType: 'cut',
+        actionTaken: 'logged',
+        payload: {
+          source: 'attempt_ui',
+          outcome: 'internal_cut_allowed',
+          digest: capture.digest,
+          text_length: capture.textLength,
+        },
+      });
     };
 
     const onContextMenu = (event: MouseEvent) => {
-      logBlocked('context_menu', event);
+      event.preventDefault();
+      logClipboardEvent({
+        eventType: 'context_menu',
+        actionTaken: 'blocked',
+        payload: {
+          source: 'attempt_ui',
+          outcome: 'context_menu_blocked',
+        },
+        notice: 'Right-click is disabled during an active attempt.',
+      });
     };
 
     hadFullscreenRef.current = !!document.fullscreenElement;
@@ -1178,10 +1266,10 @@ export default function TestAttemptPage() {
                 key={question.id}
                 onClick={() => navigateToQuestion(index)}
                 className={`h-8 w-8 rounded-full border text-xs font-semibold transition ${isActive
-                    ? 'border-teal-400/50 bg-teal-400/15 text-teal-200'
-                    : isAnswered
-                      ? 'border-emerald-500/40 bg-emerald-500/12 text-emerald-300'
-                      : 'border-border/70 bg-background/50 text-muted-foreground hover:border-border hover:text-foreground'
+                  ? 'border-teal-400/50 bg-teal-400/15 text-teal-200'
+                  : isAnswered
+                    ? 'border-emerald-500/40 bg-emerald-500/12 text-emerald-300'
+                    : 'border-border/70 bg-background/50 text-muted-foreground hover:border-border hover:text-foreground'
                   }`}
               >
                 {index + 1}
@@ -1223,8 +1311,8 @@ export default function TestAttemptPage() {
                           scheduleAutoSave();
                         }}
                         className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm transition ${isSelected
-                            ? 'border-teal-400/50 bg-teal-400/15 text-teal-100'
-                            : 'border-border/70 bg-background/70 text-foreground hover:border-border'
+                          ? 'border-teal-400/50 bg-teal-400/15 text-teal-100'
+                          : 'border-border/70 bg-background/70 text-foreground hover:border-border'
                           }`}
                       >
                         <span className="font-semibold">{option.key}.</span> {option.text}
@@ -1245,24 +1333,11 @@ export default function TestAttemptPage() {
                     if (saveMessage) setSaveMessage(null);
                     scheduleAutoSave();
                   }}
-                  onCopy={(e) => {
-                    e.preventDefault();
-                    setIntegrityNotice('Copy is disabled during an active attempt.');
-                  }}
-                  onPaste={(e) => {
-                    e.preventDefault();
-                    setIntegrityNotice('Paste is disabled during an active attempt.');
-                  }}
-                  onCut={(e) => {
-                    e.preventDefault();
-                    setIntegrityNotice('Cut is disabled during an active attempt.');
-                  }}
                   onDrop={(e) => {
                     e.preventDefault();
                     setIntegrityNotice('Drag-and-drop into the answer is disabled.');
                   }}
                   onDragOver={(e) => e.preventDefault()}
-                  onContextMenu={(e) => e.preventDefault()}
                   autoComplete="off"
                   autoCorrect="off"
                   autoCapitalize="off"
