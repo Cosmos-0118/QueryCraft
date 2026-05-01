@@ -93,8 +93,8 @@ function SidebarNav({ pathname, onClose }: { pathname: string; onClose?: () => v
                   href={item.href}
                   onClick={onClose}
                   className={`group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${isActive
-                      ? 'qc-nav-active'
-                      : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
+                    ? 'qc-nav-active'
+                    : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
                     }`}
                 >
                   {isActive && (
@@ -149,9 +149,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const initials = user?.displayName?.charAt(0)?.toUpperCase() || '?';
 
   return (
-    <div className="qc-app-shell flex min-h-[100svh] overflow-hidden">
+    <div className="qc-app-shell flex h-[100svh] overflow-hidden">
       {/* Desktop sidebar */}
-      <aside className="qc-sidebar hidden w-56 shrink-0 flex-col overflow-hidden border-r border-border/60 lg:flex">
+      <aside className="qc-sidebar hidden h-[100svh] w-56 shrink-0 flex-col overflow-hidden border-r border-border/60 lg:flex">
         <SidebarLogo />
         <SidebarNav pathname={pathname} />
         {/* User footer */}
@@ -225,11 +225,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                           <button
                             key={option.value}
                             onClick={() => { setTheme(option.value); setThemeMenuOpen(false); }}
-                            className={`group relative flex flex-col items-start gap-2 rounded-xl p-2.5 text-left transition-all duration-150 ${
-                              isActive
+                            className={`group relative flex flex-col items-start gap-2 rounded-xl p-2.5 text-left transition-all duration-150 ${isActive
                                 ? 'bg-primary/10 ring-1 ring-inset ring-primary/40'
                                 : 'hover:bg-muted/70 hover:ring-1 hover:ring-inset hover:ring-border/60'
-                            }`}
+                              }`}
                           >
                             <span
                               className="qc-theme-swatch h-10 w-full rounded-lg"
