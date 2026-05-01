@@ -126,10 +126,13 @@ body {
 }
 
 .qc-app-shell {
-  background:
-    radial-gradient(circle at 18% 0%, color-mix(in oklab, var(--primary) 14%, transparent), transparent 32rem),
-    radial-gradient(circle at 86% 8%, color-mix(in oklab, var(--accent) 12%, transparent), transparent 28rem),
-    var(--background);
+  background-color: var(--background);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--border) 55%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 24px 24px;
 }
 
 .qc-sidebar {
@@ -234,8 +237,11 @@ body {
 }
 
 .qc-theme-swatch {
-  background: linear-gradient(135deg, var(--swatch-1), var(--swatch-2) 52%, var(--swatch-3));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, white 22%, transparent);
+  display: block;
+  background: linear-gradient(135deg, var(--swatch-1) 0%, var(--swatch-2) 50%, var(--swatch-3) 100%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, white 18%, transparent),
+    0 2px 8px -4px color-mix(in oklab, var(--swatch-2, #000) 54%, transparent);
 }
 
 .qc-theme-swatch[data-theme='light'] {
@@ -275,46 +281,13 @@ body {
 }
 
 .qc-sandbox-page {
-  background-color: color-mix(in oklab, var(--sandbox-shell-gradient-end) 90%, var(--background));
+  background-color: var(--background);
   background-image: radial-gradient(
-    circle at 1px 1px,
-    color-mix(in oklab, var(--sandbox-border-soft) 70%, transparent) 1px,
-    transparent 1.2px
+    circle,
+    color-mix(in oklab, var(--border) 62%, transparent) 1.2px,
+    transparent 0
   );
-  background-size: 14px 14px;
-}
-
-.qc-sandbox-page,
-.qc-sandbox-surface,
-.qc-sandbox-surface-soft,
-.qc-sandbox-surface-strong,
-.qc-sandbox-icon-badge,
-.qc-sandbox-btn,
-.qc-sandbox-run-btn,
-.qc-sandbox-secondary-btn,
-.qc-sandbox-panel,
-.qc-sandbox-textarea,
-.qc-sandbox-inline-status,
-.qc-sandbox-table-pill,
-.qc-sandbox-history-link,
-.qc-sandbox-success-banner,
-.qc-sandbox-dialog,
-.qc-sandbox-dialog-badge,
-.qc-sandbox-list,
-.qc-sandbox-list-item,
-.qc-sandbox-code-block,
-.qc-sandbox-empty-state,
-.qc-sandbox-dropdown,
-.qc-sandbox-dropdown-item,
-.qc-sandbox-kbd,
-.qc-sandbox-editor-shell {
-  border-radius: 0 !important;
-}
-
-.qc-sandbox-page [class*='rounded'],
-.qc-sandbox-dialog [class*='rounded'],
-.qc-sandbox-dropdown [class*='rounded'] {
-  border-radius: 0 !important;
+  background-size: 22px 22px;
 }
 
 .qc-sandbox-surface {

@@ -8,7 +8,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
-  ClipboardList,
   Clock3,
   Loader2,
   Send,
@@ -16,7 +15,6 @@ import {
   Trophy,
   Trash2,
   Upload,
-  UserCircle2,
 } from 'lucide-react';
 
 interface Question {
@@ -253,29 +251,6 @@ function parseImportedQuestions(options: {
     preview,
     errors,
   };
-}
-
-function StatCard({
-  title,
-  value,
-  description,
-  icon,
-}: {
-  title: string;
-  value: string;
-  description: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm backdrop-blur">
-      <div className="mb-3 inline-flex rounded-lg border border-border/70 bg-background/60 p-2 text-muted-foreground">
-        {icon}
-      </div>
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{title}</p>
-      <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-    </div>
-  );
 }
 
 export default function TestDetailPage() {
@@ -756,25 +731,20 @@ export default function TestDetailPage() {
         </div>
       )}
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard
-          title="Questions"
-          value={String(stats.questionCount)}
-          description="Current test question set"
-          icon={<ClipboardList size={16} />}
-        />
-        <StatCard
-          title="Updated"
-          value={new Date(test.updated_at).toLocaleDateString()}
-          description="Latest modification date"
-          icon={<Clock3 size={16} />}
-        />
-        <StatCard
-          title="Author"
-          value={test.created_by.slice(0, 8)}
-          description="Test creator identifier"
-          icon={<UserCircle2 size={16} />}
-        />
+      <div className="mb-6 grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2 rounded-2xl border border-border/75 bg-card/75 p-2.5">
+        <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
+          Questions <span className="text-primary">{stats.questionCount}</span>
+        </span>
+        <span className={`inline-flex w-full items-center justify-center rounded-xl border px-3 py-1.5 text-center text-xs font-semibold ${getStatusClasses(test.status)}`}>
+          {formatStatus(test.status)}
+        </span>
+        <span className="inline-flex w-full items-center gap-1.5 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-xs text-muted-foreground">
+          <Clock3 size={12} />
+          Updated {new Date(test.updated_at).toLocaleDateString()}
+        </span>
+        <span className="inline-flex w-full items-center gap-1.5 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-xs text-muted-foreground">
+          Author {test.created_by.slice(0, 8)}
+        </span>
       </div>
 
       {actionError && (

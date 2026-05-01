@@ -10,7 +10,7 @@ import { THEME_OPTIONS } from '@/lib/theme';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
   Settings, Moon, Sun, Palette, Sparkles, FunctionSquare,
-  CircuitBoard, LogOut, ChevronRight,
+  CircuitBoard, LogOut, ChevronRight, Check,
 } from 'lucide-react';
 
 const emptySubscribe = () => () => { };
@@ -212,27 +212,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Palette size={16} />
               </button>
               {themeMenuOpen && (
-                <div className="qc-popover absolute right-0 top-full z-[500] mt-2 w-64 overflow-hidden rounded-xl">
-                  <div className="p-2">
-                    <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Theme</p>
-                    <div className="space-y-1">
-                      {THEME_OPTIONS.map((option) => (
-                        <button
-                          key={option.value}
-                          onClick={() => setTheme(option.value)}
-                          className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${theme === option.value
-                              ? 'bg-primary/12 font-semibold text-foreground'
-                              : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                <div className="qc-popover absolute right-0 top-full z-[500] mt-2 w-[340px] overflow-hidden rounded-2xl">
+                  <div className="p-3">
+                    <div className="mb-3 flex items-center justify-between px-0.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Appearance</p>
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary capitalize">{theme.replace('-', ' ')}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {THEME_OPTIONS.map((option) => {
+                        const isActive = theme === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            onClick={() => { setTheme(option.value); setThemeMenuOpen(false); }}
+                            className={`group relative flex flex-col items-start gap-2 rounded-xl p-2.5 text-left transition-all duration-150 ${
+                              isActive
+                                ? 'bg-primary/10 ring-1 ring-inset ring-primary/40'
+                                : 'hover:bg-muted/70 hover:ring-1 hover:ring-inset hover:ring-border/60'
                             }`}
-                        >
-                          <span className="qc-theme-swatch h-5 w-5 shrink-0 rounded-full" data-theme={option.value} />
-                          <span className={theme === option.value ? 'text-primary' : ''}>{THEME_ICONS[option.value]}</span>
-                          <span className="min-w-0">
-                            <span className="block leading-tight">{option.label}</span>
-                            <span className="block truncate text-[10px] font-normal text-muted-foreground">{option.description}</span>
-                          </span>
-                        </button>
-                      ))}
+                          >
+                            <span
+                              className="qc-theme-swatch h-10 w-full rounded-lg"
+                              data-theme={option.value}
+                            />
+                            <span className={`block truncate text-[11px] font-semibold leading-tight ${isActive ? 'text-primary' : 'text-foreground/80'}`}>
+                              {option.label}
+                            </span>
+                            {isActive && (
+                              <span className="absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
+                                <Check size={9} className="text-primary-foreground" strokeWidth={3} />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

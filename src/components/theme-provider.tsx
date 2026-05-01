@@ -1,8 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 import { RESOLVED_APPEARANCE, THEMES, type ThemeMode } from '@/lib/theme';
 import { useThemeStore } from '@/stores/theme-store';
+
+// Apply CSS vars synchronously in the browser (before paint) to prevent
+// theme flash. Fall back to useEffect during SSR where layout effects are no-ops.
+const useThemeEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 function isThemeMode(value: string): value is ThemeMode {
   return value in THEMES;
@@ -11,7 +15,7 @@ function isThemeMode(value: string): value is ThemeMode {
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { theme } = useThemeStore();
 
-  useEffect(() => {
+  useThemeEffect(() => {
     const root = document.documentElement;
     const activeTheme = isThemeMode(theme) ? theme : 'dark';
 

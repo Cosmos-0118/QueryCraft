@@ -7,11 +7,9 @@ import { useTestAuth } from '@/hooks/use-test-auth';
 import {
   AlertTriangle,
   ArrowLeft,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   ClipboardList,
   Clock3,
+  Copy,
   Eye,
   KeyRound,
   Loader2,
@@ -19,7 +17,6 @@ import {
   Plus,
   Send,
   Sparkles,
-  Users,
 } from 'lucide-react';
 
 interface Test {
@@ -59,6 +56,30 @@ function getAttemptPath(test: Test) {
 
 function formatModuleTypeLabel(moduleType: 'classic' | 'interactive_quiz') {
   return moduleType === 'interactive_quiz' ? 'Interactive Quiz' : 'Normal Test';
+}
+
+function formatSubmissionDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Recently submitted';
+  }
+  return date.toLocaleString();
+}
+
+function getScoreBadgeClasses(score: number | null) {
+  if (typeof score !== 'number') {
+    return 'border-border/70 bg-background/70 text-muted-foreground';
+  }
+
+  if (score >= 75) {
+    return 'border-emerald-500/35 bg-emerald-500/12 text-emerald-300';
+  }
+
+  if (score >= 50) {
+    return 'border-amber-500/35 bg-amber-500/12 text-amber-300';
+  }
+
+  return 'border-red-500/35 bg-red-500/12 text-red-300';
 }
 
 function getPastTestResultPath(row: StudentPastTest) {
@@ -164,18 +185,20 @@ function EditTestModal({
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md rounded-2xl border border-border/70 bg-card/95 p-6 shadow-2xl shadow-black/40"
+        className="flex w-full max-w-md flex-col gap-6 rounded-2xl border border-border/70 bg-card/95 p-6 shadow-2xl shadow-black/40"
       >
-        <h2 className="text-lg font-bold tracking-tight">Rename Test</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Update the test title before publishing.</p>
+        <div className="space-y-1.5">
+          <h2 className="text-lg font-bold tracking-tight">Rename Test</h2>
+          <p className="text-sm text-muted-foreground">Update the test title before publishing.</p>
+        </div>
 
-        <div className="mt-5 space-y-2">
+        <div className="space-y-2">
           <label htmlFor="edit-test-title" className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
             Title
           </label>
           <input
             id="edit-test-title"
-            className="h-11 w-full rounded-xl border border-border bg-background/90 px-3.5 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+            className="h-12 w-full rounded-xl border border-border bg-background/90 px-4 text-base outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
             placeholder="Database Midterm - Batch A"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -186,15 +209,15 @@ function EditTestModal({
         </div>
 
         {error && (
-          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
             {error}
           </div>
         )}
 
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="flex items-center justify-end gap-2.5">
           <button
             type="button"
-            className="rounded-xl border border-border/80 bg-background/70 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            className="rounded-xl border border-border/80 bg-background/70 px-5 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
             onClick={onClose}
             disabled={loading}
           >
@@ -202,7 +225,7 @@ function EditTestModal({
           </button>
           <button
             type="submit"
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={loading || !title.trim()}
           >
             {loading && <Loader2 size={14} className="animate-spin" />}
@@ -270,18 +293,20 @@ function CreateTestModal({
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md rounded-2xl border border-border/70 bg-card/95 p-6 shadow-2xl shadow-black/40"
+        className="flex w-full max-w-md flex-col gap-6 rounded-2xl border border-border/70 bg-card/95 p-6 shadow-2xl shadow-black/40"
       >
-        <h2 className="text-lg font-bold tracking-tight">Create New Test</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Start with a title. You can add questions in the detail page.</p>
+        <div className="space-y-1.5">
+          <h2 className="text-lg font-bold tracking-tight">Create New Test</h2>
+          <p className="text-sm text-muted-foreground">Start with a title. You can add questions in the detail page.</p>
+        </div>
 
-        <div className="mt-5 space-y-2">
+        <div className="space-y-2">
           <label htmlFor="new-test-title" className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
             Title
           </label>
           <input
             id="new-test-title"
-            className="h-11 w-full rounded-xl border border-border bg-background/90 px-3.5 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+            className="h-12 w-full rounded-xl border border-border bg-background/90 px-4 text-base outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
             placeholder="Final Exam - Database Systems"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -292,15 +317,15 @@ function CreateTestModal({
         </div>
 
         {error && (
-          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
             {error}
           </div>
         )}
 
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="flex items-center justify-end gap-2.5">
           <button
             type="button"
-            className="rounded-xl border border-border/80 bg-background/70 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            className="rounded-xl border border-border/80 bg-background/70 px-5 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
             onClick={onClose}
             disabled={loading}
           >
@@ -308,7 +333,7 @@ function CreateTestModal({
           </button>
           <button
             type="submit"
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-5 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={loading || !title.trim()}
           >
             {loading && <Loader2 size={14} className="animate-spin" />}
@@ -316,29 +341,6 @@ function CreateTestModal({
           </button>
         </div>
       </form>
-    </div>
-  );
-}
-
-function StatCard({
-  title,
-  value,
-  description,
-  icon,
-}: {
-  title: string;
-  value: string;
-  description: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl border border-border/90 bg-card/80 p-4 shadow-sm backdrop-blur">
-      <div className="mb-3 inline-flex rounded-lg border border-border/85 bg-background/60 p-2 text-muted-foreground">
-        {icon}
-      </div>
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{title}</p>
-      <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
     </div>
   );
 }
@@ -385,13 +387,14 @@ export default function TestsPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [editingTest, setEditingTest] = useState<Test | null>(null);
   const [publishingId, setPublishingId] = useState<string | null>(null);
-  const [expandedTestId, setExpandedTestId] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [copiedCodeForTest, setCopiedCodeForTest] = useState<string | null>(null);
   const [studentPastTests, setStudentPastTests] = useState<StudentPastTest[]>([]);
   const [pastTestsLoading, setPastTestsLoading] = useState(false);
   const [pastTestsError, setPastTestsError] = useState<string | null>(null);
+  const [pastTestsSettled, setPastTestsSettled] = useState(false);
   const [showTeacherModuleChooser, setShowTeacherModuleChooser] = useState(false);
   const [hydrationTimeoutReached, setHydrationTimeoutReached] = useState(false);
 
@@ -402,6 +405,7 @@ export default function TestsPage() {
   const teacherAccessQuery = isTeacher && user?.id
     ? `?role=teacher&userId=${encodeURIComponent(user.id)}`
     : '';
+  const showPastTestsLoading = loading || pastTestsLoading;
 
   const handleSignOut = () => {
     setJoinError(null);
@@ -475,6 +479,7 @@ export default function TestsPage() {
       setStudentPastTests([]);
       setPastTestsError(null);
       setPastTestsLoading(false);
+      setPastTestsSettled(false);
       setError(null);
       setLoading(false);
       return;
@@ -487,6 +492,7 @@ export default function TestsPage() {
         setLoading(true);
         if (user.role === 'student') {
           setPastTestsLoading(true);
+          setPastTestsSettled(false);
           setPastTestsError(null);
         }
 
@@ -537,6 +543,7 @@ export default function TestsPage() {
         setLoading(false);
         if (user.role === 'student') {
           setPastTestsLoading(false);
+          setPastTestsSettled(true);
         }
       }
     };
@@ -578,10 +585,17 @@ export default function TestsPage() {
   const teacherStats = useMemo(() => {
     const published = teacherVisibleTests.filter((test) => test.status.toLowerCase() === 'published').length;
     const drafts = teacherVisibleTests.length - published;
+    const latestUpdatedAt = teacherVisibleTests.length > 0
+      ? teacherVisibleTests
+          .map((test) => new Date(test.updated_at).getTime())
+          .filter((value) => !Number.isNaN(value))
+          .sort((a, b) => b - a)[0]
+      : null;
     return {
       total: teacherVisibleTests.length,
       published,
       drafts,
+      latestUpdatedAt,
     };
   }, [teacherVisibleTests]);
 
@@ -656,6 +670,18 @@ export default function TestsPage() {
     }
   };
 
+  const handleCopyTestCode = async (testId: string, code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCodeForTest(testId);
+      window.setTimeout(() => {
+        setCopiedCodeForTest((current) => (current === testId ? null : current));
+      }, 1300);
+    } catch {
+      setError('Could not copy test code. Please copy manually.');
+    }
+  };
+
   if (!hydrated) {
     return (
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
@@ -701,26 +727,31 @@ export default function TestsPage() {
 
   if (isTeacher && showTeacherModuleChooser) {
     return (
-      <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+      <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col items-center justify-center px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
         <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
-        <div className="rounded-2xl border border-border/70 bg-card/85 p-8 shadow-xl shadow-black/10">
-          <button
-            onClick={handleSignOut}
-            className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-          >
-            <ArrowLeft size={13} />
-            Sign out
-          </button>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
-            <Sparkles size={11} />
-            Teacher Module Selection
+        <div className="w-full max-w-3xl rounded-2xl border border-border/70 bg-card/85 p-8 shadow-xl shadow-black/10 sm:p-10">
+          <div className="mb-5 flex justify-center">
+            <button
+              onClick={handleSignOut}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            >
+              <ArrowLeft size={13} />
+              Sign out
+            </button>
           </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Choose Your Teaching Module</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            Select the module type you want to work with right now.
-          </p>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <div className="text-center">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
+              <Sparkles size={11} />
+              Teacher Module Selection
+            </div>
+            <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Choose Your Teaching Module</h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+            Select the module type you want to work with right now.
+            </p>
+          </div>
+
+          <div className="mx-auto mt-7 grid max-w-2xl gap-3 sm:grid-cols-2">
             <ChoiceCard
               title="Normal Test"
               description="Use the classic test workflow with draft/publish and test-code-based attempts."
@@ -791,31 +822,22 @@ export default function TestsPage() {
       </div>
 
       {isTeacher && (
-        <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            title="Total Tests"
-            value={String(teacherStats.total)}
-            description="All assessments in this workspace"
-            icon={<ClipboardList size={16} />}
-          />
-          <StatCard
-            title="Draft"
-            value={String(teacherStats.drafts)}
-            description="Still editable and not visible"
-            icon={<Pencil size={16} />}
-          />
-          <StatCard
-            title="Published"
-            value={String(teacherStats.published)}
-            description="Ready for student access"
-            icon={<CheckCircle2 size={16} />}
-          />
-          <StatCard
-            title="Role"
-            value="Teacher"
-            description="You can create and publish tests"
-            icon={<Users size={16} />}
-          />
+        <div className="mb-5 grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-2 rounded-2xl border border-border/80 bg-card/70 p-2.5">
+          <span className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
+            Total <span className="text-primary">{teacherStats.total}</span>
+          </span>
+          <span className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
+            Published <span className="text-emerald-300">{teacherStats.published}</span>
+          </span>
+          <span className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
+            Drafts <span className="text-amber-300">{teacherStats.drafts}</span>
+          </span>
+          <span className="inline-flex w-full items-center gap-1.5 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-xs text-muted-foreground">
+            <Clock3 size={12} />
+            {teacherStats.latestUpdatedAt
+              ? `Last update ${new Date(teacherStats.latestUpdatedAt).toLocaleString()}`
+              : 'No tests yet'}
+          </span>
         </div>
       )}
 
@@ -859,10 +881,10 @@ export default function TestsPage() {
           </form>
 
           <section className="rounded-2xl border border-border/90 bg-card/85 p-5 shadow-xl shadow-black/10">
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-4 flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold tracking-tight">Past Tests</h2>
-                <p className="text-xs text-muted-foreground">Submitted attempts from normal and interactive tests.</p>
+                <h2 className="text-base font-semibold tracking-tight">Past Tests</h2>
+                <p className="text-xs text-muted-foreground">Track your submitted attempts across normal and interactive modules.</p>
               </div>
               <span className="rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
                 {studentPastTests.length}
@@ -870,60 +892,87 @@ export default function TestsPage() {
             </div>
 
             {submissionNoticeVisible && (
-              <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+              <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
                 Test submitted successfully. Your latest attempt appears below.
               </div>
             )}
 
-            {pastTestsLoading && (
-              <div className="space-y-2">
-                <div className="h-12 animate-pulse rounded-xl bg-muted/40" />
-                <div className="h-12 animate-pulse rounded-xl bg-muted/40" />
+            {showPastTestsLoading && (
+              <div className="space-y-3">
+                {[0, 1, 2].map((idx) => (
+                  <div
+                    key={idx}
+                    className="relative overflow-hidden rounded-2xl border border-border/60 bg-background/40 p-4"
+                  >
+                    <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent,rgba(255,255,255,0.06),transparent)] animate-[pulse_1.8s_ease-in-out_infinite]" />
+                    <div className="relative">
+                      <div className="h-3.5 w-1/2 rounded-md bg-muted/55" />
+                      <div className="mt-3 flex items-center gap-2">
+                        <div className="h-5 w-24 rounded-full bg-muted/45" />
+                        <div className="h-5 w-40 rounded-full bg-muted/45" />
+                        <div className="h-5 w-24 rounded-full bg-muted/45" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2 pt-1 text-xs text-muted-foreground">
+                  <Loader2 size={13} className="animate-spin" />
+                  Loading submitted attempts...
+                </div>
               </div>
             )}
 
-            {!pastTestsLoading && pastTestsError && (
+            {!showPastTestsLoading && pastTestsError && (
               <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
                 {pastTestsError}
               </div>
             )}
 
-            {!pastTestsLoading && !pastTestsError && studentPastTests.length === 0 && (
-              <div className="rounded-xl border border-border/70 bg-background/40 px-3 py-4 text-sm text-muted-foreground">
-                No submitted tests yet. Complete and submit a test to see it here.
+            {!showPastTestsLoading && pastTestsSettled && !pastTestsError && studentPastTests.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 px-4 py-6 text-center">
+                <p className="text-sm font-medium text-foreground/90">No submitted tests yet</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Join a test using a code above and submit it to see history here.
+                </p>
               </div>
             )}
 
-            {!pastTestsLoading && !pastTestsError && studentPastTests.length > 0 && (
-              <div className="space-y-2">
+            {!showPastTestsLoading && pastTestsSettled && !pastTestsError && studentPastTests.length > 0 && (
+              <div className="space-y-2.5">
                 {studentPastTests.map((row) => (
-                  <div
+                  <article
                     key={`${row.testId}_${row.attemptId}`}
-                    className="rounded-xl border border-border/70 bg-background/50 px-3 py-3"
+                    className="group rounded-2xl border border-border/70 bg-background/55 px-4 py-3.5 transition hover:border-primary/35 hover:bg-background/70"
                   >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{row.title}</p>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span className="rounded-full border border-border/70 bg-background/70 px-2 py-0.5 font-medium">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-foreground">{row.title}</p>
+                          <span className="rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                             {formatModuleTypeLabel(row.moduleType)}
                           </span>
-                          <span>Submitted {new Date(row.submittedAt).toLocaleString()}</span>
-                          <span>
-                            Score {typeof row.score === 'number' ? `${Math.round(row.score)}%` : '-'}
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/65 px-2 py-1">
+                            <Clock3 size={12} />
+                            Submitted {formatSubmissionDateTime(row.submittedAt)}
+                          </span>
+                          <span className={`inline-flex items-center rounded-md border px-2 py-1 font-semibold ${getScoreBadgeClasses(row.score)}`}>
+                            {typeof row.score === 'number' ? `Score ${Math.round(row.score)}%` : 'Score Pending'}
                           </span>
                         </div>
                       </div>
 
                       <Link
                         href={getPastTestResultPath(row)}
-                        className="inline-flex h-8 items-center gap-1.5 self-start rounded-lg border border-border/80 bg-background/70 px-2.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                        className="inline-flex h-9 shrink-0 items-center gap-1.5 self-start rounded-lg border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition group-hover:border-primary/40 group-hover:text-foreground"
                       >
                         <Eye size={13} />
-                        View
+                        View Details
                       </Link>
                     </div>
-                  </div>
+                  </article>
                 ))}
               </div>
             )}
@@ -995,141 +1044,88 @@ export default function TestsPage() {
       )}
 
       {isTeacher && !loading && !error && teacherVisibleTests.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-border/90 bg-card/85 shadow-xl shadow-black/10">
-          <div className="hidden grid-cols-[minmax(220px,1fr)_auto] gap-3 border-b border-border/85 bg-background/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground md:grid">
-            <span>Test</span>
-            <span>Actions</span>
-          </div>
-
+        <div className="space-y-3">
           {teacherVisibleTests.map((test) => {
             const isPublished = test.status.toLowerCase() === 'published';
             const isPublishing = publishingId === test.id;
-            const isExpanded = expandedTestId === test.id;
 
             return (
-              <div
+              <article
                 key={test.id}
-                className="border-t border-border/80 px-4 py-4 transition-colors first:border-t-0 hover:bg-muted/20"
+                className="rounded-2xl border border-border/80 bg-card/85 p-4 shadow-lg shadow-black/10 transition hover:border-primary/30 hover:bg-card"
               >
-                <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_auto] md:items-center">
-                  <div className="flex min-w-0 items-start gap-2">
-                    <button
-                      onClick={() => setExpandedTestId(isExpanded ? null : test.id)}
-                      className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      aria-label={isExpanded ? 'Collapse test details' : 'Expand test details'}
-                    >
-                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    </button>
-
-                    <div className="min-w-0">
-                      {isTeacher ? (
-                        <Link
-                          href={`/tests/${test.id}`}
-                          className="group inline-flex items-center gap-1.5 text-sm font-semibold text-foreground transition-colors hover:text-primary"
-                        >
-                          {test.title}
-                          <Eye size={14} className="opacity-0 transition group-hover:opacity-100" />
-                        </Link>
-                      ) : (
-                        <p className="text-sm font-semibold text-foreground">{test.title}</p>
-                      )}
-                      <p className="mt-1 text-xs text-muted-foreground md:hidden">
-                        Updated {new Date(test.updated_at).toLocaleString()}
-                      </p>
-                    </div>
-
-                    <div>
-                      <span
-                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(test.status)}`}
-                      >
-                        {formatStatus(test.status)}
-                      </span>
-                      {isTeacher && isPublished && test.test_code && (
-                        <p className="mt-1 text-[11px] font-semibold tracking-[0.08em] text-teal-700 dark:text-teal-300">
-                          Code: {test.test_code}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 md:justify-start">
-                    {isTeacher ? (
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={`/tests/${test.id}`}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                        className="truncate text-base font-semibold tracking-tight text-foreground transition hover:text-primary"
                       >
-                        <Eye size={13} />
-                        Open
+                        {test.title}
                       </Link>
-                    ) : (
-                      <Link
-                        href={user?.id
-                          ? `/tests/${test.id}/result?studentId=${encodeURIComponent(user.id)}`
-                          : `/tests/${test.id}/result`}
-                        className="inline-flex items-center rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-                      >
-                        View Result
-                      </Link>
-                    )}
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(test.status)}`}>
+                        {formatStatus(test.status)}
+                      </span>
+                    </div>
 
-                    {isTeacher && (
-                      <button
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground/80 transition-colors hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700 dark:border-border/80 dark:bg-background/70 dark:text-muted-foreground dark:hover:border-cyan-500/30 dark:hover:bg-cyan-500/10 dark:hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => handleEdit(test)}
-                        disabled={isPublished}
-                      >
-                        <Pencil size={13} />
-                        Rename Test
-                      </button>
-                    )}
-
-                    {isTeacher && isPublished && (
-                      <Link
-                        href={`/tests/${test.id}/review`}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground/80 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 dark:border-border/80 dark:bg-background/70 dark:text-muted-foreground dark:hover:border-violet-500/30 dark:hover:bg-violet-500/10 dark:hover:text-violet-200"
-                      >
-                        <ClipboardList size={13} />
-                        Review Submissions
-                      </Link>
-                    )}
-
-                    {isTeacher && (
-                      <button
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:border-primary/60 hover:brightness-110 dark:border-primary/30 dark:bg-primary/85 dark:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => handlePublish(test)}
-                        disabled={isPublished || isPublishing}
-                      >
-                        {isPublishing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                        {isPublished ? 'Published' : isPublishing ? 'Publishing...' : 'Publish'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {isExpanded && (
-                  <div className="mt-3 rounded-xl border border-border/70 bg-muted/30 px-3 py-3">
-                    <div className="grid gap-3 text-xs sm:grid-cols-3">
-                      <div>
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Status</p>
-                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(test.status)}`}>
-                          {formatStatus(test.status)}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Author</p>
-                        <p className="break-all text-sm text-foreground/90">{test.created_by}</p>
-                      </div>
-                      <div>
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Updated</p>
-                        <p className="inline-flex items-center gap-1.5 text-sm text-foreground/90">
-                          <Clock3 size={13} className="text-muted-foreground" />
-                          {new Date(test.updated_at).toLocaleString()}
-                        </p>
-                      </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
+                      {isPublished && test.test_code && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyTestCode(test.id, test.test_code!)}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 font-semibold tracking-[0.08em] text-primary transition hover:border-primary/45 hover:bg-primary/15"
+                          title="Click to copy test code"
+                        >
+                          <Copy size={11} />
+                          {copiedCodeForTest === test.id ? 'Copied' : `Code: ${test.test_code}`}
+                        </button>
+                      )}
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1">
+                        <Clock3 size={12} />
+                        Updated {new Date(test.updated_at).toLocaleString()}
+                      </span>
                     </div>
                   </div>
-                )}
-              </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/tests/${test.id}`}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-border hover:text-foreground"
+                    >
+                      <Eye size={13} />
+                      Open
+                    </Link>
+
+                    <button
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-cyan-300/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+                      onClick={() => handleEdit(test)}
+                      disabled={isPublished}
+                    >
+                      <Pencil size={13} />
+                      Rename
+                    </button>
+
+                    {isPublished && (
+                      <Link
+                        href={`/tests/${test.id}/review`}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-violet-300/50 hover:text-foreground"
+                      >
+                        <ClipboardList size={13} />
+                        Submissions
+                      </Link>
+                    )}
+
+                    <button
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:border-primary/60 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => handlePublish(test)}
+                      disabled={isPublished || isPublishing}
+                    >
+                      {isPublishing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                      {isPublished ? 'Published' : isPublishing ? 'Publishing...' : 'Publish'}
+                    </button>
+                  </div>
+                </div>
+              </article>
             );
           })}
         </div>

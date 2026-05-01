@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
-import { ArrowLeft, Loader2, Medal, Sparkles, Trophy, Users } from 'lucide-react';
+import { ArrowLeft, Loader2, Medal, Trophy, Users } from 'lucide-react';
 
 interface LeaderboardEntry {
   rank: number;
@@ -133,15 +133,11 @@ export default function InteractiveQuizLeaderboardPage() {
         <div>
           <Link
             href={backPath}
-            className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
           >
             <ArrowLeft size={13} />
             Back
           </Link>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-orange-400/20 bg-orange-400/[0.07] px-3 py-1 text-xs font-semibold text-orange-200">
-            <Sparkles size={11} />
-            Interactive Quiz Leaderboard
-          </div>
           <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Final Standings</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             Live ranks refresh every 5 seconds as submissions are completed.

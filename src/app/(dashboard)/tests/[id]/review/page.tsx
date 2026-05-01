@@ -7,7 +7,6 @@ import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
 import {
   AlertTriangle,
   ArrowLeft,
-  BarChart3,
   CheckCircle2,
   Clock3,
   Eye,
@@ -15,8 +14,6 @@ import {
   Filter,
   Loader2,
   ShieldAlert,
-  Sparkles,
-  Users,
   XCircle,
 } from 'lucide-react';
 
@@ -85,29 +82,6 @@ function toSubmission(attempt: ReviewAttempt): Submission {
     published: isSubmitted ? !!attempt.published : false,
     answerCount,
   };
-}
-
-function StatCard({
-  title,
-  value,
-  description,
-  icon,
-}: {
-  title: string;
-  value: string;
-  description: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm backdrop-blur">
-      <div className="mb-3 inline-flex rounded-lg border border-border/70 bg-background/60 p-2 text-muted-foreground">
-        {icon}
-      </div>
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{title}</p>
-      <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-    </div>
-  );
 }
 
 export default function TestReviewPage() {
@@ -395,58 +369,42 @@ export default function TestReviewPage() {
   }
 
   return (
-    <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+    <div className="relative mx-auto flex min-h-full w-full max-w-5xl flex-col px-5 py-9 sm:px-6 lg:px-8 lg:py-12">
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
 
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-7 space-y-4">
         <div>
           <Link
             href={`/tests/${test.id}`}
-            className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
           >
             <ArrowLeft size={13} />
             Back to Test Details
           </Link>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1 text-xs font-semibold text-primary">
-            <Sparkles size={11} />
-            Teacher Review Board
-          </div>
           <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">{test.title}</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             Track live submissions and inspect student results.
           </p>
         </div>
+
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2 rounded-2xl border border-border/75 bg-card/75 p-2.5">
+          <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
+            Total <span className="text-primary">{stats.total}</span>
+          </span>
+          <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3 py-1.5 text-center text-xs font-semibold text-emerald-300">
+            Submitted {stats.submitted}
+          </span>
+          <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-1.5 text-center text-xs font-semibold text-amber-300">
+            Pending {stats.pending}
+          </span>
+          <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
+            Avg Score <span className="text-primary">{stats.avgScore}%</span>
+          </span>
+        </div>
       </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total"
-          value={String(stats.total)}
-          description="Students tracked"
-          icon={<Users size={16} />}
-        />
-        <StatCard
-          title="Submitted"
-          value={String(stats.submitted)}
-          description="Attempts ready for review"
-          icon={<CheckCircle2 size={16} />}
-        />
-        <StatCard
-          title="Pending"
-          value={String(stats.pending)}
-          description="Awaiting final submission"
-          icon={<Clock3 size={16} />}
-        />
-        <StatCard
-          title="Avg Score"
-          value={`${stats.avgScore}%`}
-          description="Across submitted attempts"
-          icon={<BarChart3 size={16} />}
-        />
-      </div>
-
-      <div className="rounded-2xl border border-border/70 bg-card/85 p-5 shadow-xl shadow-black/10">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="rounded-2xl border border-border/75 bg-card/85 p-5 shadow-xl shadow-black/10 sm:p-6">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
             <Filter size={12} />
             Filter Submissions
