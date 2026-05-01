@@ -28,7 +28,7 @@ const tools: { title: string; description: string; href: string; icon: ReactNode
   { title: 'Relational Algebra', description: 'Compose expressions, inspect evaluations, and map to SQL.', href: '/algebra', icon: <Sigma size={16} suppressHydrationWarning /> },
   { title: 'Tuple Calculus', description: 'Use TRC notation with quantifiers and convert it to SQL.', href: '/tuple-calculus', icon: <FunctionSquare size={16} suppressHydrationWarning /> },
   { title: 'ER Builder', description: 'Design models visually and convert diagrams to relational schema.', href: '/er-builder', icon: <PenTool size={16} suppressHydrationWarning /> },
-  { title: 'Normalization', description: 'Walk through normal forms with decomposition visualizations.', href: '/normalizer', icon: <RefreshCw size={16} suppressHydrationWarning /> },
+  { title: 'Normalizer Studio', description: 'Visualize table normalization from UNF to 5NF on a free canvas.', href: '/normalizer', icon: <RefreshCw size={16} suppressHydrationWarning /> },
 ];
 
 const fadeUp = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };

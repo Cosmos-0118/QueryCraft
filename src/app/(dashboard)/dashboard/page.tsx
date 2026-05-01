@@ -56,8 +56,8 @@ const TOOLS: {
     iconColor: 'text-rose-500 bg-rose-500/10',
   },
   {
-    title: 'Normalization Wizard',
-    desc: 'Decompose tables step-by-step from 1NF through BCNF.',
+    title: 'Normalizer Studio',
+    desc: 'Visualize table normalization from UNF to 5NF on a free canvas.',
     icon: <RefreshCw size={18} />,
     href: '/normalizer',
     iconColor: 'text-amber-500 bg-amber-500/10',

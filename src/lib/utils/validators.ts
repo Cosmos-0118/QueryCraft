@@ -27,7 +27,7 @@ export const updateProfileSchema = z.object({
 });
 
 export const sessionSaveSchema = z.object({
-  sessionType: z.enum(['sandbox', 'algebra', 'normalizer', 'er-builder']),
+  sessionType: z.enum(['sandbox', 'algebra', 'er-builder']),
   sessionName: z.string().max(200).optional(),
   stateJson: z.record(z.unknown()),
 });
