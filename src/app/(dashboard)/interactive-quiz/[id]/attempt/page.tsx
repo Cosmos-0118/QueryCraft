@@ -9,6 +9,7 @@ import {
   getSuspiciousShortcutDescriptor,
   getViewportCoverageRatio,
   isEditableClipboardTarget,
+  TEST_PROCTORING_CONFIG,
 } from '@/lib/test/tamper-detection';
 import {
   AlertTriangle,
@@ -176,7 +177,11 @@ export default function InteractiveQuizAttemptPage() {
   const maxViewportCoverageRef = useRef(0);
   const hadFullscreenRef = useRef(false);
   const clipboardEventLastAtRef = useRef<Record<string, number>>({});
-  const clipboardManagerRef = useRef(createClipboardIntegrityManager());
+  const clipboardManagerRef = useRef(createClipboardIntegrityManager({
+    ttlMs: TEST_PROCTORING_CONFIG.clipboard.ttlMs,
+    maxEntries: TEST_PROCTORING_CONFIG.clipboard.maxEntries,
+    maxTrackedTextLength: TEST_PROCTORING_CONFIG.clipboard.maxTrackedTextLength,
+  }));
   const forceSubmitInProgressRef = useRef(false);
   const answersRef = useRef<Record<string, string>>({});
   const timingRef = useRef<Record<string, number>>({});
@@ -374,7 +379,7 @@ export default function InteractiveQuizAttemptPage() {
 
     const timeoutId = window.setTimeout(() => {
       setIntegrityNotice(null);
-    }, 4500);
+    }, TEST_PROCTORING_CONFIG.violation.integrityNoticeDurationMs);
 
     return () => window.clearTimeout(timeoutId);
   }, [integrityNotice]);
@@ -502,11 +507,13 @@ export default function InteractiveQuizAttemptPage() {
       return;
     }
 
-    const PRIMARY_VIOLATION_COOLDOWN_MS = 1400;
-    const MAX_WARNINGS = 3;
-    const BLUR_MIN_DURATION_MS = 900;
-    const VIEWPORT_DROP_THRESHOLD = 0.14;
-    const VIEWPORT_DROP_MIN_DURATION_MS = 1600;
+    const PRIMARY_VIOLATION_COOLDOWN_MS = TEST_PROCTORING_CONFIG.violation.primaryCooldownMs;
+    const MAX_WARNINGS = TEST_PROCTORING_CONFIG.violation.maxWarnings;
+    const BLUR_MIN_DURATION_MS = TEST_PROCTORING_CONFIG.focus.blurMinDurationMs;
+    const VIEWPORT_DROP_THRESHOLD = TEST_PROCTORING_CONFIG.focus.viewportDropThreshold;
+    const VIEWPORT_DROP_MIN_DURATION_MS = TEST_PROCTORING_CONFIG.focus.viewportDropMinDurationMs;
+    const CLIPBOARD_LOG_THROTTLE_MS = TEST_PROCTORING_CONFIG.clipboard.logThrottleMs;
+    const FOCUS_POLL_INTERVAL_MS = TEST_PROCTORING_CONFIG.focus.pollIntervalMs;
 
     const logClipboardEvent = (options: {
       eventType: 'copy' | 'paste' | 'cut' | 'context_menu';
@@ -518,7 +525,7 @@ export default function InteractiveQuizAttemptPage() {
       const now = Date.now();
       const key = `${options.eventType}:${options.actionTaken}`;
       const previous = clipboardEventLastAtRef.current[key] ?? 0;
-      const throttleMs = options.throttleMs ?? 1200;
+      const throttleMs = options.throttleMs ?? CLIPBOARD_LOG_THROTTLE_MS;
       if (now - previous < throttleMs) {
         return;
       }
@@ -803,7 +810,7 @@ export default function InteractiveQuizAttemptPage() {
     window.addEventListener('pagehide', onPageHide);
     window.addEventListener('keydown', onKeyDown, true);
 
-    const pollId = window.setInterval(pollFocusAndViewport, 700);
+    const pollId = window.setInterval(pollFocusAndViewport, FOCUS_POLL_INTERVAL_MS);
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);

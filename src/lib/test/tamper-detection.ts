@@ -2,9 +2,26 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-const DEFAULT_CLIPBOARD_TTL_MS = 15 * 60 * 1000;
-const DEFAULT_MAX_CLIPBOARD_ENTRIES = 40;
-const MAX_TRACKED_CLIPBOARD_TEXT_LENGTH = 24_000;
+export const TEST_PROCTORING_CONFIG = {
+  violation: {
+    primaryCooldownMs: 1400,
+    maxWarnings: 3,
+    integrityNoticeDurationMs: 4500,
+  },
+  focus: {
+    blurMinDurationMs: 900,
+    viewportDropThreshold: 0.14,
+    viewportDropMinDurationMs: 1600,
+    pollIntervalMs: 700,
+  },
+  clipboard: {
+    ttlMs: 15 * 60 * 1000,
+    maxEntries: 40,
+    maxTrackedTextLength: 24_000,
+    logThrottleMs: 1200,
+  },
+} as const;
+
 const NON_TEXT_INPUT_TYPES = new Set([
   'button',
   'checkbox',
@@ -48,11 +65,17 @@ export interface ClipboardPasteDecision {
   matchAgeMs?: number;
 }
 
-function normalizeClipboardText(text: string) {
+export interface ClipboardIntegrityManagerOptions {
+  ttlMs?: number;
+  maxEntries?: number;
+  maxTrackedTextLength?: number;
+}
+
+function normalizeClipboardText(text: string, maxTrackedTextLength: number) {
   return text
     .replace(/\r\n/g, '\n')
     .replace(/\u0000/g, '')
-    .slice(0, MAX_TRACKED_CLIPBOARD_TEXT_LENGTH);
+    .slice(0, maxTrackedTextLength);
 }
 
 function hashText(input: string) {
@@ -103,8 +126,11 @@ function readClipboardSelectionFromCopyEvent(event: ClipboardEvent): string {
   return fromTarget;
 }
 
-function normalizeAndFingerprint(text: string): { digest: string; textLength: number } | null {
-  const normalized = normalizeClipboardText(text);
+function normalizeAndFingerprint(
+  text: string,
+  maxTrackedTextLength: number,
+): { digest: string; textLength: number } | null {
+  const normalized = normalizeClipboardText(text, maxTrackedTextLength);
   if (!normalized) {
     return null;
   }
@@ -140,12 +166,12 @@ export function isEditableClipboardTarget(target: EventTarget | null) {
   return true;
 }
 
-export function createClipboardIntegrityManager(options?: {
-  ttlMs?: number;
-  maxEntries?: number;
-}) {
-  const ttlMs = options?.ttlMs ?? DEFAULT_CLIPBOARD_TTL_MS;
-  const maxEntries = options?.maxEntries ?? DEFAULT_MAX_CLIPBOARD_ENTRIES;
+export function createClipboardIntegrityManager(options?: ClipboardIntegrityManagerOptions) {
+  const ttlMs = options?.ttlMs ?? TEST_PROCTORING_CONFIG.clipboard.ttlMs;
+  const maxEntries = options?.maxEntries ?? TEST_PROCTORING_CONFIG.clipboard.maxEntries;
+  const maxTrackedTextLength =
+    options?.maxTrackedTextLength
+    ?? TEST_PROCTORING_CONFIG.clipboard.maxTrackedTextLength;
   const fingerprints: InternalClipboardFingerprint[] = [];
 
   const pruneExpired = (now: number) => {
@@ -160,7 +186,7 @@ export function createClipboardIntegrityManager(options?: {
     text: string,
     source: ClipboardSource,
   ): ClipboardCaptureResult | null => {
-    const normalized = normalizeAndFingerprint(text);
+    const normalized = normalizeAndFingerprint(text, maxTrackedTextLength);
     if (!normalized) {
       return null;
     }
@@ -195,12 +221,14 @@ export function createClipboardIntegrityManager(options?: {
   };
 
   return {
+    captureInternalText(text: string, source: ClipboardSource = 'copy') {
+      return registerInternalText(text, source);
+    },
     captureInternalClipboardEvent(event: ClipboardEvent, source: ClipboardSource) {
       return registerInternalText(readClipboardSelectionFromCopyEvent(event), source);
     },
-    evaluatePasteEvent(event: ClipboardEvent): ClipboardPasteDecision {
-      const rawText = event.clipboardData?.getData('text/plain') ?? '';
-      const normalized = normalizeAndFingerprint(rawText);
+    evaluatePastedText(rawText: string): ClipboardPasteDecision {
+      const normalized = normalizeAndFingerprint(rawText, maxTrackedTextLength);
 
       if (!normalized) {
         return {
@@ -234,6 +262,10 @@ export function createClipboardIntegrityManager(options?: {
         textLength: normalized.textLength,
         matchAgeMs: Math.max(0, now - match.capturedAt),
       };
+    },
+    evaluatePasteEvent(event: ClipboardEvent): ClipboardPasteDecision {
+      const rawText = event.clipboardData?.getData('text/plain') ?? '';
+      return this.evaluatePastedText(rawText);
     },
   };
 }

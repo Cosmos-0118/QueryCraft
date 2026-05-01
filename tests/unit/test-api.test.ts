@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { signTestAuthToken } from '@/lib/test-auth/crypto';
 
 vi.mock('@/lib/test/test-module-db', async () => {
   const store = await import('@/lib/test/test-module-store');
@@ -10,7 +11,16 @@ const BASE = process.env.TEST_API_BASE || 'http://localhost:3001/api/tests';
 const USE_EXTERNAL_SERVER = Boolean(process.env.TEST_API_BASE);
 const INTERNAL_BASE = 'http://localhost:3000';
 const TEACHER_ID = '999f68ef-cd80-4a7a-b02e-75f33c56a77f';
-const TEACHER_ACCESS_QUERY = `?role=teacher&userId=${encodeURIComponent(TEACHER_ID)}`;
+const TEACHER_EMAIL = 'teacher.integration@querycraft.test';
+const TEACHER_DISPLAY_NAME = 'Integration Teacher';
+const TEST_API_TOKEN = process.env.TEST_API_TOKEN?.trim();
+
+const LOCAL_TEACHER_TOKEN = signTestAuthToken({
+  sub: TEACHER_ID,
+  email: TEACHER_EMAIL,
+  role: 'teacher',
+  displayName: TEACHER_DISPLAY_NAME,
+});
 
 let testId: string;
 
@@ -19,10 +29,26 @@ interface ApiCallResult {
   data: Record<string, unknown>;
 }
 
+function resolveAuthToken() {
+  return TEST_API_TOKEN || LOCAL_TEACHER_TOKEN;
+}
+
+function buildAuthHeaders(includeJsonContentType = true): Record<string, string> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${resolveAuthToken()}`,
+  };
+
+  if (includeJsonContentType) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  return headers;
+}
+
 function buildJsonRequest(url: string, method: 'POST' | 'PATCH', body?: unknown) {
   return new NextRequest(url, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildAuthHeaders(true),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
@@ -31,7 +57,7 @@ async function callCreateTest(): Promise<ApiCallResult> {
   if (USE_EXTERNAL_SERVER) {
     const res = await fetch(BASE, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildAuthHeaders(true),
       body: JSON.stringify({
         title: 'Integration Test',
         created_by: TEACHER_ID,
@@ -69,9 +95,9 @@ async function callCreateTest(): Promise<ApiCallResult> {
 
 async function callPatchTest(id: string): Promise<ApiCallResult> {
   if (USE_EXTERNAL_SERVER) {
-    const res = await fetch(`${BASE}/${id}${TEACHER_ACCESS_QUERY}`, {
+    const res = await fetch(`${BASE}/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildAuthHeaders(true),
       body: JSON.stringify({ title: 'Integration Test Patched' }),
     });
 
@@ -82,7 +108,7 @@ async function callPatchTest(id: string): Promise<ApiCallResult> {
   }
 
   const request = buildJsonRequest(
-    `${INTERNAL_BASE}/api/tests/${id}${TEACHER_ACCESS_QUERY}`,
+    `${INTERNAL_BASE}/api/tests/${id}`,
     'PATCH',
     { title: 'Integration Test Patched' },
   );
@@ -97,7 +123,10 @@ async function callPatchTest(id: string): Promise<ApiCallResult> {
 
 async function callPublishTest(id: string): Promise<ApiCallResult> {
   if (USE_EXTERNAL_SERVER) {
-    const res = await fetch(`${BASE}/${id}/publish${TEACHER_ACCESS_QUERY}`, { method: 'POST' });
+    const res = await fetch(`${BASE}/${id}/publish`, {
+      method: 'POST',
+      headers: buildAuthHeaders(false),
+    });
 
     return {
       status: res.status,
@@ -105,7 +134,7 @@ async function callPublishTest(id: string): Promise<ApiCallResult> {
     };
   }
 
-  const request = buildJsonRequest(`${INTERNAL_BASE}/api/tests/${id}/publish${TEACHER_ACCESS_QUERY}`, 'POST');
+  const request = buildJsonRequest(`${INTERNAL_BASE}/api/tests/${id}/publish`, 'POST');
   const { POST: publishTestRoute } = await import('@/app/api/tests/[id]/publish/route');
   const res = await publishTestRoute(request, { params: { id } });
 
