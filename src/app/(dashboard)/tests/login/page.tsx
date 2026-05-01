@@ -232,43 +232,43 @@ export default function TestModuleLoginPage() {
   };
 
   return (
-    <div className="relative mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center px-5 py-10 sm:px-6 lg:px-8 lg:py-12">
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
+    <div className="relative mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-6xl items-center justify-center px-4 py-10 sm:px-6 lg:px-10 lg:py-14">
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.09),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.09),transparent_45%),radial-gradient(ellipse_at_bottom,rgba(34,197,94,0.06),transparent_55%)]" />
 
-      <div className="w-full max-w-md rounded-2xl border border-border/90 bg-card/85 p-7 shadow-xl shadow-black/10">
-        <div className="mb-5 flex items-center justify-between">
+      <div className="w-full max-w-xl rounded-3xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 sm:p-8 lg:p-9">
+        <div className="mb-7 flex items-start justify-between gap-3">
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
           >
             <ArrowLeft size={13} />
             Dashboard
           </Link>
 
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-teal-400/30 bg-teal-500/10 px-3 py-1 text-xs font-semibold text-teal-200">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-teal-400/30 bg-teal-500/10 px-3.5 py-1.5 text-xs font-semibold text-teal-200">
             <ShieldCheck size={12} />
             Test Module
           </div>
         </div>
 
-        <h1 className="text-2xl font-bold tracking-tight">Sign in to the test module</h1>
-        <p className="mt-1.5 text-sm text-muted-foreground">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-[2rem]">Sign in to the test module</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground sm:text-[15px]">
           Access is limited to accounts your administrator has provisioned.
         </p>
 
         {error && (
-          <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+          <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
             {error}
           </div>
         )}
 
         {stage === 'email' && (
-          <form onSubmit={handleEmailSubmit} className="mt-6 space-y-4">
+          <form onSubmit={handleEmailSubmit} className="mt-8 space-y-5">
             <div>
-              <label htmlFor="login-email" className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <label htmlFor="login-email" className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 Email
               </label>
-              <div className="relative mt-1.5">
+              <div className="relative mt-2">
                 <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   id="login-email"
@@ -277,7 +277,7 @@ export default function TestModuleLoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="w-full rounded-xl border border-border bg-background py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
+                  className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
                   autoComplete="email"
                   required
                 />
@@ -287,7 +287,7 @@ export default function TestModuleLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
             >
               {loading ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
               Continue
@@ -296,24 +296,26 @@ export default function TestModuleLoginPage() {
         )}
 
         {stage === 'password' && (
-          <form onSubmit={handlePasswordSubmit} className="mt-6 space-y-4">
-            <div className="rounded-xl border border-border/70 bg-background/60 p-3 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-2 font-medium text-foreground">
-                <UserCircle2 size={15} />
-                {email}
-              </span>
-              {resolvedRole && (
-                <span className="ml-2 rounded-full border border-border/70 bg-card/70 px-2 py-0.5 text-xs uppercase tracking-[0.12em]">
-                  {resolvedRole}
+          <form onSubmit={handlePasswordSubmit} className="mt-8 space-y-5">
+            <div className="rounded-2xl border border-border/70 bg-background/60 p-4 text-sm text-muted-foreground">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                <span className="inline-flex min-w-0 items-center gap-2 font-medium text-foreground">
+                  <UserCircle2 size={15} className="shrink-0" />
+                  <span className="truncate">{email}</span>
                 </span>
-              )}
+                {resolvedRole && (
+                  <span className="inline-flex h-7 items-center rounded-full border border-border/70 bg-card/70 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] leading-none">
+                    {resolvedRole}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div>
-              <label htmlFor="login-password" className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <label htmlFor="login-password" className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 Password
               </label>
-              <div className="relative mt-1.5">
+              <div className="relative mt-2">
                 <KeyRound size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   id="login-password"
@@ -322,18 +324,18 @@ export default function TestModuleLoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Your password"
-                  className="w-full rounded-xl border border-border bg-background py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
+                  className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
                   autoComplete="current-password"
                   required
                 />
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="grid gap-2 sm:grid-cols-[auto_1fr]">
               <button
                 type="button"
                 onClick={handleBackToEmail}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-4 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
               >
                 <ArrowLeft size={14} />
                 Back
@@ -341,7 +343,7 @@ export default function TestModuleLoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
               >
                 {loading ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
                 Sign in
@@ -351,16 +353,16 @@ export default function TestModuleLoginPage() {
         )}
 
         {stage === 'create_password' && (
-          <form onSubmit={handleCreatePasswordSubmit} className="mt-6 space-y-4">
-            <div className="rounded-xl border border-amber-400/35 bg-amber-400/10 p-3 text-sm text-amber-200">
+          <form onSubmit={handleCreatePasswordSubmit} className="mt-8 space-y-5">
+            <div className="rounded-2xl border border-amber-400/35 bg-amber-400/10 p-4 text-sm text-amber-200">
               First-time setup for <span className="font-semibold">{email}</span>. Create a password to activate this account.
             </div>
 
             <div>
-              <label htmlFor="create-password" className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <label htmlFor="create-password" className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 New password
               </label>
-              <div className="relative mt-1.5">
+              <div className="relative mt-2">
                 <KeyRound size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   id="create-password"
@@ -369,7 +371,7 @@ export default function TestModuleLoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="At least 6 characters"
-                  className="w-full rounded-xl border border-border bg-background py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
+                  className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
                   autoComplete="new-password"
                   required
                   minLength={6}
@@ -378,10 +380,10 @@ export default function TestModuleLoginPage() {
             </div>
 
             <div>
-              <label htmlFor="confirm-password" className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <label htmlFor="confirm-password" className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 Confirm password
               </label>
-              <div className="relative mt-1.5">
+              <div className="relative mt-2">
                 <KeyRound size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   id="confirm-password"
@@ -389,7 +391,7 @@ export default function TestModuleLoginPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Re-enter password"
-                  className="w-full rounded-xl border border-border bg-background py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
+                  className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
                   autoComplete="new-password"
                   required
                   minLength={6}
@@ -397,11 +399,11 @@ export default function TestModuleLoginPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="grid gap-2 sm:grid-cols-[auto_1fr]">
               <button
                 type="button"
                 onClick={handleBackToEmail}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-4 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
               >
                 <ArrowLeft size={14} />
                 Back
@@ -409,7 +411,7 @@ export default function TestModuleLoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
               >
                 {loading ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
                 Create password & sign in
@@ -418,7 +420,7 @@ export default function TestModuleLoginPage() {
           </form>
         )}
 
-        <p className="mt-6 text-xs text-muted-foreground">
+        <p className="mt-8 border-t border-border/60 pt-5 text-xs leading-relaxed text-muted-foreground">
           Don&apos;t have access? Ask your administrator to add your email under the test module admin tools.
         </p>
       </div>

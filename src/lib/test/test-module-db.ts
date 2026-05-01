@@ -114,6 +114,14 @@ export interface LeaderboardEntryRecord {
   submitted_at: string | null;
 }
 
+export interface StudentSubmittedAttemptSummaryRecord {
+  test_id: string;
+  attempt_id: string;
+  submitted_at: string | null;
+  score: number | null;
+  updated_at: string;
+}
+
 interface CreateDraftTestInput {
   title: string;
   description?: string;
@@ -2569,6 +2577,73 @@ export async function getLatestAttemptForStudent(testId: string, studentId: stri
   if (!attemptId) return null;
 
   return hydrateAttemptById(testId, attemptId);
+}
+
+export async function listLatestSubmittedAttemptSummariesForStudents(options: {
+  studentIds: string[];
+  testIds?: string[];
+}): Promise<StudentSubmittedAttemptSummaryRecord[]> {
+  const normalizedStudentIds = Array.from(
+    new Set(options.studentIds.map((id) => id.trim().toLowerCase()).filter(Boolean)),
+  );
+
+  if (normalizedStudentIds.length === 0) {
+    return [];
+  }
+
+  const normalizedTestIds = Array.from(
+    new Set((options.testIds ?? []).map((id) => id.trim()).filter(Boolean)),
+  );
+
+  if (options.testIds && normalizedTestIds.length === 0) {
+    return [];
+  }
+
+  const summaryRes = await sql.raw(
+    `
+    WITH ranked AS (
+      SELECT
+        a.test_id,
+        a.id AS attempt_id,
+        a.submitted_at,
+        COALESCE(a.final_score, a.auto_score) AS score_raw,
+        a.updated_at,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.test_id
+          ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
+        ) AS rank_in_test
+      FROM attempts a
+      JOIN users_test_profile profile ON profile.id = a.student_profile_id
+      WHERE profile.app_user_id = ANY($1::text[])
+        AND a.status = 'submitted'
+        AND ($2::text[] IS NULL OR a.test_id::text = ANY($2::text[]))
+    )
+    SELECT
+      test_id,
+      attempt_id,
+      submitted_at,
+      score_raw,
+      updated_at
+    FROM ranked
+    WHERE rank_in_test = 1
+    ORDER BY updated_at DESC;
+    `,
+    [normalizedStudentIds, normalizedTestIds.length > 0 ? normalizedTestIds : null],
+  );
+
+  return (summaryRes.rows as Array<{
+    test_id: string;
+    attempt_id: string;
+    submitted_at: string | null;
+    score_raw: number | string | null;
+    updated_at: string;
+  }>).map((row) => ({
+    test_id: row.test_id,
+    attempt_id: row.attempt_id,
+    submitted_at: row.submitted_at,
+    score: row.score_raw === null ? null : Math.max(0, Math.round(toNumber(row.score_raw))),
+    updated_at: row.updated_at,
+  }));
 }
 
 export async function getAttemptById(testId: string, attemptId: string) {

@@ -3,8 +3,10 @@ import {
   getAttemptById,
   getLatestAttemptForStudent,
   getTestById,
+  listLatestSubmittedAttemptSummariesForStudents,
   listTests,
   type AttemptRecord,
+  type StudentSubmittedAttemptSummaryRecord,
   type TestRecord,
 } from '@/lib/test/test-module-db';
 import { readTestAuthSession } from '@/lib/test-auth/session';
@@ -111,6 +113,20 @@ export async function listTestsForActor(actor: TestModuleActor): Promise<TestRec
   return Array.from(byId.values()).sort(
     (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
   );
+}
+
+export async function listSubmittedAttemptSummariesForActor(
+  actor: TestModuleActor,
+  testIds?: string[],
+): Promise<StudentSubmittedAttemptSummaryRecord[]> {
+  if (actor.role !== 'student') {
+    return [];
+  }
+
+  return listLatestSubmittedAttemptSummariesForStudents({
+    studentIds: actor.userIdAliases,
+    testIds,
+  });
 }
 
 export async function ensureTeacherOwnsTest(

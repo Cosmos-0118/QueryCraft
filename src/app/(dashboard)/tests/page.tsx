@@ -32,10 +32,11 @@ interface Test {
   module_type?: 'classic' | 'interactive_quiz';
 }
 
-interface StudentAttemptLookup {
-  id: string;
-  status: 'in_progress' | 'submitted';
+interface StudentSubmittedAttemptSummary {
+  test_id: string;
+  attempt_id: string;
   submitted_at: string | null;
+  updated_at: string;
   score: number | null;
 }
 
@@ -66,6 +67,32 @@ function getPastTestResultPath(row: StudentPastTest) {
   }
 
   return `/tests/${row.testId}/result?attemptId=${encodeURIComponent(row.attemptId)}`;
+}
+
+function buildStudentPastTests(
+  tests: Test[],
+  submittedAttempts: StudentSubmittedAttemptSummary[],
+): StudentPastTest[] {
+  const testById = new Map(tests.map((test) => [test.id, test]));
+
+  return submittedAttempts
+    .map((attempt) => {
+      const test = testById.get(attempt.test_id);
+      if (!test) {
+        return null;
+      }
+
+      return {
+        testId: test.id,
+        attemptId: attempt.attempt_id,
+        title: test.title,
+        moduleType: test.module_type ?? 'classic',
+        submittedAt: attempt.submitted_at ?? attempt.updated_at ?? test.updated_at,
+        score: attempt.score,
+      } satisfies StudentPastTest;
+    })
+    .filter((row): row is StudentPastTest => row !== null)
+    .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 }
 
 function formatStatus(status: string) {
@@ -366,11 +393,11 @@ export default function TestsPage() {
   const [pastTestsLoading, setPastTestsLoading] = useState(false);
   const [pastTestsError, setPastTestsError] = useState<string | null>(null);
   const [showTeacherModuleChooser, setShowTeacherModuleChooser] = useState(false);
+  const [hydrationTimeoutReached, setHydrationTimeoutReached] = useState(false);
 
   const { user, hydrated, isAuthenticated, logout } = useTestAuth();
   const isTeacher = user?.role === 'teacher';
   const isStudent = user?.role === 'student';
-  const isAdmin = user?.role === 'admin';
   const submissionNoticeVisible = searchParams?.get('submitted') === '1';
   const teacherAccessQuery = isTeacher && user?.id
     ? `?role=teacher&userId=${encodeURIComponent(user.id)}`
@@ -397,14 +424,43 @@ export default function TestsPage() {
 
   useEffect(() => {
     if (!hydrated) return;
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !user) {
       router.replace('/tests/login');
       return;
     }
-    if (isAdmin) {
+    if (user.role === 'admin') {
       router.replace('/admin');
     }
-  }, [hydrated, isAuthenticated, isAdmin, router]);
+  }, [hydrated, isAuthenticated, router, user]);
+
+  useEffect(() => {
+    if (!hydrated || isAuthenticated || typeof window === 'undefined') {
+      return;
+    }
+
+    const fallbackRedirectId = window.setTimeout(() => {
+      window.location.replace('/tests/login');
+    }, 900);
+
+    return () => {
+      window.clearTimeout(fallbackRedirectId);
+    };
+  }, [hydrated, isAuthenticated]);
+
+  useEffect(() => {
+    if (hydrated || typeof window === 'undefined') {
+      setHydrationTimeoutReached(false);
+      return;
+    }
+
+    const id = window.setTimeout(() => {
+      setHydrationTimeoutReached(true);
+    }, 9000);
+
+    return () => {
+      window.clearTimeout(id);
+    };
+  }, [hydrated]);
 
   useEffect(() => {
     if (!isTeacher) return;
@@ -414,32 +470,81 @@ export default function TestsPage() {
   }, [isTeacher, searchParams]);
 
   useEffect(() => {
+    if (!hydrated || !isAuthenticated || !user) {
+      setTests([]);
+      setStudentPastTests([]);
+      setPastTestsError(null);
+      setPastTestsLoading(false);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
 
     const loadTests = async () => {
       try {
         setLoading(true);
+        if (user.role === 'student') {
+          setPastTestsLoading(true);
+          setPastTestsError(null);
+        }
+
         const query = new URLSearchParams();
         if (user?.role) query.set('role', user.role);
         if (user?.id) query.set('userId', user.id);
 
         const res = await fetch(`/api/tests?${query.toString()}`, { signal: controller.signal });
-        const data = await res.json();
-        setTests(data.tests || []);
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            setTests([]);
+            setError('Your test session expired. Redirecting to sign in...');
+            router.replace('/tests/login');
+            return;
+          }
+          throw new Error('Failed to load tests');
+        }
+
+        const data = await res.json() as {
+          tests?: Test[];
+          student_submitted_attempts?: StudentSubmittedAttemptSummary[];
+        };
+
+        const loadedTests = Array.isArray(data.tests) ? data.tests : [];
+        setTests(loadedTests);
+
+        if (user.role === 'student') {
+          const submittedAttempts = Array.isArray(data.student_submitted_attempts)
+            ? data.student_submitted_attempts
+            : [];
+          setStudentPastTests(buildStudentPastTests(loadedTests, submittedAttempts));
+          setPastTestsError(null);
+        } else {
+          setStudentPastTests([]);
+          setPastTestsError(null);
+        }
+
         setError(null);
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           setError('Failed to load tests');
+          if (user.role === 'student') {
+            setStudentPastTests([]);
+            setPastTestsError('Failed to load submitted tests.');
+          }
         }
       } finally {
         setLoading(false);
+        if (user.role === 'student') {
+          setPastTestsLoading(false);
+        }
       }
     };
 
     loadTests();
 
     return () => controller.abort();
-  }, [user?.id, user?.role]);
+  }, [hydrated, isAuthenticated, router, user]);
 
   const sortedTests = useMemo(
     () => {
@@ -479,71 +584,6 @@ export default function TestsPage() {
       drafts,
     };
   }, [teacherVisibleTests]);
-
-  useEffect(() => {
-    if (!isStudent || !user?.id) {
-      setStudentPastTests([]);
-      setPastTestsError(null);
-      setPastTestsLoading(false);
-      return;
-    }
-
-    if (loading || error) {
-      return;
-    }
-
-    const controller = new AbortController();
-
-    const loadStudentPastTests = async () => {
-      try {
-        setPastTestsLoading(true);
-        setPastTestsError(null);
-
-        const rows = await Promise.all(
-          sortedTests.map(async (test) => {
-            const attemptRes = await fetch(
-              `/api/tests/${test.id}/attempts?studentId=${encodeURIComponent(user.id)}`,
-              { signal: controller.signal },
-            );
-
-            if (!attemptRes.ok) {
-              return null;
-            }
-
-            const attemptData = (await attemptRes.json()) as { attempt?: StudentAttemptLookup };
-            if (!attemptData.attempt || attemptData.attempt.status !== 'submitted') {
-              return null;
-            }
-
-            return {
-              testId: test.id,
-              attemptId: attemptData.attempt.id,
-              title: test.title,
-              moduleType: test.module_type ?? 'classic',
-              submittedAt: attemptData.attempt.submitted_at ?? test.updated_at,
-              score: attemptData.attempt.score,
-            } satisfies StudentPastTest;
-          }),
-        );
-
-        const submittedRows = rows
-          .filter((row): row is StudentPastTest => !!row)
-          .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-
-        setStudentPastTests(submittedRows);
-      } catch (err) {
-        if ((err as Error).name !== 'AbortError') {
-          setPastTestsError('Failed to load submitted tests.');
-        }
-      } finally {
-        setPastTestsLoading(false);
-      }
-    };
-
-    void loadStudentPastTests();
-
-    return () => controller.abort();
-  }, [error, isStudent, loading, sortedTests, user?.id]);
 
   const handleCreate = (test: Test) => {
     setTests((prev) => [test, ...prev]);
@@ -616,7 +656,7 @@ export default function TestsPage() {
     }
   };
 
-  if (!hydrated || !isAuthenticated || !user) {
+  if (!hydrated) {
     return (
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
         <div className="rounded-2xl border border-border/70 bg-card/70 p-6">
@@ -624,6 +664,36 @@ export default function TestsPage() {
             <Loader2 size={15} className="animate-spin" />
             Checking your session...
           </div>
+          {hydrationTimeoutReached && (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs text-muted-foreground">Session check is taking longer than expected.</p>
+              <Link
+                href="/tests/login"
+                className="inline-flex items-center gap-2 rounded-lg border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-border"
+              >
+                Continue to sign in
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !user) {
+    return (
+      <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <div className="rounded-2xl border border-border/70 bg-card/70 p-6">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 size={15} className="animate-spin" />
+            Redirecting to test sign in...
+          </div>
+          <Link
+            href="/tests/login"
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-border"
+          >
+            Continue to sign in
+          </Link>
         </div>
       </div>
     );

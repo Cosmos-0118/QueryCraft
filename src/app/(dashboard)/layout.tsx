@@ -12,7 +12,7 @@ import {
   CircuitBoard, LogOut, ChevronRight,
 } from 'lucide-react';
 
-const emptySubscribe = () => () => {};
+const emptySubscribe = () => () => { };
 function useHydrated() {
   return useSyncExternalStore(
     emptySubscribe,
@@ -91,11 +91,10 @@ function SidebarNav({ pathname, onClose }: { pathname: string; onClose?: () => v
                   key={item.href}
                   href={item.href}
                   onClick={onClose}
-                  className={`group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${
-                    isActive
+                  className={`group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${isActive
                       ? 'bg-primary/14 text-foreground'
                       : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
-                  }`}
+                    }`}
                 >
                   {isActive && (
                     <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-primary" />
@@ -220,11 +219,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <button
                           key={option.value}
                           onClick={() => setTheme(option.value)}
-                          className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                            theme === option.value
+                          className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${theme === option.value
                               ? 'bg-muted font-semibold text-foreground'
                               : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                          }`}
+                            }`}
                         >
                           <span className={theme === option.value ? 'text-primary' : ''}>{option.icon}</span>
                           {option.label}

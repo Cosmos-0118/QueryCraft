@@ -37,7 +37,6 @@ export function useTestAuth() {
   const setSession = useTestAuthStore((state) => state.setSession);
   const markHydrated = useTestAuthStore((state) => state.markHydrated);
   const router = useRouter();
-  const bootstrapStartedRef = useRef(false);
   const legacyCleanupDoneRef = useRef(false);
 
   const compatUser = useMemo(() => toCompat(user), [user]);
@@ -61,18 +60,23 @@ export function useTestAuth() {
   }, []);
 
   useEffect(() => {
-    if (hydrated || bootstrapStartedRef.current) {
+    if (hydrated) {
       return;
     }
 
-    bootstrapStartedRef.current = true;
     let cancelled = false;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      controller.abort();
+    }, 8000);
 
     const hydrateFromServer = async () => {
       try {
         const res = await fetch('/api/test-auth/me', {
           method: 'GET',
           credentials: 'same-origin',
+          cache: 'no-store',
+          signal: controller.signal,
         });
 
         if (!res.ok) {
@@ -130,6 +134,7 @@ export function useTestAuth() {
           }
         }
       } finally {
+        window.clearTimeout(timeoutId);
         if (!cancelled) {
           markHydrated();
         }
@@ -140,6 +145,8 @@ export function useTestAuth() {
 
     return () => {
       cancelled = true;
+      controller.abort();
+      window.clearTimeout(timeoutId);
     };
   }, [clearSession, hydrated, markHydrated, setSession]);
 

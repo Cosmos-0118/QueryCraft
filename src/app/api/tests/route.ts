@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createDraftTest } from '@/lib/test/test-module-db';
 import type { InteractiveQuizSettings, TestModuleType } from '@/lib/test/interactive-quiz';
-import { listTestsForActor, requireTestActor } from '@/lib/security/test-module-security';
+import {
+  listSubmittedAttemptSummariesForActor,
+  listTestsForActor,
+  requireTestActor,
+} from '@/lib/security/test-module-security';
 
 type QuestionMode = 'mcq_only' | 'sql_only' | 'mixed';
 
@@ -84,7 +88,21 @@ export async function GET(req: NextRequest) {
       return actorResult.response;
     }
 
-    const tests = await listTestsForActor(actorResult.value);
+    const actor = actorResult.value;
+    const tests = await listTestsForActor(actor);
+
+    if (actor.role === 'student') {
+      const studentSubmittedAttempts = await listSubmittedAttemptSummariesForActor(
+        actor,
+        tests.map((test) => test.id),
+      );
+
+      return NextResponse.json({
+        tests,
+        student_submitted_attempts: studentSubmittedAttempts,
+      });
+    }
+
     return NextResponse.json({ tests });
   } catch (error) {
     console.error('[GET /api/tests] Error:', error);
