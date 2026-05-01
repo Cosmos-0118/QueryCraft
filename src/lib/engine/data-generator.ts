@@ -325,6 +325,24 @@ function escapeSQL(val: unknown): string {
   return `'${String(val).replace(/'/g, "''")}'`;
 }
 
+export function generateTableDataRows(table: GeneratorTableDef): string[][] {
+  const rows: string[][] = [];
+
+  for (let i = 0; i < table.rowCount; i++) {
+    const row = table.columns.map((c) => {
+      if (c.primaryKey && c.type === 'integer' && c.hint === 'id') {
+        return String(i + 1);
+      }
+      const val = generateSmartValue(c.hint, c.type, i);
+      return String(val ?? '');
+    });
+
+    rows.push(row);
+  }
+
+  return rows;
+}
+
 export function generateTableSQL(table: GeneratorTableDef): string {
   const lines: string[] = [];
 
@@ -349,14 +367,8 @@ export function generateTableSQL(table: GeneratorTableDef): string {
   lines.push('');
 
   // INSERT statements
-  for (let i = 0; i < table.rowCount; i++) {
-    const values = table.columns.map((c) => {
-      if (c.primaryKey && c.type === 'integer' && c.hint === 'id') {
-        return String(i + 1);
-      }
-      const val = generateSmartValue(c.hint, c.type, i);
-      return escapeSQL(val);
-    });
+  for (const row of generateTableDataRows(table)) {
+    const values = row.map((value) => escapeSQL(value));
     lines.push(`INSERT INTO "${table.name}" VALUES (${values.join(', ')});`);
   }
 
