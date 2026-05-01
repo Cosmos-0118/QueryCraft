@@ -1,10 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { bootstrapTestDbConnection } from '@/lib/test-db/bootstrap';
+import { requireTestActor } from '@/lib/security/test-module-security';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const actorResult = requireTestActor(req, {
+      allowedRoles: ['admin'],
+    });
+    if (!actorResult.ok) {
+      return actorResult.response;
+    }
+
     const state = bootstrapTestDbConnection();
 
     return NextResponse.json({
