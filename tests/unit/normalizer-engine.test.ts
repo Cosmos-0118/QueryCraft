@@ -193,7 +193,7 @@ describe('normal form detection', () => {
     expectNF(table, '5NF');
   });
 
-  it('strict verifier does not over-claim 5NF without explicit dependencies', () => {
+  it('smart verifier infers normal form from data when explicit FDs are missing', () => {
     const table = makeTable({
       name: 'Student',
       columns: ['id', 'name', 'department'],
@@ -207,27 +207,20 @@ describe('normal form detection', () => {
     expect(detectNormalForm(table)).toBe('5NF');
 
     const strict = verifyNormalFormStrict(table);
-    expect(strict.detectedNF).toBe('1NF');
-    expect(strict.confidence).toBe('low');
-    expect(strict.warnings.join(' ')).toMatch(/functional dependencies/i);
+    expect(strict.detectedNF).toBe('5NF');
+    expect(strict.warnings.join(' ')).toMatch(/inferred|join dependencies|sample data/i);
   });
 
-  it('strict verifier caps at BCNF when MVD/JD evidence is not provided', () => {
+  it('strict mode reports limited confidence when FDs are absent and not all attributes are prime', () => {
     const table = makeTable({
-      name: 'Student',
+      name: 'StudentSparse',
       columns: ['id', 'name', 'department'],
-      primaryKey: ['id'],
-      fds: [{ determinant: ['id'], dependent: ['name', 'department'] }],
-      sampleData: [
-        ['1', 'Alice', 'CS'],
-        ['2', 'Bob', 'Math'],
-      ],
+      sampleData: [],
     });
 
-    const strict = verifyNormalFormStrict(table);
-    expect(strict.detectedNF).toBe('BCNF');
-    expect(strict.confidence).toBe('medium');
-    expect(strict.warnings.join(' ')).toMatch(/multivalued dependencies/i);
+    const strict = verifyNormalFormStrict(table, { mode: 'strict' });
+    expect(strict.confidence).toBe('low');
+    expect(strict.warnings.join(' ')).toMatch(/insufficient|explicit|sample/i);
   });
 
   it('strict verifier reaches 5NF when FD/MVD/JD evidence is explicit and valid', () => {

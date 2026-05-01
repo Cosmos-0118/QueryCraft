@@ -17,6 +17,51 @@ const TUPLE_SEPARATOR = '\u241F';
 
 export type VerificationConfidence = 'low' | 'medium' | 'high';
 
+export type EvidenceSource = 'explicit' | 'inferred' | 'structural' | 'absent';
+
+export interface NormalFormEvidence {
+  columnCount: number;
+  sampleRowCount: number;
+  hasExplicitPrimaryKey: boolean;
+  hasExplicitFDs: boolean;
+  hasInferredFDs: boolean;
+  hasExplicitMVDs: boolean;
+  hasInferredMVDs: boolean;
+  hasExplicitJoinDependencies: boolean;
+  allAttributesPrime: boolean;
+  fdEvidence: EvidenceSource;
+  mvdEvidence: EvidenceSource;
+  jdEvidence: EvidenceSource;
+}
+
+export interface NormalFormViolations {
+  partial: Violation[];
+  transitive: Violation[];
+  bcnf: Violation[];
+  mvd: Violation[];
+  jd: Violation[];
+}
+
+export interface NormalFormReport {
+  detectedNF: NormalForm;
+  confidence: VerificationConfidence;
+  candidateKeys: string[][];
+  primaryKey: string[];
+  primeAttributes: string[];
+  effectiveFDs: FunctionalDependency[];
+  effectiveMVDs: MultivaluedDependency[];
+  effectiveJDs: JoinDependency[];
+  evidence: NormalFormEvidence;
+  violations: NormalFormViolations;
+  reasons: string[];
+  warnings: string[];
+}
+
+export interface VerifyNormalFormOptions {
+  mode?: 'smart' | 'strict';
+  inferenceRowThreshold?: number;
+}
+
 export interface StrictNormalFormVerification {
   detectedNF: NormalForm;
   confidence: VerificationConfidence;
@@ -255,11 +300,6 @@ function resolveFDs(table: TableSchema): FunctionalDependency[] {
   return inferFunctionalDependencies(columnNames(table), table.sampleData);
 }
 
-function resolveStrictFDs(table: TableSchema): FunctionalDependency[] {
-  if (table.fds.length === 0) return [];
-  return minimalCover(table.fds);
-}
-
 function resolveCandidateKeys(table: TableSchema, fds: FunctionalDependency[]): string[][] {
   const attrs = columnNames(table);
   if (attrs.length === 0) return [];
@@ -275,43 +315,6 @@ function resolveCandidateKeys(table: TableSchema, fds: FunctionalDependency[]): 
 
   if (inferredPrimary.length > 0) return [inferredPrimary];
   return [attrs];
-}
-
-function resolveCandidateKeysStrict(table: TableSchema, fds: FunctionalDependency[]): string[][] {
-  const attrs = columnNames(table);
-  if (attrs.length === 0) return [];
-
-  if (table.primaryKey.length > 0) {
-    const explicitPrimary = orderByColumns(table.primaryKey, attrs);
-    if (explicitPrimary.length > 0) return [explicitPrimary];
-  }
-
-  if (fds.length > 0) {
-    const keys = findCandidateKeys(attrs, fds).map((key) => orderByColumns(key, attrs));
-    if (keys.length > 0) return keys;
-  }
-
-  return [attrs];
-}
-
-function withStrictVerificationMetadata(table: TableSchema): TableSchema {
-  const cleaned = sanitizeTable(table);
-  const attrs = columnNames(cleaned);
-  const fds = resolveStrictFDs(cleaned);
-
-  const primaryKey = cleaned.primaryKey.length > 0
-    ? orderByColumns(cleaned.primaryKey, attrs)
-    : [];
-
-  return {
-    ...cleaned,
-    fds,
-    primaryKey,
-    columns: cleaned.columns.map((column) => ({
-      ...column,
-      isKey: primaryKey.includes(column.name),
-    })),
-  };
 }
 
 function buildPrimeSet(candidateKeys: string[][]): Set<string> {
@@ -846,14 +849,21 @@ export function minimalCover(fds: FunctionalDependency[]): FunctionalDependency[
     dedupedReduced.push(fd);
   }
 
-  const noRedundant: FunctionalDependency[] = [];
-  for (let index = 0; index < dedupedReduced.length; index += 1) {
-    const fd = dedupedReduced[index];
-    const others = dedupedReduced.filter((_, currentIndex) => currentIndex !== index);
-    const closure = attributeClosure(fd.determinant, others);
+  // Iteratively remove redundant FDs: an FD is redundant only if its dependent is
+  // still derivable from the remaining (already-trimmed) FD set. Computing
+  // redundancy against the original set causes mutually-recursive FDs to all
+  // appear redundant simultaneously, which silently drops genuine information.
+  const noRedundant: FunctionalDependency[] = dedupedReduced.map((fd) => ({
+    determinant: [...fd.determinant],
+    dependent: [...fd.dependent],
+  }));
 
-    if (!closure.includes(fd.dependent[0])) {
-      noRedundant.push(fd);
+  for (let index = noRedundant.length - 1; index >= 0; index -= 1) {
+    const fd = noRedundant[index];
+    const others = noRedundant.filter((_, currentIndex) => currentIndex !== index);
+    const closure = attributeClosure(fd.determinant, others);
+    if (closure.includes(fd.dependent[0])) {
+      noRedundant.splice(index, 1);
     }
   }
 
@@ -1038,111 +1048,557 @@ export function detectNormalForm(table: TableSchema): NormalForm {
   return '5NF';
 }
 
-export function verifyNormalFormStrict(table: TableSchema): StrictNormalFormVerification {
-  const source = withStrictVerificationMetadata(table);
+/**
+ * Find minimal candidate keys (sets of columns whose values are unique across
+ * the supplied rows). Only the smallest keys are returned, which gives a
+ * useful approximation of the relation's keys directly from data.
+ */
+export function inferCandidateKeysFromData(columns: string[], rows: string[][]): string[][] {
+  const attrs = uniq(columns);
+  if (attrs.length === 0 || rows.length === 0) return [];
 
-  const evidence = {
-    hasExplicitPrimaryKey: source.primaryKey.length > 0,
-    hasExplicitFDs: source.fds.length > 0,
-    hasExplicitMVDs: source.mvds.length > 0,
-    hasExplicitJoinDependencies: (source.joinDependencies?.length ?? 0) > 0,
-    sampleRowCount: source.sampleData?.length ?? 0,
-  };
+  const indexByAttr = new Map(attrs.map((attr, index) => [attr, index]));
+  const candidates: string[][] = [];
+  const budget = 1500;
+  let checked = 0;
 
-  const warnings: string[] = [];
+  outer:
+  for (let size = 1; size <= attrs.length; size += 1) {
+    for (const combo of combinations(attrs, size)) {
+      checked += 1;
+      if (checked > budget) break outer;
 
-  if (hasMultiValuedCells(source)) {
-    return {
-      detectedNF: 'UNF',
-      confidence: 'high',
-      warnings,
-      evidence,
-    };
+      const subsumed = candidates.some((existing) => isSubset(existing, combo));
+      if (subsumed) continue;
+
+      const seen = new Set<string>();
+      let unique = true;
+      for (const row of rows) {
+        const tuple = stringifyTuple(combo.map((attr) => row[indexByAttr.get(attr) ?? -1] ?? ''));
+        if (seen.has(tuple)) { unique = false; break; }
+        seen.add(tuple);
+      }
+      if (unique) candidates.push(orderByColumns(combo, attrs));
+    }
+
+    if (candidates.length > 0) break;
   }
 
-  if (!evidence.hasExplicitFDs) {
-    warnings.push('No explicit functional dependencies were provided. Strict verification cannot prove 2NF or higher.');
+  return candidates;
+}
+
+function mvdHoldsInData(
+  xAttrs: string[],
+  yAttrs: string[],
+  zAttrs: string[],
+  indexByAttr: Map<string, number>,
+  rows: string[][],
+): boolean {
+  const xIdxs = xAttrs.map((attr) => indexByAttr.get(attr) ?? -1);
+  const yIdxs = yAttrs.map((attr) => indexByAttr.get(attr) ?? -1);
+  const zIdxs = zAttrs.map((attr) => indexByAttr.get(attr) ?? -1);
+  if (xIdxs.some((i) => i < 0) || yIdxs.some((i) => i < 0) || zIdxs.some((i) => i < 0)) return false;
+
+  const groups = new Map<string, string[][]>();
+  for (const row of rows) {
+    const key = stringifyTuple(xIdxs.map((index) => row[index] ?? ''));
+    const list = groups.get(key);
+    if (list) list.push(row);
+    else groups.set(key, [row]);
+  }
+
+  for (const [, groupRows] of groups) {
+    const yValues = new Set<string>();
+    const zValues = new Set<string>();
+    const pairs = new Set<string>();
+    for (const row of groupRows) {
+      const yKey = stringifyTuple(yIdxs.map((index) => row[index] ?? ''));
+      const zKey = stringifyTuple(zIdxs.map((index) => row[index] ?? ''));
+      yValues.add(yKey);
+      zValues.add(zKey);
+      pairs.add(`${yKey}${TUPLE_SEPARATOR}${zKey}`);
+    }
+    if (pairs.size !== yValues.size * zValues.size) return false;
+  }
+
+  return true;
+}
+
+function isInformativeMVD(
+  xAttrs: string[],
+  yAttrs: string[],
+  zAttrs: string[],
+  indexByAttr: Map<string, number>,
+  rows: string[][],
+): boolean {
+  const xIdxs = xAttrs.map((attr) => indexByAttr.get(attr) ?? -1);
+  const yIdxs = yAttrs.map((attr) => indexByAttr.get(attr) ?? -1);
+  const zIdxs = zAttrs.map((attr) => indexByAttr.get(attr) ?? -1);
+
+  const groups = new Map<string, { y: Set<string>; z: Set<string> }>();
+  for (const row of rows) {
+    const key = stringifyTuple(xIdxs.map((index) => row[index] ?? ''));
+    let group = groups.get(key);
+    if (!group) {
+      group = { y: new Set(), z: new Set() };
+      groups.set(key, group);
+    }
+    group.y.add(stringifyTuple(yIdxs.map((index) => row[index] ?? '')));
+    group.z.add(stringifyTuple(zIdxs.map((index) => row[index] ?? '')));
+  }
+
+  for (const group of groups.values()) {
+    if (group.y.size > 1 && group.z.size > 1) return true;
+  }
+  return false;
+}
+
+/**
+ * Detect non-trivial multivalued dependencies that are supported by the
+ * supplied sample data. Only single-attribute determinants and dependents are
+ * considered to keep the search tractable.
+ */
+export function detectMultivaluedDependenciesFromData(
+  columns: string[],
+  rows: string[][],
+): MultivaluedDependency[] {
+  const attrs = uniq(columns);
+  if (attrs.length < 3 || rows.length < 4) return [];
+
+  const indexByAttr = new Map(attrs.map((attr, index) => [attr, index]));
+  const found: MultivaluedDependency[] = [];
+  const seen = new Set<string>();
+
+  for (const determinant of attrs) {
+    const remaining = attrs.filter((attr) => attr !== determinant);
+    if (remaining.length < 2) continue;
+
+    for (const dependent of remaining) {
+      const others = remaining.filter((attr) => attr !== dependent);
+      if (others.length === 0) continue;
+
+      if (!mvdHoldsInData([determinant], [dependent], others, indexByAttr, rows)) continue;
+      if (!isInformativeMVD([determinant], [dependent], others, indexByAttr, rows)) continue;
+
+      const key = `${determinant}->>${dependent}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      found.push({ determinant: [determinant], dependent: [dependent] });
+    }
+  }
+
+  return found;
+}
+
+function bestPrimaryKey(candidateKeys: string[][], attrs: string[], explicit: string[]): string[] {
+  if (explicit.length > 0) {
+    const ordered = orderByColumns(explicit, attrs);
+    if (candidateKeys.some((key) => areSameSet(key, ordered))) return ordered;
+    return ordered;
+  }
+  if (candidateKeys.length === 0) return [];
+
+  const score = (key: string[]) => {
+    const idBonus = key.reduce((acc, attribute) => acc + (isIdentifierLike(attribute) ? 5 : 0), 0);
+    const exactIdBonus = key.includes('id') ? 4 : 0;
+    return key.length * 100 - idBonus - exactIdBonus;
+  };
+
+  return [...candidateKeys].sort((left, right) => score(left) - score(right))[0];
+}
+
+function evidenceSource(explicit: boolean, inferred: boolean): EvidenceSource {
+  if (explicit) return 'explicit';
+  if (inferred) return 'inferred';
+  return 'absent';
+}
+
+function structurallyAllPrime(attrs: string[], candidateKeys: string[][]): boolean {
+  if (attrs.length === 0) return true;
+  const prime = buildPrimeSet(candidateKeys);
+  return attrs.every((attribute) => prime.has(attribute));
+}
+
+/**
+ * Comprehensive normal-form verifier that combines explicit declarations,
+ * data-driven inference, and structural reasoning. This is the production
+ * verification path used by the UI and downstream tooling.
+ */
+export function verifyNormalForm(
+  table: TableSchema,
+  options: VerifyNormalFormOptions = {},
+): NormalFormReport {
+  const mode = options.mode ?? 'smart';
+  const minRowsForInference = Math.max(2, options.inferenceRowThreshold ?? 2);
+
+  const cleaned = sanitizeTable(table);
+  const attrs = columnNames(cleaned);
+  const rows = cleaned.sampleData ?? [];
+
+  const reasons: string[] = [];
+  const warnings: string[] = [];
+  const violations: NormalFormViolations = {
+    partial: [],
+    transitive: [],
+    bcnf: [],
+    mvd: [],
+    jd: [],
+  };
+
+  const evidence: NormalFormEvidence = {
+    columnCount: attrs.length,
+    sampleRowCount: rows.length,
+    hasExplicitPrimaryKey: cleaned.primaryKey.length > 0,
+    hasExplicitFDs: cleaned.fds.length > 0,
+    hasInferredFDs: false,
+    hasExplicitMVDs: cleaned.mvds.length > 0,
+    hasInferredMVDs: false,
+    hasExplicitJoinDependencies: (cleaned.joinDependencies?.length ?? 0) > 0,
+    allAttributesPrime: false,
+    fdEvidence: 'absent',
+    mvdEvidence: 'absent',
+    jdEvidence: 'absent',
+  };
+
+  if (attrs.length === 0) {
+    reasons.push('Table has no columns to analyze.');
+    warnings.push('Table has no columns — add at least one column before verifying normal forms.');
     return {
       detectedNF: '1NF',
       confidence: 'low',
-      warnings,
+      candidateKeys: [],
+      primaryKey: [],
+      primeAttributes: [],
+      effectiveFDs: [],
+      effectiveMVDs: [],
+      effectiveJDs: [],
       evidence,
+      violations,
+      reasons,
+      warnings,
     };
   }
 
-  const fds = resolveStrictFDs(source);
-  const candidateKeys = resolveCandidateKeysStrict(source, fds);
-
-  if (getPartialViolations(source, fds, candidateKeys).length > 0) {
+  if (hasMultiValuedCells(cleaned)) {
+    reasons.push('Detected repeating or multi-valued cells in sample data.');
     return {
-      detectedNF: '1NF',
+      detectedNF: 'UNF',
       confidence: 'high',
+      candidateKeys: [attrs],
+      primaryKey: cleaned.primaryKey,
+      primeAttributes: [...attrs],
+      effectiveFDs: [],
+      effectiveMVDs: [],
+      effectiveJDs: [],
+      evidence: { ...evidence, allAttributesPrime: true },
+      violations,
+      reasons,
       warnings,
-      evidence,
     };
   }
 
-  if (getTransitiveViolations(source, fds, candidateKeys).length > 0) {
-    return {
-      detectedNF: '2NF',
-      confidence: 'high',
-      warnings,
-      evidence,
-    };
+  const explicitFDs = cleaned.fds.length > 0 ? minimalCover(cleaned.fds) : [];
+  // Only infer FDs from sample data when the user has not already provided
+  // authoritative information. If they declared either an explicit primary
+  // key or explicit FDs we trust their model rather than potentially noisy
+  // inference from a tiny sample (which is exactly the failure mode the
+  // production verification engine needs to avoid).
+  const shouldInferFDs =
+    mode === 'smart'
+    && explicitFDs.length === 0
+    && cleaned.primaryKey.length === 0
+    && rows.length >= minRowsForInference;
+  const inferredFDs: FunctionalDependency[] = shouldInferFDs
+    ? inferFunctionalDependencies(attrs, rows)
+    : [];
+  evidence.hasInferredFDs = inferredFDs.length > 0;
+  const effectiveFDs = explicitFDs.length > 0 ? explicitFDs : inferredFDs;
+  evidence.fdEvidence = evidenceSource(explicitFDs.length > 0, inferredFDs.length > 0);
+
+  // Candidate-key selection prioritises authoritative declarations: explicit
+  // PK first, then FD-derived keys, then a data-driven fallback, then the
+  // trivial all-attribute key. Sources are tracked so that the explicit PK is
+  // never dropped during minimal-key filtering even when an inferred candidate
+  // happens to subsume it.
+  type CandidateRecord = { key: string[]; source: 'explicit' | 'fds' | 'data' | 'fallback' };
+  const candidateRecords: CandidateRecord[] = [];
+  const recordedKeys = new Set<string>();
+  const addCandidate = (key: string[], source: CandidateRecord['source']) => {
+    const ordered = orderByColumns(uniq(key), attrs);
+    if (ordered.length === 0) return;
+    const id = setKey(ordered);
+    if (recordedKeys.has(id)) return;
+    recordedKeys.add(id);
+    candidateRecords.push({ key: ordered, source });
+  };
+
+  if (cleaned.primaryKey.length > 0) {
+    addCandidate(cleaned.primaryKey, 'explicit');
   }
 
-  if (getBCNFViolations(source, fds).length > 0) {
-    return {
-      detectedNF: '3NF',
-      confidence: 'high',
-      warnings,
-      evidence,
-    };
+  if (effectiveFDs.length > 0) {
+    for (const key of findCandidateKeys(attrs, effectiveFDs)) {
+      addCandidate(key, 'fds');
+    }
   }
 
-  if (!evidence.hasExplicitMVDs) {
-    warnings.push('No explicit multivalued dependencies were provided. Strict verification is capped at BCNF.');
-    return {
-      detectedNF: 'BCNF',
-      confidence: 'medium',
-      warnings,
-      evidence,
-    };
+  if (candidateRecords.length === 0 && rows.length >= 2 && mode === 'smart') {
+    const dataKeys = inferCandidateKeysFromData(attrs, rows);
+    for (const key of dataKeys) {
+      if (key.length < attrs.length) addCandidate(key, 'data');
+    }
   }
 
-  if (getMVDViolations(source, fds).length > 0) {
-    return {
-      detectedNF: 'BCNF',
-      confidence: 'high',
-      warnings,
-      evidence,
-    };
+  if (candidateRecords.length === 0) {
+    addCandidate(attrs, 'fallback');
   }
 
-  if (!evidence.hasExplicitJoinDependencies) {
-    warnings.push('No explicit join dependencies were provided. Strict verification is capped at 4NF.');
-    return {
-      detectedNF: '4NF',
-      confidence: 'medium',
-      warnings,
-      evidence,
-    };
+  const candidateKeys: string[][] = candidateRecords
+    .filter((record, _, list) => {
+      if (record.source === 'explicit') return true;
+      return !list.some((other) =>
+        other.key !== record.key
+        && isSubset(other.key, record.key)
+        && other.key.length < record.key.length,
+      );
+    })
+    .map((record) => record.key);
+
+  // "Fallback" candidate keys (constructed because we knew nothing else) provide
+  // no real evidence about prime-attribute structure. We separate them so that
+  // confidence and structural reasoning never quietly inflate based on the
+  // vacuous "every attribute is prime because the only candidate key is the
+  // entire relation" case.
+  const usingFallbackOnly = candidateRecords.every((record) => record.source === 'fallback');
+
+  const primeAttributes = orderByColumns(Array.from(buildPrimeSet(candidateKeys)), attrs);
+  const allAttributesPrime = primeAttributes.length === attrs.length;
+  const meaningfulAllPrime = allAttributesPrime && !usingFallbackOnly;
+  evidence.allAttributesPrime = allAttributesPrime;
+
+  const primaryKey = bestPrimaryKey(candidateKeys, attrs, cleaned.primaryKey);
+
+  const explicitMVDs = normalizeMVDs(cleaned.mvds);
+  let inferredMVDs: MultivaluedDependency[] = [];
+  if (mode === 'smart' && rows.length >= 4 && attrs.length >= 3) {
+    inferredMVDs = detectMultivaluedDependenciesFromData(attrs, rows);
+    evidence.hasInferredMVDs = inferredMVDs.length > 0;
+  }
+  const effectiveMVDs = explicitMVDs.length > 0 ? explicitMVDs : inferredMVDs;
+  evidence.mvdEvidence = evidenceSource(explicitMVDs.length > 0, inferredMVDs.length > 0);
+
+  const explicitJDs = (cleaned.joinDependencies ?? []).map(cloneJD);
+  const effectiveJDs = explicitJDs;
+  evidence.jdEvidence = explicitJDs.length > 0 ? 'explicit' : 'absent';
+
+  reasons.push(`Sanitized ${attrs.length} column${attrs.length === 1 ? '' : 's'} and ${rows.length} sample row${rows.length === 1 ? '' : 's'}; no repeating groups detected.`);
+  reasons.push(`Identified ${candidateKeys.length} candidate key${candidateKeys.length === 1 ? '' : 's'}: ${candidateKeys.map((key) => `(${key.join(', ')})`).join(', ')}.`);
+  if (allAttributesPrime) {
+    reasons.push('Every attribute participates in a candidate key (relation is all-prime).');
   }
 
-  if (getJDViolations(source, fds).length > 0) {
-    return {
-      detectedNF: '4NF',
-      confidence: 'high',
-      warnings,
-      evidence,
-    };
+  const tableForChecks: TableSchema = {
+    ...cleaned,
+    fds: effectiveFDs,
+    mvds: effectiveMVDs,
+    joinDependencies: effectiveJDs,
+    primaryKey,
+  };
+
+  const partial = getPartialViolations(tableForChecks, effectiveFDs, candidateKeys);
+  const transitive = getTransitiveViolations(tableForChecks, effectiveFDs, candidateKeys);
+  const bcnf = getBCNFViolations(tableForChecks, effectiveFDs);
+  const mvd = getMVDViolations(tableForChecks, effectiveFDs);
+  const jd = getJDViolations(tableForChecks, effectiveFDs);
+
+  violations.partial = partial;
+  violations.transitive = transitive;
+  violations.bcnf = bcnf;
+  violations.mvd = mvd;
+  violations.jd = jd;
+
+  let detectedNF: NormalForm = '1NF';
+  let confidence: VerificationConfidence = 'high';
+
+  const fdConfidenceCap = (): VerificationConfidence => {
+    if (explicitFDs.length > 0) return 'high';
+    if (inferredFDs.length > 0) return rows.length >= 5 ? 'medium' : 'low';
+    if (meaningfulAllPrime) return rows.length === 0 ? 'medium' : 'high';
+    return 'low';
+  };
+
+  const mvdConfidenceCap = (): VerificationConfidence => {
+    if (explicitMVDs.length > 0) return 'high';
+    if (rows.length >= 6) return 'medium';
+    return 'low';
+  };
+
+  const jdConfidenceCap = (): VerificationConfidence => {
+    if (explicitJDs.length > 0) return 'high';
+    return 'low';
+  };
+
+  const minConfidence = (a: VerificationConfidence, b: VerificationConfidence): VerificationConfidence => {
+    const order: Record<VerificationConfidence, number> = { low: 0, medium: 1, high: 2 };
+    return order[a] <= order[b] ? a : b;
+  };
+
+  const compositeKeysExist = candidateKeys.some((key) => key.length > 1);
+
+  if (partial.length > 0) {
+    detectedNF = '1NF';
+    reasons.push(`${partial.length} partial dependency violation${partial.length === 1 ? '' : 's'} prevent 2NF: ${partial.map((violation) => `${violation.determinant.join(', ')} → ${violation.dependent.join(', ')}`).join('; ')}.`);
+    confidence = fdConfidenceCap();
+  } else {
+    detectedNF = '2NF';
+    if (compositeKeysExist) {
+      reasons.push('No partial dependencies on composite keys (2NF satisfied).');
+    } else {
+      reasons.push('No composite candidate keys; 2NF holds vacuously.');
+    }
+
+    if (transitive.length > 0) {
+      reasons.push(`${transitive.length} transitive dependency violation${transitive.length === 1 ? '' : 's'} prevent 3NF: ${transitive.map((violation) => `${violation.determinant.join(', ')} → ${violation.dependent.join(', ')}`).join('; ')}.`);
+      confidence = fdConfidenceCap();
+    } else {
+      detectedNF = '3NF';
+      reasons.push('No transitive dependencies on non-prime attributes (3NF satisfied).');
+
+      if (bcnf.length > 0) {
+        reasons.push(`${bcnf.length} BCNF violation${bcnf.length === 1 ? '' : 's'}: ${bcnf.map((violation) => `${violation.determinant.join(', ')} → ${violation.dependent.join(', ')}`).join('; ')}.`);
+        confidence = fdConfidenceCap();
+      } else {
+        detectedNF = 'BCNF';
+        if (allAttributesPrime) {
+          reasons.push('All attributes are prime; BCNF holds structurally.');
+        } else {
+          reasons.push('Every non-trivial FD has a superkey determinant (BCNF satisfied).');
+        }
+        confidence = minConfidence(confidence, fdConfidenceCap());
+
+        if (mvd.length > 0) {
+          reasons.push(`${mvd.length} MVD violation${mvd.length === 1 ? '' : 's'} prevent 4NF: ${mvd.map((violation) => `${violation.determinant.join(', ')} →→ ${violation.dependent.join(', ')}`).join('; ')}.`);
+          confidence = minConfidence(confidence, mvdConfidenceCap());
+        } else {
+          // 4NF claim ladder — ordered most-confident to least:
+          //   1. Two-attribute relations: trivially in 4NF.
+          //   2. Explicit MVDs (none violated): high confidence.
+          //   3. ≥ 6 rows + no inferred MVDs: medium confidence (data-backed).
+          //   4. Solid BCNF proof (explicit FDs or meaningful all-prime) plus
+          //      sample data of ≥ 3 rows that doesn't show MVDs: medium confidence
+          //      structural acceptance — common case for everyday schemas where
+          //      the user hasn't enumerated MVDs but the data is consistent with
+          //      4NF.
+          //   5. No data at all + meaningful all-prime: medium confidence.
+          //   6. Otherwise: cap at BCNF (avoid over-claiming).
+          let canClaim4NF = false;
+
+          if (attrs.length <= 2) {
+            reasons.push('Two-attribute relations are always in 4NF.');
+            canClaim4NF = true;
+          } else if (explicitMVDs.length > 0) {
+            reasons.push('No 4NF violations among declared multivalued dependencies.');
+            canClaim4NF = true;
+          } else if (inferredMVDs.length === 0 && rows.length >= 6) {
+            reasons.push('No multivalued dependencies detected from sample data (4NF satisfied).');
+            confidence = minConfidence(confidence, 'medium');
+            canClaim4NF = true;
+          } else if ((explicitFDs.length > 0 || meaningfulAllPrime) && rows.length >= 3) {
+            reasons.push('No multivalued dependencies declared or inferred from sample data; 4NF accepted with medium confidence.');
+            warnings.push('Provide explicit multivalued dependencies for high-confidence 4NF verification.');
+            confidence = minConfidence(confidence, 'medium');
+            canClaim4NF = true;
+          } else if (rows.length === 0 && meaningfulAllPrime) {
+            reasons.push('No sample data and all attributes are prime; 4NF accepted from structural reasoning.');
+            confidence = minConfidence(confidence, 'medium');
+            canClaim4NF = true;
+          } else {
+            // Cap at BCNF without downgrading confidence: the BCNF claim above
+            // was already justified by the FD-based reasoning at its own
+            // confidence level, and missing MVD evidence only blocks a 4NF
+            // claim — it doesn't undermine BCNF.
+            warnings.push('Insufficient evidence to verify 4NF — provide explicit multivalued dependencies or at least 3 sample rows. Verification capped at BCNF.');
+          }
+
+          if (canClaim4NF) {
+            detectedNF = '4NF';
+
+            if (jd.length > 0) {
+              reasons.push(`${jd.length} join dependency violation${jd.length === 1 ? '' : 's'} prevent 5NF.`);
+              confidence = minConfidence(confidence, jdConfidenceCap());
+            } else if (attrs.length <= 2) {
+              detectedNF = '5NF';
+              reasons.push('Two-attribute relations are always in 5NF.');
+            } else if (explicitJDs.length > 0) {
+              detectedNF = '5NF';
+              reasons.push('No 5NF violations among declared join dependencies.');
+            } else if ((explicitFDs.length > 0 || meaningfulAllPrime) && (rows.length >= 3 || rows.length === 0)) {
+              detectedNF = '5NF';
+              reasons.push('No join dependencies declared or inferred; 5NF accepted with same evidence as 4NF.');
+              warnings.push('Declare explicit join dependencies if your schema has known join structures (e.g. SPJ-style ternary relations).');
+            } else {
+              warnings.push('No explicit join dependencies declared; verifier cannot confirm 5NF beyond 4NF without additional evidence.');
+              confidence = minConfidence(confidence, jdConfidenceCap());
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (rows.length === 0 && explicitFDs.length === 0 && !allAttributesPrime) {
+    warnings.push('No sample data and no explicit functional dependencies — verification is best-effort.');
+    confidence = 'low';
+  }
+
+  if (mode === 'strict' && explicitFDs.length === 0 && !allAttributesPrime && attrs.length > 2) {
+    warnings.push('Strict mode: no explicit FDs supplied. Verification is capped at structurally provable normal forms.');
+    confidence = minConfidence(confidence, 'low');
+  }
+
+  if (explicitFDs.length === 0 && inferredFDs.length > 0) {
+    warnings.push('Functional dependencies were inferred from sample data; provide explicit FDs for highest confidence.');
   }
 
   return {
-    detectedNF: '5NF',
-    confidence: 'high',
-    warnings,
+    detectedNF,
+    confidence,
+    candidateKeys,
+    primaryKey,
+    primeAttributes,
+    effectiveFDs,
+    effectiveMVDs,
+    effectiveJDs,
     evidence,
+    violations,
+    reasons,
+    warnings,
+  };
+}
+
+/**
+ * Backwards-compatible wrapper around {@link verifyNormalForm}. The return
+ * shape mirrors the legacy strict verifier so existing callers continue to
+ * work, but the underlying analysis now considers structural reasoning,
+ * inferred FDs, and inferred MVDs.
+ */
+export function verifyNormalFormStrict(
+  table: TableSchema,
+  options: VerifyNormalFormOptions = {},
+): StrictNormalFormVerification {
+  const report = verifyNormalForm(table, options);
+  return {
+    detectedNF: report.detectedNF,
+    confidence: report.confidence,
+    warnings: report.warnings,
+    evidence: {
+      hasExplicitPrimaryKey: report.evidence.hasExplicitPrimaryKey,
+      hasExplicitFDs: report.evidence.hasExplicitFDs,
+      hasExplicitMVDs: report.evidence.hasExplicitMVDs,
+      hasExplicitJoinDependencies: report.evidence.hasExplicitJoinDependencies,
+      sampleRowCount: report.evidence.sampleRowCount,
+    },
   };
 }
 

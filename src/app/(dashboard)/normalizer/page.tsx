@@ -33,7 +33,7 @@ import {
     XCircle,
 } from 'lucide-react';
 import { generateTableDataRows, type GeneratorTableDef } from '@/lib/engine/data-generator';
-import { verifyNormalFormStrict, type VerificationConfidence } from '@/lib/engine/normalizer-engine';
+import { verifyNormalForm, type VerificationConfidence } from '@/lib/engine/normalizer-engine';
 import { useGeneratorStore } from '@/stores/generator-store';
 import type { Column, NormalForm, TableSchema } from '@/types/normalizer';
 
@@ -55,6 +55,9 @@ interface TableVerification {
     confidence: VerificationConfidence;
     ok: boolean;
     warnings: string[];
+    reasons: string[];
+    candidateKeys: string[][];
+    primaryKey: string[];
     reason?: string;
 }
 
@@ -707,19 +710,22 @@ export default function NormalizerPage() {
                 .filter((node) => isCanvasNodeData(node.data))
                 .map((node) => {
                     const table = node.data.table;
-                    const verification = verifyNormalFormStrict(table);
-                    const detected = verification.detectedNF;
+                    const report = verifyNormalForm(table);
+                    const detected = report.detectedNF;
                     const ok = stageSatisfied(stage, detected);
 
-                    const warningText = verification.warnings.join(' ');
+                    const warningText = report.warnings.join(' ');
                     const failureReason = buildFailureReason(stage, detected);
 
                     return {
                         tableName: table.name,
                         detected,
-                        confidence: verification.confidence,
+                        confidence: report.confidence,
                         ok,
-                        warnings: verification.warnings,
+                        warnings: report.warnings,
+                        reasons: report.reasons,
+                        candidateKeys: report.candidateKeys,
+                        primaryKey: report.primaryKey,
                         reason: ok
                             ? undefined
                             : warningText.length > 0
@@ -962,6 +968,10 @@ export default function NormalizerPage() {
                                                     {stage.checks.map((check, index) => {
                                                         const reasonKey = `${stage.stage}_${check.tableName}_${index}`;
                                                         const isReasonOpen = !!openFailureReasons[reasonKey];
+                                                        const hasDetail = check.reasons.length > 0
+                                                            || check.warnings.length > 0
+                                                            || check.candidateKeys.length > 0
+                                                            || (!check.ok && !!check.reason);
 
                                                         return (
                                                             <div
@@ -974,27 +984,75 @@ export default function NormalizerPage() {
                                                                     <div className="flex items-center gap-2">
                                                                         <span
                                                                             className={check.ok ? 'text-emerald-300' : 'text-rose-300'}
-                                                                            title={check.warnings.length > 0
-                                                                                ? `Strict verifier (${check.confidence} confidence): ${check.detected}. ${check.warnings.join(' ')}`
-                                                                                : `Strict verifier (${check.confidence} confidence): ${check.detected}`}
+                                                                            title={`Detected ${check.detected} (${check.confidence} confidence)`}
                                                                         >
                                                                             {formatDetectedForStage(stage.stage, check.detected)}
                                                                         </span>
 
-                                                                        {!check.ok && check.reason && (
+                                                                        <span
+                                                                            className="rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                                                                            title="Verification confidence based on declared and inferred evidence"
+                                                                        >
+                                                                            {check.confidence}
+                                                                        </span>
+
+                                                                        {hasDetail && (
                                                                             <button
                                                                                 onClick={() => toggleFailureReason(reasonKey)}
-                                                                                className="rounded-md border border-rose-500/35 bg-rose-500/12 px-2 py-1 text-[10px] font-semibold text-rose-300 hover:bg-rose-500/20"
+                                                                                className={`rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors ${check.ok
+                                                                                    ? 'border-border/70 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                                                                                    : 'border-rose-500/35 bg-rose-500/12 text-rose-300 hover:bg-rose-500/20'}`}
                                                                             >
-                                                                                {isReasonOpen ? 'Hide reason' : 'Reason'}
+                                                                                {isReasonOpen ? 'Hide details' : 'Details'}
                                                                             </button>
                                                                         )}
                                                                     </div>
                                                                 </div>
 
-                                                                {!check.ok && check.reason && isReasonOpen && (
-                                                                    <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1.5 text-[11px] text-rose-200">
-                                                                        {check.reason}
+                                                                {isReasonOpen && hasDetail && (
+                                                                    <div className="mt-2 space-y-2">
+                                                                        {!check.ok && check.reason && (
+                                                                            <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1.5 text-[11px] text-rose-200">
+                                                                                {check.reason}
+                                                                            </div>
+                                                                        )}
+
+                                                                        {check.candidateKeys.length > 0 && (
+                                                                            <div className="rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-[11px]">
+                                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                                                                    Candidate keys
+                                                                                </p>
+                                                                                <p className="mt-0.5 text-foreground/85">
+                                                                                    {check.candidateKeys.map((key) => `(${key.join(', ')})`).join(' • ')}
+                                                                                </p>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {check.reasons.length > 0 && (
+                                                                            <div className="rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-[11px]">
+                                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                                                                    Reasoning
+                                                                                </p>
+                                                                                <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-foreground/85">
+                                                                                    {check.reasons.map((reason, reasonIndex) => (
+                                                                                        <li key={`${reasonKey}_reason_${reasonIndex}`}>{reason}</li>
+                                                                                    ))}
+                                                                                </ul>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {check.warnings.length > 0 && (
+                                                                            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
+                                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-300/90">
+                                                                                    Warnings
+                                                                                </p>
+                                                                                <ul className="mt-0.5 list-disc space-y-0.5 pl-4">
+                                                                                    {check.warnings.map((warning, warningIndex) => (
+                                                                                        <li key={`${reasonKey}_warn_${warningIndex}`}>{warning}</li>
+                                                                                    ))}
+                                                                                </ul>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                             </div>
