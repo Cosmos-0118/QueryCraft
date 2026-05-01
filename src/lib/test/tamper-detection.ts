@@ -5,7 +5,7 @@ function clamp(value: number, min: number, max: number) {
 export const TEST_PROCTORING_CONFIG = {
   violation: {
     primaryCooldownMs: 1400,
-    maxWarnings: 3,
+    maxWarnings: 2,
     integrityNoticeDurationMs: 4500,
   },
   focus: {

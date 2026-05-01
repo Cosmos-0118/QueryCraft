@@ -483,10 +483,6 @@ export default function InteractiveQuizPage() {
             <ArrowLeft size={13} />
             Back to Module Selection
           </Link>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-orange-400/20 bg-orange-400/[0.07] px-3 py-1 text-xs font-semibold text-orange-200">
-            <Sparkles size={11} />
-            Interactive Quiz Module
-          </div>
           <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Wayground-Style Interactive Quizzes</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             Instant right/wrong feedback, speed-based points, and live leaderboard-ready scoring.

@@ -152,7 +152,7 @@ function formatViolationEventType(eventType: ViolationEvent['event_type']) {
 export default function TestAttemptPage() {
   const router = useRouter();
   const params = useParams();
-  const { user } = useAuth();
+  const { user, hydrated, isAuthenticated } = useAuth();
 
   const testId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const isStudent = user?.role === 'student';
@@ -203,7 +203,14 @@ export default function TestAttemptPage() {
   const [remainingSeconds, setRemainingSeconds] = useState(30 * 60);
 
   useEffect(() => {
-    if (!testId || !user || !isStudent) return;
+    if (!hydrated) return;
+    if (!isAuthenticated || !user) {
+      router.replace(`/tests/login?next=${encodeURIComponent(`/tests/${testId ?? ''}/attempt`)}`);
+    }
+  }, [hydrated, isAuthenticated, router, testId, user]);
+
+  useEffect(() => {
+    if (!testId || !user || !isStudent || !hydrated || !isAuthenticated) return;
 
     const controller = new AbortController();
 
@@ -282,7 +289,7 @@ export default function TestAttemptPage() {
     loadAttemptContext();
 
     return () => controller.abort();
-  }, [isStudent, router, testId, user]);
+  }, [hydrated, isAuthenticated, isStudent, router, testId, user]);
 
   useEffect(() => {
     if (!test?.duration_minutes) return;
@@ -337,7 +344,7 @@ export default function TestAttemptPage() {
         setSubmitted(true);
         setSaveMessage('Time is up. Your attempt was auto-submitted.');
         window.setTimeout(() => {
-          router.push(
+          router.replace(
             `/tests/${testId}/result?attemptId=${encodeURIComponent(resolvedAttemptId)}`,
           );
         }, 900);
@@ -586,7 +593,7 @@ export default function TestAttemptPage() {
       const resultPath = `/tests/${testId}/result${attemptId ? `?attemptId=${encodeURIComponent(attemptId)}` : ''}`;
       window.setTimeout(() => {
         forceSubmitInProgressRef.current = false;
-        router.push(resultPath);
+        router.replace(resultPath);
       }, 1300);
     } catch {
       setError('Unable to force-submit attempt after violation.');
@@ -1034,13 +1041,26 @@ export default function TestAttemptPage() {
       setSubmitted(true);
       setAutoSubmitTriggered(true);
       setSaveMessage('Attempt submitted successfully.');
-      router.push(`/tests/${testId}/result?attemptId=${encodeURIComponent(resolvedAttemptId)}`);
+      router.replace(`/tests/${testId}/result?attemptId=${encodeURIComponent(resolvedAttemptId)}`);
     } catch {
       setError('Unable to submit attempt.');
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (!hydrated || !isAuthenticated) {
+    return (
+      <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <div className="rounded-2xl border border-border/70 bg-card/70 p-6">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 size={15} className="animate-spin" />
+            {hydrated ? 'Redirecting to sign in...' : 'Checking your session...'}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isStudent) {
     return (
@@ -1090,7 +1110,7 @@ export default function TestAttemptPage() {
     );
   }
 
-  if (error) {
+  if (error && !test) {
     return (
       <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">
@@ -1099,6 +1119,13 @@ export default function TestAttemptPage() {
             <div>
               <p className="font-semibold">Unable to open attempt</p>
               <p className="mt-1 text-sm text-red-300/90">{error}</p>
+              <Link
+                href="/tests"
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+              >
+                <ArrowLeft size={15} />
+                Back to Tests
+              </Link>
             </div>
           </div>
         </div>
@@ -1144,10 +1171,11 @@ export default function TestAttemptPage() {
               View Result
             </Link>
             <Link
-              href={`/tests/${test.id}`}
+              href="/tests"
               className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
             >
-              Back to Test Details
+              <ArrowLeft size={15} />
+              Back to Tests
             </Link>
           </div>
         </div>

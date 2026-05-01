@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
 import {
@@ -113,7 +113,8 @@ function toSubmission(attempt: ReviewAttempt): Submission {
 
 export default function TestReviewPage() {
   const params = useParams();
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, hydrated, isAuthenticated } = useAuth();
   const isTeacher = user?.role === 'teacher';
 
   const testId = Array.isArray(params?.id) ? params.id[0] : params?.id;
@@ -177,7 +178,14 @@ export default function TestReviewPage() {
   };
 
   useEffect(() => {
-    if (!testId) return;
+    if (!hydrated) return;
+    if (!isAuthenticated || !user) {
+      router.replace(`/tests/login?next=${encodeURIComponent(`/tests/${testId ?? ''}/review`)}`);
+    }
+  }, [hydrated, isAuthenticated, router, testId, user]);
+
+  useEffect(() => {
+    if (!testId || !hydrated || !isAuthenticated) return;
 
     const controller = new AbortController();
 
@@ -188,6 +196,12 @@ export default function TestReviewPage() {
       try {
         if (!isTeacher || !user?.id) {
           const testRes = await fetch(`/api/tests/${testId}`, { signal: controller.signal });
+
+          if (testRes.status === 401) {
+            router.replace(`/tests/login?next=${encodeURIComponent(`/tests/${testId}/review`)}`);
+            return;
+          }
+
           const testData = await testRes.json();
 
           if (!testRes.ok || !testData?.test) {
@@ -205,6 +219,11 @@ export default function TestReviewPage() {
           fetch(`/api/tests/${testId}/assignments${teacherAccessQuery}`, { signal: controller.signal }),
           fetch(`/api/tests/${testId}/review${teacherAccessQuery}`, { signal: controller.signal }),
         ]);
+
+        if (testRes.status === 401 || assignmentsRes.status === 401 || reviewRes.status === 401) {
+          router.replace(`/tests/login?next=${encodeURIComponent(`/tests/${testId}/review`)}`);
+          return;
+        }
 
         const [testData, assignmentsData, reviewData] = await Promise.all([
           testRes.json(),
@@ -287,7 +306,7 @@ export default function TestReviewPage() {
     loadReviewContext();
 
     return () => controller.abort();
-  }, [isTeacher, teacherAccessQuery, testId, user?.id]);
+  }, [hydrated, isAuthenticated, isTeacher, teacherAccessQuery, testId, user?.id, router]);
 
   const filteredSubmissions = useMemo(() => {
     if (filter === 'all') return submissions;
@@ -312,6 +331,19 @@ export default function TestReviewPage() {
       avgScore,
     };
   }, [submissions]);
+
+  if (!hydrated || !isAuthenticated) {
+    return (
+      <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <div className="rounded-2xl border border-border/70 bg-card/70 p-6">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 size={15} className="animate-spin" />
+            {hydrated ? 'Redirecting to sign in...' : 'Checking your session...'}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -340,6 +372,13 @@ export default function TestReviewPage() {
             <div>
               <p className="font-semibold">Unable to load review board</p>
               <p className="mt-1 text-sm text-red-300/90">{error}</p>
+              <Link
+                href="/tests"
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+              >
+                <ArrowLeft size={15} />
+                Back to Tests
+              </Link>
             </div>
           </div>
         </div>
@@ -409,10 +448,6 @@ export default function TestReviewPage() {
               <ArrowLeft size={13} />
               Back to Test Details
             </Link>
-            <div className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-              <Eye size={12} />
-              Teacher Review Board
-            </div>
             <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">{test.title}</h1>
             <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
               Review who submitted, publish results, and open each student&apos;s answers from one clean dashboard.
@@ -444,8 +479,8 @@ export default function TestReviewPage() {
             <h2 className="text-lg font-semibold tracking-tight">Submissions</h2>
             <p className="mt-1 text-sm text-muted-foreground">Use filters to focus on submitted or pending students.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+          <div className="flex w-full flex-wrap items-center gap-2.5 lg:w-auto lg:justify-end">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-xs font-medium text-muted-foreground">
               <Filter size={12} />
               Filter
             </div>
@@ -453,7 +488,7 @@ export default function TestReviewPage() {
               <button
                 key={item}
                 onClick={() => setFilter(item)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] transition ${
+                className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] transition ${
                   filter === item
                     ? 'border-primary/40 bg-primary/12 text-primary'
                     : 'border-border/70 bg-background/50 text-muted-foreground hover:border-border hover:text-foreground'
@@ -474,48 +509,58 @@ export default function TestReviewPage() {
           {filteredSubmissions.map((submission) => (
             <div
               key={submission.id}
-              className="rounded-2xl border border-border/70 bg-background/50 p-4 transition hover:border-primary/25 hover:bg-background/70"
+              className="rounded-2xl border border-border/70 bg-background/50 p-4 transition hover:border-primary/25 hover:bg-background/70 sm:p-5"
             >
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-sm font-bold text-primary">
-                    {submission.student.slice(0, 1).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-base font-semibold text-foreground">{submission.student}</p>
-                      <span
-                        className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] ${
-                          submission.status === 'submitted'
-                            ? 'border-success/30 bg-success/10 text-success'
-                            : 'border-warning/30 bg-warning/10 text-warning'
-                        }`}
-                      >
-                        {submission.status === 'submitted' ? 'Submitted' : 'Pending'}
-                      </span>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-sm font-bold text-primary">
+                      {submission.student.slice(0, 1).toUpperCase()}
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <span>{submission.submittedAt ? `Submitted ${new Date(submission.submittedAt).toLocaleString()}` : 'No submission yet'}</span>
-                      <span className="inline-flex items-center gap-1">
-                        <FileText size={12} />
-                        {submission.answerCount} answers
-                      </span>
-                      <span>Violations: {submission.violations}</span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-base font-semibold text-foreground">{submission.student}</p>
+                      <span
+                        className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] ${
+                            submission.status === 'submitted'
+                              ? 'border-success/30 bg-success/10 text-success'
+                              : 'border-warning/30 bg-warning/10 text-warning'
+                          }`}
+                        >
+                          {submission.status === 'submitted' ? 'Submitted' : 'Pending'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {submission.submittedAt ? `Submitted ${new Date(submission.submittedAt).toLocaleString()}` : 'No submission yet'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-xl border border-border/70 bg-card/65 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Score</p>
+                      <p className="mt-1 text-sm font-bold text-foreground">{typeof submission.score === 'number' ? `${submission.score}%` : 'Not graded'}</p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-card/65 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Answers</p>
+                      <p className="mt-1 inline-flex items-center gap-1 text-sm font-bold text-foreground">
+                        <FileText size={12} className="text-muted-foreground" />
+                        {submission.answerCount}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-card/65 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Violations</p>
+                      <p className="mt-1 text-sm font-bold text-foreground">{submission.violations}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                  <div className="rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-center">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Score</p>
-                    <p className="text-sm font-bold text-foreground">{typeof submission.score === 'number' ? `${submission.score}%` : 'Not graded'}</p>
-                  </div>
-
+                <div className="flex w-full flex-wrap items-center gap-2.5 xl:w-auto xl:justify-end">
                   {isClassicTest && submission.status === 'submitted' && submission.attemptId && (
                     <button
                       onClick={() => void handleTogglePublish(submission)}
                       disabled={publishingIds.has(submission.id)}
-                      className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`inline-flex h-10 w-full flex-1 items-center justify-center gap-1.5 rounded-xl border px-3.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none sm:w-auto ${
                         submission.published
                           ? 'border-success/30 bg-success/10 text-success hover:bg-success/15'
                           : 'border-warning/30 bg-warning/10 text-warning hover:bg-warning/15'
@@ -532,13 +577,13 @@ export default function TestReviewPage() {
                   {submission.status === 'submitted' && submission.attemptId ? (
                     <Link
                       href={`/tests/${test.id}/result?attemptId=${encodeURIComponent(submission.attemptId)}`}
-                      className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+                      className="inline-flex h-10 w-full flex-1 items-center justify-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3.5 text-xs font-semibold text-muted-foreground transition hover:border-primary/40 hover:text-foreground sm:flex-none sm:w-auto"
                     >
                       <Eye size={13} />
                       View Answers
                     </Link>
                   ) : (
-                    <span className="inline-flex h-10 items-center gap-1 rounded-xl border border-warning/25 bg-warning/10 px-3 text-xs font-semibold text-warning">
+                    <span className="inline-flex h-10 w-full flex-1 items-center justify-center gap-1 rounded-xl border border-warning/25 bg-warning/10 px-3.5 text-xs font-semibold text-warning sm:flex-none sm:w-auto">
                       <XCircle size={13} />
                       Waiting
                     </span>

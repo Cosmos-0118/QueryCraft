@@ -356,6 +356,13 @@ export default function TestResultPage() {
             <div>
               <p className="font-semibold">Unable to load result</p>
               <p className="mt-1 text-sm text-red-300/90">{error}</p>
+              <Link
+                href="/tests"
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+              >
+                <ArrowLeft size={15} />
+                Back to Tests
+              </Link>
             </div>
           </div>
         </div>
