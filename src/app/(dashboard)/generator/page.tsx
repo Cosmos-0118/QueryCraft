@@ -97,6 +97,36 @@ type OpenMenu = {
   kind: 'type' | 'hint';
 } | null;
 
+function PrimaryKeyCheckbox({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'group relative flex h-5 w-5 items-center justify-center rounded-md border transition-all duration-200',
+        checked
+          ? 'border-violet-400/70 bg-violet-500/25 shadow-[0_0_0_1px_rgba(139,92,246,0.2)]'
+          : 'border-border/70 bg-card/70 hover:border-violet-400/45 hover:bg-violet-500/10',
+      )}
+      aria-pressed={checked}
+      aria-label={checked ? 'Unset primary key' : 'Set primary key'}
+    >
+      <Check
+        className={cn(
+          'h-3.5 w-3.5 text-violet-200 transition-all duration-200',
+          checked ? 'scale-100 opacity-100' : 'scale-75 opacity-0',
+        )}
+      />
+    </button>
+  );
+}
+
 /* ── Page ─────────────────────────────────────────────────── */
 
 export default function GeneratorPage() {
@@ -169,12 +199,13 @@ export default function GeneratorPage() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-4 p-6 lg:p-8">
+    <div className="flex h-full flex-col gap-4 p-4 lg:p-6">
       {/* Header */}
+      <div className="rounded-2xl border border-border/70 bg-card/70 px-4 py-3 backdrop-blur-sm">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
           <div
-            className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ring-violet-500/25"
+            className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-500/25 ring-1 ring-violet-500/25"
             style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0.04) 100%)' }}
           >
             <Sparkles className="h-5 w-5 text-violet-400" />
@@ -201,7 +232,7 @@ export default function GeneratorPage() {
           <button
             onClick={handleGenerate}
             disabled={store.tables.length === 0 || store.tables.every((t) => t.columns.length === 0)}
-            className="inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-500/15 transition-all duration-200 hover:shadow-violet-500/25 disabled:opacity-40 disabled:shadow-none"
+            className="inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-500/15 transition-all duration-200 hover:translate-y-[-1px] hover:shadow-violet-500/25 disabled:opacity-40 disabled:shadow-none"
             style={{
               background:
                 store.tables.length > 0
@@ -217,7 +248,7 @@ export default function GeneratorPage() {
           <button
             onClick={() => { store.clear(); setShowSqlModal(false); }}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors',
+              'inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-medium transition-colors',
               isLightTheme
                 ? 'border-red-200 bg-card text-red-600 hover:border-red-300 hover:bg-red-50'
                 : 'border-red-500/20 text-red-400/80 hover:border-red-500/40 hover:bg-red-500/10',
@@ -228,8 +259,10 @@ export default function GeneratorPage() {
           </button>
         </div>
       </div>
+      </div>
 
       {/* Templates */}
+      <div className="rounded-2xl border border-border/60 bg-card/45 px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground/80">Quick Start:</span>
         {TABLE_TEMPLATES.map((tmpl) => {
@@ -238,7 +271,7 @@ export default function GeneratorPage() {
             <button
               key={tmpl.name}
               onClick={() => handleLoadTemplate(tmpl)}
-              className="group inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/60 px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-all hover:border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
+              className="group inline-flex items-center gap-1.5 rounded-xl border border-border/60 bg-muted/40 px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-all hover:border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
               title={tmpl.description}
             >
               <Icon className="h-3.5 w-3.5" />
@@ -246,6 +279,7 @@ export default function GeneratorPage() {
             </button>
           );
         })}
+      </div>
       </div>
 
       {/* Main Area */}
@@ -255,10 +289,10 @@ export default function GeneratorPage() {
           return (
             <div
               key={ti}
-              className="rounded-xl border border-border/60 bg-muted/80 backdrop-blur-sm"
+              className="rounded-2xl border border-border/70 bg-card/65 shadow-[0_8px_26px_-20px_rgba(0,0,0,0.55)] backdrop-blur-sm"
             >
               {/* Table Header */}
-              <div className="flex items-center gap-3 px-4 py-3">
+              <div className="flex items-center gap-3 px-4 py-3.5">
                 <button
                   onClick={() => toggleTable(ti)}
                   className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground/80 transition-colors hover:bg-muted hover:text-foreground/80"
@@ -266,26 +300,26 @@ export default function GeneratorPage() {
                   {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
 
-                <Table2 className="h-4 w-4 text-violet-400" />
+                <Table2 className="h-4 w-4 text-violet-300" />
 
                 <input
                   type="text"
                   value={table.name}
                   onChange={(e) => store.updateTableName(ti, e.target.value)}
-                  className="flex-1 bg-transparent font-mono text-sm font-semibold text-foreground/90 outline-none placeholder:text-muted-foreground/60 focus:text-violet-300"
+                  className="flex-1 rounded-lg border border-transparent bg-transparent px-1.5 py-1 font-mono text-sm font-semibold text-foreground/90 outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-violet-500/35 focus:bg-violet-500/5 focus:text-violet-300"
                   placeholder="table_name"
                 />
 
                 <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
-                    Rows:
+                  <label className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/30 px-2 py-1 text-[11px] text-muted-foreground/85">
+                    Rows
                     <input
                       type="number"
                       min={1}
                       max={1000}
                       value={table.rowCount}
                       onChange={(e) => store.updateTableRowCount(ti, Number(e.target.value))}
-                      className="w-16 rounded-lg border border-border/50 bg-card/60 px-2 py-1 text-center text-xs text-foreground/90 outline-none focus:border-violet-500/50"
+                      className="w-16 rounded-md border border-border/50 bg-card/60 px-2 py-1 text-center text-xs text-foreground/90 outline-none focus:border-violet-500/50"
                     />
                   </label>
                   {store.tables.length > 1 && (
@@ -301,9 +335,9 @@ export default function GeneratorPage() {
 
               {/* Table Columns */}
               {isExpanded && (
-                <div className="border-t border-border/40 px-4 py-3">
+                <div className="border-t border-border/50 px-4 py-3">
                   {/* Column headers */}
-                  <div className="mb-2 grid grid-cols-[1fr_90px_120px_40px_28px] gap-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  <div className="mb-2 grid grid-cols-[1fr_90px_120px_40px_28px] gap-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/65">
                     <span>Column Name</span>
                     <span>Type</span>
                     <span>Data Pattern</span>
@@ -326,14 +360,14 @@ export default function GeneratorPage() {
                       return (
                         <div
                           key={ci}
-                          className="group grid grid-cols-[1fr_90px_120px_40px_28px] items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-2 py-1.5 transition-colors hover:border-border/60"
+                          className="group grid grid-cols-[1fr_90px_120px_40px_28px] items-center gap-2 rounded-xl border border-border/45 bg-muted/20 px-2 py-1.5 transition-colors hover:border-violet-500/30 hover:bg-violet-500/5"
                         >
                           {/* Name */}
                           <input
                             type="text"
                             value={col.name}
                             onChange={(e) => store.updateColumn(ti, ci, { name: e.target.value })}
-                            className="w-full bg-transparent font-mono text-sm text-foreground/90 outline-none placeholder:text-muted-foreground/60"
+                            className="w-full rounded-md border border-transparent bg-transparent px-1.5 py-1 font-mono text-sm text-foreground/90 outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-violet-500/35 focus:bg-violet-500/5"
                             placeholder="column_name"
                           />
 
@@ -419,7 +453,7 @@ export default function GeneratorPage() {
                               <ChevronDown className={cn('h-3 w-3 shrink-0 text-muted-foreground/80 transition-transform', isHintOpen && 'rotate-180')} />
                             </button>
                             {isHintOpen && (
-                              <div className="absolute left-0 top-[calc(100%+6px)] z-30 max-h-64 w-60 overflow-auto rounded-xl border border-border/60 bg-muted/95 p-1 shadow-2xl backdrop-blur-sm">
+                              <div className="absolute right-0 top-[calc(100%+6px)] z-30 max-h-64 w-60 overflow-auto rounded-xl border border-border/60 bg-muted/95 p-1 shadow-2xl backdrop-blur-sm">
                                 {groupedHints.map(([group, hints]) => (
                                   <div key={group} className="pb-1">
                                     <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
@@ -452,11 +486,9 @@ export default function GeneratorPage() {
 
                           {/* PK */}
                           <div className="flex justify-center">
-                            <input
-                              type="checkbox"
+                            <PrimaryKeyCheckbox
                               checked={col.primaryKey}
-                              onChange={(e) => store.updateColumn(ti, ci, { primaryKey: e.target.checked })}
-                              className="h-3.5 w-3.5 cursor-pointer rounded"
+                              onChange={(next) => store.updateColumn(ti, ci, { primaryKey: next })}
                             />
                           </div>
 
@@ -476,7 +508,7 @@ export default function GeneratorPage() {
 
                   <button
                     onClick={() => store.addColumn(ti)}
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground/80 transition-all hover:bg-muted/50 hover:text-violet-300"
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-dashed border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground/85 transition-all hover:border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
                   >
                     <Plus className="h-3 w-3" /> Add Column
                   </button>
@@ -489,7 +521,7 @@ export default function GeneratorPage() {
         {/* Add table button */}
         <button
           onClick={handleAddTable}
-          className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border/50 py-3 text-sm text-muted-foreground/80 transition-all hover:border-violet-500/30 hover:bg-violet-500/5 hover:text-violet-300"
+          className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-border/60 bg-card/35 py-3 text-sm text-muted-foreground/85 transition-all hover:border-violet-500/35 hover:bg-violet-500/10 hover:text-violet-300"
         >
           <Plus className="h-4 w-4" />
           Add Table

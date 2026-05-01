@@ -910,6 +910,13 @@ export function inferFunctionalDependencies(columns: string[], rows: string[][])
   if (attrs.length <= 1 || rows.length === 0) return [];
 
   const indexByAttr = new Map(attrs.map((attr, index) => [attr, index]));
+  const distinctCountByAttr = new Map<string, number>();
+  for (const attr of attrs) {
+    const index = indexByAttr.get(attr);
+    if (index === undefined) continue;
+    const distinct = new Set(rows.map((row) => row[index] ?? ''));
+    distinctCountByAttr.set(attr, distinct.size);
+  }
   const found: FunctionalDependency[] = [];
 
   const combinationBudget = 2500;
@@ -944,6 +951,10 @@ export function inferFunctionalDependencies(columns: string[], rows: string[][])
 
       for (const dependent of attrs) {
         if (determinant.includes(dependent)) continue;
+        // Ignore degenerate dependencies that only hold because the dependent
+        // attribute is constant in the sample; these do not provide useful
+        // normalization evidence and can create false BCNF violations.
+        if ((distinctCountByAttr.get(dependent) ?? 0) <= 1) continue;
         if (!holdsFD(determinant, dependent)) continue;
 
         found.push({
@@ -1214,10 +1225,16 @@ function evidenceSource(explicit: boolean, inferred: boolean): EvidenceSource {
   return 'absent';
 }
 
-function structurallyAllPrime(attrs: string[], candidateKeys: string[][]): boolean {
-  if (attrs.length === 0) return true;
-  const prime = buildPrimeSet(candidateKeys);
-  return attrs.every((attribute) => prime.has(attribute));
+function isPrimaryKeyCoverFD(
+  fd: FunctionalDependency,
+  primaryKey: string[],
+  attrs: string[],
+): boolean {
+  if (primaryKey.length <= 1 || attrs.length === 0) return false;
+  if (!areSameSet(fd.determinant, primaryKey)) return false;
+  const nonKeyAttributes = attrs.filter((attribute) => !primaryKey.includes(attribute));
+  if (nonKeyAttributes.length === 0) return false;
+  return areSameSet(fd.dependent, nonKeyAttributes);
 }
 
 /**
@@ -1298,23 +1315,37 @@ export function verifyNormalForm(
     };
   }
 
-  const explicitFDs = cleaned.fds.length > 0 ? minimalCover(cleaned.fds) : [];
-  // Only infer FDs from sample data when the user has not already provided
-  // authoritative information. If they declared either an explicit primary
-  // key or explicit FDs we trust their model rather than potentially noisy
-  // inference from a tiny sample (which is exactly the failure mode the
-  // production verification engine needs to avoid).
+  const explicitFDsRaw = cleaned.fds.length > 0 ? minimalCover(cleaned.fds) : [];
+  // Some ingest pipelines auto-seed one broad FD of the form
+  // PK -> (all non-key attributes). That placeholder helps with quick schema
+  // scaffolding, but it can mask real partial/transitive dependencies in
+  // sample data. We treat that single broad dependency as non-authoritative
+  // evidence so smart-mode inference can still discover finer-grained FDs.
+  const explicitFDs = explicitFDsRaw.filter((fd) => !isPrimaryKeyCoverFD(fd, cleaned.primaryKey, attrs));
+  const ignoredPrimaryKeyCoverFD = explicitFDs.length !== explicitFDsRaw.length;
+  evidence.hasExplicitFDs = explicitFDs.length > 0;
+  const fdInferenceThreshold = cleaned.primaryKey.length > 0
+    ? Math.max(minRowsForInference, 3)
+    : minRowsForInference;
+
+  // Infer FDs whenever authoritative explicit FDs are absent. We still
+  // require a minimum sample size and keep strict mode inference-free.
   const shouldInferFDs =
     mode === 'smart'
     && explicitFDs.length === 0
-    && cleaned.primaryKey.length === 0
-    && rows.length >= minRowsForInference;
+    && rows.length >= fdInferenceThreshold;
   const inferredFDs: FunctionalDependency[] = shouldInferFDs
     ? inferFunctionalDependencies(attrs, rows)
     : [];
   evidence.hasInferredFDs = inferredFDs.length > 0;
   const effectiveFDs = explicitFDs.length > 0 ? explicitFDs : inferredFDs;
   evidence.fdEvidence = evidenceSource(explicitFDs.length > 0, inferredFDs.length > 0);
+
+  if (ignoredPrimaryKeyCoverFD && inferredFDs.length > 0) {
+    reasons.push('Ignored broad PK->all dependency and inferred finer-grained FDs from sample data for normalization checks.');
+  } else if (ignoredPrimaryKeyCoverFD && mode === 'smart') {
+    warnings.push('Only broad PK->all dependencies were available; add explicit non-key FDs or more sample rows for precise 2NF/3NF verification.');
+  }
 
   // Candidate-key selection prioritises authoritative declarations: explicit
   // PK first, then FD-derived keys, then a data-driven fallback, then the

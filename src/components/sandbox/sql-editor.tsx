@@ -15,6 +15,8 @@ import {
   type Completion,
 } from '@codemirror/autocomplete';
 import type { TableSchema } from '@/types/database';
+import { useThemeStore } from '@/stores/theme-store';
+import { RESOLVED_APPEARANCE } from '@/lib/theme';
 
 // ── MySQL keywords (ALL CAPS, matching real MySQL style) ──────────
 const SQL_KEYWORDS = [
@@ -787,6 +789,8 @@ export function SqlEditor({
   className,
   focusRequestKey,
 }: SqlEditorProps) {
+  const { theme } = useThemeStore();
+  const resolvedAppearance = RESOLVED_APPEARANCE[theme] ?? 'dark';
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onExecuteRef = useRef(onExecute);
@@ -828,7 +832,24 @@ export function SqlEditor({
           maxRenderedOptions: 30,
           icons: true,
         }),
-        oneDark,
+        ...(resolvedAppearance === 'dark'
+          ? [oneDark]
+          : [
+            EditorView.theme({
+              '&': {
+                color: 'var(--foreground)',
+              },
+              '.cm-content': {
+                color: 'var(--foreground)',
+              },
+              '.cm-cursor, .cm-dropCursor': {
+                borderLeftColor: 'color-mix(in oklab, var(--primary) 85%, var(--foreground))',
+              },
+              '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+                backgroundColor: 'color-mix(in oklab, var(--primary) 24%, transparent)',
+              },
+            }),
+          ]),
         keymap.of([
           {
             key: 'ArrowUp',
@@ -926,7 +947,11 @@ export function SqlEditor({
             fontFamily: 'var(--font-mono), monospace',
           },
           '.cm-editor': { height: '100%' },
-          '.cm-gutters': { background: 'transparent', border: 'none', color: 'var(--sandbox-editor-gutter)' },
+          '.cm-gutters': {
+            background: 'color-mix(in oklab, var(--sandbox-editor-bg-2) 92%, transparent)',
+            border: 'none',
+            color: 'var(--sandbox-editor-gutter)',
+          },
           '.cm-scroller': {
             borderRadius: '12px',
             overflow: 'auto',
@@ -978,9 +1003,9 @@ export function SqlEditor({
     return () => {
       view.destroy();
     };
-    // Only recreate editor on mount/tables change
+    // Recreate editor when schema/theme mode changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tables.map((t) => t.name).join(',')]);
+  }, [resolvedAppearance, tables.map((t) => t.name).join(',')]);
 
   useEffect(() => {
     const view = viewRef.current;

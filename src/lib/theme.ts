@@ -131,9 +131,9 @@ const palette: Record<ThemeMode, ThemePalette> = {
     dangerForeground: '#9f1239',
     warning: '#d97706',
     info: '#0284c7',
-    editorBg: '#0c1422',
-    editorBg2: '#101b2f',
-    editorGutter: '#7084a8',
+    editorBg: '#f8fbff',
+    editorBg2: '#eef4ff',
+    editorGutter: '#7b8da9',
     tones: {
       emerald: '#059669',
       violet: '#7c3aed',

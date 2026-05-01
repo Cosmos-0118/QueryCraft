@@ -77,6 +77,8 @@ Environment variables:
 
 - None are required for currently shipped browser-first features.
 - `TEST_DB_URL` is optional and used for the upcoming Test module backend foundation.
+- `GROQ_API_KEY` enables the Normalizer Studio "Analyze with AI" workflow.
+- `GROQ_MODEL` is optional (defaults to `llama-3.1-8b-instant` with server-side fallback models).
 
 ### Use a Free Online Postgres (Recommended: Neon)
 

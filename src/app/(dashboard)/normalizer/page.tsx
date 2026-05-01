@@ -9,7 +9,9 @@ import {
     Background,
     BackgroundVariant,
     Controls,
+    Handle,
     MiniMap,
+    Position,
     ReactFlow,
     ReactFlowProvider,
     type Connection,
@@ -26,14 +28,17 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
+    BrainCircuit,
     Check,
     CheckCircle2,
     ChevronDown,
     Database,
     Download,
+    Loader2,
     Plus,
     ShieldCheck,
     Trash2,
+    WandSparkles,
     X,
     XCircle,
 } from 'lucide-react';
@@ -47,7 +52,14 @@ import { verifyNormalForm, type VerificationConfidence } from '@/lib/engine/norm
 import { getUserKeyForId, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
 import { useAuthStore } from '@/stores/auth-store';
 import { useGeneratorStore } from '@/stores/generator-store';
-import type { Column, FunctionalDependency, NormalForm, TableSchema } from '@/types/normalizer';
+import type {
+    Column,
+    FunctionalDependency,
+    JoinDependency,
+    MultivaluedDependency,
+    NormalForm,
+    TableSchema,
+} from '@/types/normalizer';
 
 type CanvasStage = 'UNF' | '1NF' | '2NF' | '3NF' | '4NF' | '5NF';
 
@@ -83,6 +95,21 @@ interface StageVerification {
 interface VerificationSummary {
     allPass: boolean;
     stages: StageVerification[];
+}
+
+interface StageTableReference {
+    stage: CanvasStage;
+    nodeId: string;
+    table: TableSchema;
+}
+
+interface AiNormalizerSuggestions {
+    summary: string;
+    confidence: VerificationConfidence;
+    functionalDependencies: FunctionalDependency[];
+    multivaluedDependencies: MultivaluedDependency[];
+    joinDependencies: JoinDependency[];
+    notes: string[];
 }
 
 interface GeneratorMenuLayout {
@@ -194,6 +221,9 @@ const CANVAS_EDGE_LABEL_STYLE = {
     fontSize: 11,
     fontWeight: 600,
 } as const;
+
+const NODE_SOURCE_HANDLE_ID = 'source';
+const NODE_TARGET_HANDLE_ID = 'target';
 
 function getNormalizerStudioStorageKey(storageScopeId: string): string {
     return getUserKeyForId(storageScopeId, STORAGE_BASE_KEYS.normalizerStudio);
@@ -443,10 +473,7 @@ function sanitizeTableSchema(table: unknown): TableSchema | null {
     const explicitDependencies = rawFds
         .map((dependency) => sanitizeFunctionalDependency(dependency, columnSet))
         .filter((dependency): dependency is FunctionalDependency => dependency !== null);
-    const fds = mergeFunctionalDependencies(
-        buildPrimaryKeyDependencies(columnNames, resolvedPrimaryKey),
-        explicitDependencies,
-    );
+    const fds = mergeFunctionalDependencies(explicitDependencies);
 
     const rawMvds = Array.isArray(table.mvds) ? table.mvds : [];
     const mvds = rawMvds
@@ -563,6 +590,8 @@ function createCanvasEdgeFromPersistedEdge(edge: PersistedCanvasEdge): Edge {
         id: edge.id,
         source: edge.source,
         target: edge.target,
+        sourceHandle: NODE_SOURCE_HANDLE_ID,
+        targetHandle: NODE_TARGET_HANDLE_ID,
         type: 'smoothstep',
         animated: true,
         ...(edge.label ? { label: edge.label } : {}),
@@ -1083,18 +1112,6 @@ function inferForeignKeysFromContext(args: {
     return dedupeForeignKeys(inferred);
 }
 
-function buildPrimaryKeyDependencies(columns: string[], primaryKey: string[]): FunctionalDependency[] {
-    if (primaryKey.length === 0) return [];
-
-    const dependents = columns.filter((column) => !primaryKey.includes(column));
-    if (dependents.length === 0) return [];
-
-    return [{
-        determinant: [...primaryKey],
-        dependent: dependents,
-    }];
-}
-
 function mergeFunctionalDependencies(...groups: FunctionalDependency[][]): FunctionalDependency[] {
     const seen = new Set<string>();
     const merged: FunctionalDependency[] = [];
@@ -1116,11 +1133,100 @@ function mergeFunctionalDependencies(...groups: FunctionalDependency[][]): Funct
     return merged;
 }
 
+function mergeMultivaluedDependencies(
+    ...groups: MultivaluedDependency[][]
+): MultivaluedDependency[] {
+    const seen = new Set<string>();
+    const merged: MultivaluedDependency[] = [];
+
+    for (const group of groups) {
+        for (const mvd of group) {
+            const determinant = Array.from(new Set(mvd.determinant));
+            const dependent = Array.from(new Set(mvd.dependent)).filter((attribute) => !determinant.includes(attribute));
+            if (determinant.length === 0 || dependent.length === 0) continue;
+
+            const key = `${determinant.map(normalizeAttributeName).sort().join('::')}->>${dependent.map(normalizeAttributeName).sort().join('::')}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            merged.push({ determinant, dependent });
+        }
+    }
+
+    return merged;
+}
+
+function mergeJoinDependencies(...groups: JoinDependency[][]): JoinDependency[] {
+    const seen = new Set<string>();
+    const merged: JoinDependency[] = [];
+
+    for (const group of groups) {
+        for (const jd of group) {
+            const components = jd.components
+                .map((component) => Array.from(new Set(component)))
+                .filter((component) => component.length > 0);
+            if (components.length < 2) continue;
+
+            const key = components
+                .map((component) => component.map(normalizeAttributeName).sort().join('::'))
+                .sort()
+                .join(' * ');
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            merged.push({ components });
+        }
+    }
+
+    return merged;
+}
+
+function sanitizeAiSuggestionsForTable(
+    payload: unknown,
+    table: TableSchema,
+): AiNormalizerSuggestions | null {
+    if (!isRecord(payload)) return null;
+    const validColumns = new Set(table.columns.map((column) => column.name));
+    const summary = cleanString(payload.summary) ?? 'AI analysis completed.';
+    const confidenceValue = cleanString(payload.confidence)?.toLowerCase();
+    const confidence = confidenceValue === 'low'
+        || confidenceValue === 'medium'
+        || confidenceValue === 'high'
+        ? confidenceValue as VerificationConfidence
+        : 'medium';
+
+    const functionalDependencies = (Array.isArray(payload.functionalDependencies)
+        ? payload.functionalDependencies
+        : [])
+        .map((fd) => sanitizeFunctionalDependency(fd, validColumns))
+        .filter((fd): fd is FunctionalDependency => fd !== null);
+    const multivaluedDependencies = (Array.isArray(payload.multivaluedDependencies)
+        ? payload.multivaluedDependencies
+        : [])
+        .map((mvd) => sanitizeMultivaluedDependency(mvd, validColumns))
+        .filter((mvd): mvd is MultivaluedDependency => mvd !== null);
+    const joinDependencies = (Array.isArray(payload.joinDependencies)
+        ? payload.joinDependencies
+        : [])
+        .map((jd) => sanitizeJoinDependency(jd, validColumns))
+        .filter((jd): jd is JoinDependency => jd !== null);
+    const notes = normalizeUniqueStrings(payload.notes, 16);
+
+    return {
+        summary,
+        confidence,
+        functionalDependencies,
+        multivaluedDependencies,
+        joinDependencies,
+        notes,
+    };
+}
+
 function reconcileTableWithContext(table: TableSchema, contextTables: TableSchema[]): TableSchema {
     const columns = table.columns.map((column) => column.name);
     const sampleData = table.sampleData ?? [];
 
-    const primaryKey = inferPrimaryKey(columns, sampleData, { contextTables });
+    const primaryKey = inferPrimaryKey(columns, sampleData);
     const contextualForeignKeys = inferForeignKeysFromContext({
         tableName: table.name,
         columns,
@@ -1130,10 +1236,7 @@ function reconcileTableWithContext(table: TableSchema, contextTables: TableSchem
     });
 
     const foreignKeys = dedupeForeignKeys([...(table.foreignKeys ?? []), ...contextualForeignKeys]);
-    const fds = mergeFunctionalDependencies(
-        buildPrimaryKeyDependencies(columns, primaryKey),
-        table.fds ?? [],
-    );
+    const fds = mergeFunctionalDependencies(table.fds ?? []);
 
     return {
         ...table,
@@ -1150,27 +1253,16 @@ function reconcileTableWithContext(table: TableSchema, contextTables: TableSchem
 function inferPrimaryKey(
     columns: string[],
     rows: string[][],
-    context?: { contextTables?: TableSchema[] },
 ): string[] {
     if (columns.length === 0) return [];
-
-    const contextTables = context?.contextTables ?? [];
-    const contextKeyColumns = new Set(
-        contextTables
-            .flatMap((table) => table.primaryKey)
-            .map((column) => normalizeAttributeName(column)),
-    );
-
-    const isContextKeyColumn = (column: string): boolean => contextKeyColumns.has(normalizeAttributeName(column));
 
     const scoreKey = (key: string[]): number => {
         const sizePenalty = key.length * 100;
         const identifierBonus = key.reduce((sum, column) => sum + (isIdentifierLikeColumn(column) ? 30 : 0), 0);
         const exactIdBonus = key.some((column) => /^id$/i.test(column)) ? 18 : 0;
-        const contextBonus = key.reduce((sum, column) => sum + (isContextKeyColumn(column) ? 95 : 0), 0);
         const nonIdentifierPenalty = key.reduce((sum, column) => sum + (!isIdentifierLikeColumn(column) ? 6 : 0), 0);
 
-        return sizePenalty - identifierBonus - exactIdBonus - contextBonus + nonIdentifierPenalty;
+        return sizePenalty - identifierBonus - exactIdBonus + nonIdentifierPenalty;
     };
 
     const uniqueSingles = columns
@@ -1178,62 +1270,15 @@ function inferPrimaryKey(
         .map((column) => [column]);
 
     const uniqueCandidates = collectUniqueCandidates(columns, rows, 3);
+    const hasIdentifierColumn = columns.some((column) => isIdentifierLikeColumn(column));
 
     if (uniqueSingles.length > 0) {
         const singlesWithStrongSignal = uniqueSingles.filter(([column]) =>
-            isIdentifierLikeColumn(column) || isContextKeyColumn(column),
+            isIdentifierLikeColumn(column),
         );
 
         if (singlesWithStrongSignal.length > 0) {
             return [...singlesWithStrongSignal].sort((left, right) => scoreKey(left) - scoreKey(right))[0];
-        }
-    }
-
-    if (contextTables.length > 0 && uniqueCandidates.length > 0) {
-        const contextualCandidates: string[][] = [];
-
-        for (const table of contextTables) {
-            if (table.primaryKey.length === 0) continue;
-            const alignedContextKey = alignColumnsByName(columns, table.primaryKey);
-            if (!alignedContextKey || alignedContextKey.length === 0) continue;
-
-            if (isUniqueKey(columns, alignedContextKey, rows)) {
-                contextualCandidates.push(alignedContextKey);
-                continue;
-            }
-
-            const supersets = uniqueCandidates.filter((candidate) =>
-                alignedContextKey.every((contextColumn) => candidate.includes(contextColumn)),
-            );
-
-            if (supersets.length > 0) {
-                contextualCandidates.push(
-                    [...supersets].sort((left, right) => scoreKey(left) - scoreKey(right))[0],
-                );
-            }
-        }
-
-        const contextual = contextualCandidates.length > 0
-            ? contextualCandidates
-            : uniqueCandidates.filter((key) => key.some((column) => isContextKeyColumn(column)));
-
-        if (contextual.length > 0) {
-            const bestContextual = [...contextual].sort((left, right) => scoreKey(left) - scoreKey(right))[0];
-            const bestSingle = uniqueSingles.length > 0
-                ? [...uniqueSingles].sort((left, right) => scoreKey(left) - scoreKey(right))[0]
-                : null;
-
-            if (!bestSingle) {
-                return bestContextual;
-            }
-
-            const singleIsWeak = bestSingle.every((column) =>
-                !isIdentifierLikeColumn(column) && !isContextKeyColumn(column),
-            );
-
-            if (singleIsWeak || scoreKey(bestContextual) <= scoreKey(bestSingle) + 40) {
-                return bestContextual;
-            }
         }
     }
 
@@ -1252,6 +1297,25 @@ function inferPrimaryKey(
     }
 
     if (uniqueSingles.length > 0) {
+        const weakSingles = uniqueSingles.filter(([column]) =>
+            !isIdentifierLikeColumn(column),
+        );
+
+        // Guard against accidental one-column keys from tiny samples
+        // (e.g. "course" appears unique in 5 rows but is not the true key).
+        if (
+            hasIdentifierColumn
+            && weakSingles.length === uniqueSingles.length
+            && uniqueCandidates.some((key) => key.length > 1)
+        ) {
+            const compositeWithIdentifier = uniqueCandidates.filter((key) =>
+                key.length > 1 && key.some((column) => isIdentifierLikeColumn(column)),
+            );
+            if (compositeWithIdentifier.length > 0) {
+                return [...compositeWithIdentifier].sort((left, right) => scoreKey(left) - scoreKey(right))[0];
+            }
+        }
+
         return [...uniqueSingles].sort((left, right) => scoreKey(left) - scoreKey(right))[0];
     }
 
@@ -1277,7 +1341,7 @@ function buildTableFromText(
     const parsed = parseTableText(text);
     if (!parsed || parsed.rows.length === 0) return null;
 
-    const primaryKey = inferPrimaryKey(parsed.columns, parsed.rows, { contextTables });
+    const primaryKey = inferPrimaryKey(parsed.columns, parsed.rows);
     const foreignKeys = inferForeignKeysFromContext({
         tableName: name.trim() || `Table_${fallbackIndex}`,
         columns: parsed.columns,
@@ -1298,7 +1362,7 @@ function buildTableFromText(
         columns,
         primaryKey,
         foreignKeys,
-        fds: buildPrimaryKeyDependencies(parsed.columns, primaryKey),
+        fds: [],
         mvds: [],
         sampleData: parsed.rows,
     };
@@ -1477,7 +1541,7 @@ function buildTableFromGenerator(
     const sourcePrimaryKey = source.columns.filter((column) => column.primaryKey).map((column) => column.name);
     const primaryKey = sourcePrimaryKey.length > 0
         ? sourcePrimaryKey
-        : inferPrimaryKey(columnNames, sampleData, { contextTables });
+        : inferPrimaryKey(columnNames, sampleData);
 
     const columns: Column[] = source.columns.map((column) => ({
         name: column.name,
@@ -1672,6 +1736,8 @@ function buildForeignKeyEdgesForNode(
             id: edgeId,
             source: node.id,
             target: targetNode.id,
+            sourceHandle: NODE_SOURCE_HANDLE_ID,
+            targetHandle: NODE_TARGET_HANDLE_ID,
             type: 'smoothstep',
             animated: true,
             label: `FK: ${foreignKey.columns.join(', ')} -> ${foreignKey.referencesTable}`,
@@ -1727,9 +1793,12 @@ function reconcileCanvasesWithContext(canvases: Record<CanvasStage, StageCanvas>
             reconciledEdges = [...reconciledEdges, ...inferredEdges];
         }
 
+        const stageViewport = sanitizeViewport(sourceStage.viewport);
+
         next[stage] = {
             nodes: reconciledNodes,
             edges: reconciledEdges,
+            ...(stageViewport ? { viewport: stageViewport } : {}),
         };
     }
 
@@ -1739,14 +1808,22 @@ function reconcileCanvasesWithContext(canvases: Record<CanvasStage, StageCanvas>
 function TableCanvasNode({ data, selected }: NodeProps<Node<CanvasNodeData>>) {
     return (
         <div className={selected ? 'rounded-[1.15rem] ring-2 ring-amber-300/45' : undefined}>
+            <Handle
+                id={NODE_TARGET_HANDLE_ID}
+                type="target"
+                position={Position.Left}
+                style={{ opacity: 0, width: 8, height: 8, border: 'none', background: 'transparent' }}
+            />
             {data.label}
+            <Handle
+                id={NODE_SOURCE_HANDLE_ID}
+                type="source"
+                position={Position.Right}
+                style={{ opacity: 0, width: 8, height: 8, border: 'none', background: 'transparent' }}
+            />
         </div>
     );
 }
-
-const NODE_TYPES = Object.freeze({
-    table: TableCanvasNode,
-}) satisfies NodeTypes;
 
 const FLOW_PRO_OPTIONS = { hideAttribution: true } as const;
 
@@ -1808,9 +1885,26 @@ export default function NormalizerPage() {
     const [generatorMenuPlacement, setGeneratorMenuPlacement] = useState<'top' | 'bottom'>('bottom');
     const [generatorMenuLayout, setGeneratorMenuLayout] = useState<GeneratorMenuLayout | null>(null);
     const [createTableError, setCreateTableError] = useState('');
+
+    const [isFdDialogOpen, setIsFdDialogOpen] = useState(false);
+    const [fdDialogStage, setFdDialogStage] = useState<CanvasStage>('UNF');
+    const [fdDialogTableId, setFdDialogTableId] = useState('');
+    const [fdDeterminantDraft, setFdDeterminantDraft] = useState<string[]>([]);
+    const [fdDependentDraft, setFdDependentDraft] = useState<string[]>([]);
+    const [fdDialogError, setFdDialogError] = useState('');
+    const [isFdStageMenuOpen, setIsFdStageMenuOpen] = useState(false);
+    const [isFdTableMenuOpen, setIsFdTableMenuOpen] = useState(false);
+
+    const [isAiLoading, setIsAiLoading] = useState(false);
+    const [aiBatchError, setAiBatchError] = useState('');
+    const [aiBatchSummary, setAiBatchSummary] = useState('');
+    const flowNodeTypes = useMemo<NodeTypes>(() => ({ table: TableCanvasNode }), []);
+
     const generatorMenuRef = useRef<HTMLDivElement | null>(null);
     const generatorMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
     const generatorMenuDropdownRef = useRef<HTMLDivElement | null>(null);
+    const fdStageMenuRef = useRef<HTMLDivElement | null>(null);
+    const fdTableMenuRef = useRef<HTMLDivElement | null>(null);
     const normalizerStudioHydratedRef = useRef(false);
     const skipNextNormalizerStudioPersistRef = useRef(true);
     const normalizerStudioWriteTimerRef = useRef<number | null>(null);
@@ -1992,7 +2086,35 @@ export default function NormalizerPage() {
         [activeCanvas.nodes],
     );
     const selectedNodeId = activeCanvas.nodes.find((node) => node.selected)?.id ?? null;
-
+    const allStageTables = useMemo<StageTableReference[]>(
+        () => STAGES.flatMap((stage) => (
+            canvases[stage].nodes
+                .filter((node): node is Node<CanvasNodeData> => isCanvasNodeData(node.data))
+                .map((node) => ({
+                    stage,
+                    nodeId: node.id,
+                    table: node.data.table,
+                }))
+        )),
+        [canvases],
+    );
+    const hasAnyTables = allStageTables.length > 0;
+    const fdDialogTableOptions = useMemo(
+        () => allStageTables.filter((entry) => entry.stage === fdDialogStage),
+        [allStageTables, fdDialogStage],
+    );
+    const fdDialogTable = useMemo(
+        () => fdDialogTableOptions.find((entry) => entry.table.id === fdDialogTableId)?.table ?? null,
+        [fdDialogTableId, fdDialogTableOptions],
+    );
+    const fdStageTableCounts = useMemo(
+        () =>
+            STAGES.map((stage) => ({
+                stage,
+                count: allStageTables.filter((entry) => entry.stage === stage).length,
+            })),
+        [allStageTables],
+    );
     const updateActiveCanvas = useCallback(
         (updater: (canvas: StageCanvas) => StageCanvas) => {
             setCanvases((previous) => ({
@@ -2001,6 +2123,48 @@ export default function NormalizerPage() {
             }));
         },
         [activeStage],
+    );
+
+    const updateTableInStage = useCallback(
+        (
+            stage: CanvasStage,
+            tableId: string,
+            updater: (table: TableSchema) => TableSchema,
+        ) => {
+            setVerification(null);
+            setCanvases((previous) => {
+                const stageCanvas = previous[stage];
+                let changed = false;
+                const nextNodes = stageCanvas.nodes.map((node) => {
+                    if (!isCanvasNodeData(node.data) || node.data.table.id !== tableId) {
+                        return node;
+                    }
+
+                    const nextTable = updater(node.data.table);
+                    changed = true;
+                    return {
+                        ...node,
+                        data: {
+                            ...node.data,
+                            table: nextTable,
+                            label: renderTableLabel(nextTable),
+                        },
+                    };
+                });
+
+                if (!changed) return previous;
+
+                const nextCanvases = {
+                    ...previous,
+                    [stage]: {
+                        ...stageCanvas,
+                        nodes: nextNodes,
+                    },
+                };
+                return reconcileCanvasesWithContext(nextCanvases);
+            });
+        },
+        [],
     );
 
     const onNodesChange = useCallback(
@@ -2067,6 +2231,8 @@ export default function NormalizerPage() {
                 edges: addEdge(
                     {
                         ...connection,
+                        sourceHandle: connection.sourceHandle ?? NODE_SOURCE_HANDLE_ID,
+                        targetHandle: connection.targetHandle ?? NODE_TARGET_HANDLE_ID,
                         type: 'smoothstep',
                         animated: true,
                         style: CANVAS_EDGE_STYLE,
@@ -2174,6 +2340,267 @@ export default function NormalizerPage() {
         closeGeneratorMenu();
     }, [activeCanvas.nodes.length, addTableToActiveCanvas, closeCreateDialog, closeGeneratorMenu, draftTableName, generatorTables, keyContextTables, selectedGeneratorIndex]);
 
+    const resolvePreferredTableTarget = useCallback((): StageTableReference | null => {
+        if (selectedNodeId) {
+            const selectedInStage = allStageTables.find((entry) =>
+                entry.stage === activeStage && entry.nodeId === selectedNodeId,
+            );
+            if (selectedInStage) return selectedInStage;
+        }
+
+        const activeStageFirst = allStageTables.find((entry) => entry.stage === activeStage);
+        if (activeStageFirst) return activeStageFirst;
+
+        return allStageTables[0] ?? null;
+    }, [activeStage, allStageTables, selectedNodeId]);
+
+    const closeFdDialog = useCallback(() => {
+        setIsFdDialogOpen(false);
+        setFdDialogError('');
+        setFdDeterminantDraft([]);
+        setFdDependentDraft([]);
+        setIsFdStageMenuOpen(false);
+        setIsFdTableMenuOpen(false);
+    }, []);
+
+    const openFdDialog = useCallback(() => {
+        const target = resolvePreferredTableTarget();
+        if (!target) {
+            setFdDialogError('Add at least one table before adding functional dependencies.');
+            setIsFdDialogOpen(true);
+            return;
+        }
+
+        setFdDialogStage(target.stage);
+        setFdDialogTableId(target.table.id);
+        setFdDeterminantDraft([]);
+        setFdDependentDraft([]);
+        setFdDialogError('');
+        setIsFdDialogOpen(true);
+    }, [resolvePreferredTableTarget]);
+
+    const toggleFdDeterminant = useCallback((column: string) => {
+        setFdDialogError('');
+        setFdDeterminantDraft((previous) => (
+            previous.includes(column)
+                ? previous.filter((value) => value !== column)
+                : [...previous, column]
+        ));
+        setFdDependentDraft((previous) => previous.filter((value) => value !== column));
+    }, []);
+
+    const toggleFdDependent = useCallback((column: string) => {
+        setFdDialogError('');
+        setFdDependentDraft((previous) => (
+            previous.includes(column)
+                ? previous.filter((value) => value !== column)
+                : [...previous, column]
+        ));
+        setFdDeterminantDraft((previous) => previous.filter((value) => value !== column));
+    }, []);
+
+    const addFunctionalDependencyToTable = useCallback(() => {
+        if (!fdDialogTable) {
+            setFdDialogError('Select a table first.');
+            return;
+        }
+
+        const determinant = Array.from(new Set(fdDeterminantDraft));
+        const dependent = Array.from(new Set(fdDependentDraft)).filter((attribute) => !determinant.includes(attribute));
+        if (determinant.length === 0 || dependent.length === 0) {
+            setFdDialogError('Select at least one determinant and one dependent attribute.');
+            return;
+        }
+
+        updateTableInStage(fdDialogStage, fdDialogTable.id, (table) => ({
+            ...table,
+            fds: mergeFunctionalDependencies(table.fds ?? [], [{ determinant, dependent }]),
+        }));
+        setFdDeterminantDraft([]);
+        setFdDependentDraft([]);
+        setFdDialogError('');
+    }, [fdDependentDraft, fdDeterminantDraft, fdDialogStage, fdDialogTable, updateTableInStage]);
+
+    const removeFunctionalDependencyFromTable = useCallback((index: number) => {
+        if (!fdDialogTable) return;
+        updateTableInStage(fdDialogStage, fdDialogTable.id, (table) => ({
+            ...table,
+            fds: (table.fds ?? []).filter((_, currentIndex) => currentIndex !== index),
+        }));
+        setFdDialogError('');
+    }, [fdDialogStage, fdDialogTable, updateTableInStage]);
+
+    const runAiAnalysisForWorkflow = useCallback(async () => {
+        if (!hasAnyTables || isAiLoading) return;
+
+        setIsAiLoading(true);
+        setAiBatchError('');
+        setAiBatchSummary('');
+
+        try {
+            const reconciledCanvases = reconcileCanvasesWithContext(canvases);
+            setCanvases(reconciledCanvases);
+
+            const workflow = STAGES.map((stage) => ({
+                stage,
+                tables: reconciledCanvases[stage].nodes
+                    .filter((node) => isCanvasNodeData(node.data))
+                    .map((node) => ({
+                        tableId: node.data.table.id,
+                        name: node.data.table.name,
+                        columns: node.data.table.columns.map((column) => column.name),
+                        primaryKey: node.data.table.primaryKey,
+                        fds: node.data.table.fds,
+                        mvds: node.data.table.mvds,
+                        joinDependencies: node.data.table.joinDependencies ?? [],
+                        sampleData: node.data.table.sampleData ?? [],
+                    })),
+            })).filter((stage) => stage.tables.length > 0);
+
+            if (workflow.length === 0) {
+                setAiBatchError('No tables found to analyze.');
+                return;
+            }
+
+            const response = await fetch('/api/normalizer/analyze-ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workflow }),
+            });
+
+            const payload = await response.json().catch(() => null) as {
+                error?: string;
+                summary?: string;
+                stages?: Array<{
+                    stage?: unknown;
+                    tables?: Array<{ tableId?: unknown; suggestions?: unknown }>;
+                }>;
+            } | null;
+
+            if (!response.ok) {
+                throw new Error(payload?.error ?? 'AI analysis failed.');
+            }
+
+            const stageSuggestions = Array.isArray(payload?.stages) ? payload.stages : [];
+            let appliedCount = 0;
+
+            const nextCanvases = { ...reconciledCanvases };
+            for (const rawStage of stageSuggestions) {
+                const stageName = typeof rawStage?.stage === 'string' ? rawStage.stage as CanvasStage : null;
+                if (!stageName || !STAGES.includes(stageName)) continue;
+                const tableSuggestions = Array.isArray(rawStage.tables) ? rawStage.tables : [];
+
+                nextCanvases[stageName] = {
+                    ...nextCanvases[stageName],
+                    nodes: nextCanvases[stageName].nodes.map((node) => {
+                        if (!isCanvasNodeData(node.data)) return node;
+                        const tableMatch = tableSuggestions.find((entry) => entry?.tableId === node.data.table.id);
+                        if (!tableMatch) return node;
+
+                        const parsed = sanitizeAiSuggestionsForTable(tableMatch.suggestions, node.data.table);
+                        if (!parsed) return node;
+
+                        appliedCount += 1;
+                        const nextJoinDependencies = mergeJoinDependencies(
+                            node.data.table.joinDependencies ?? [],
+                            parsed.joinDependencies,
+                        );
+                        const nextTable: TableSchema = {
+                            ...node.data.table,
+                            fds: mergeFunctionalDependencies(node.data.table.fds ?? [], parsed.functionalDependencies),
+                            mvds: mergeMultivaluedDependencies(node.data.table.mvds ?? [], parsed.multivaluedDependencies),
+                            ...(nextJoinDependencies.length > 0 ? { joinDependencies: nextJoinDependencies } : {}),
+                        };
+                        return {
+                            ...node,
+                            data: {
+                                ...node.data,
+                                table: nextTable,
+                                label: renderTableLabel(nextTable),
+                            },
+                        };
+                    }),
+                };
+            }
+
+            const finalCanvases = reconcileCanvasesWithContext(nextCanvases);
+            setCanvases(finalCanvases);
+            setVerification(null);
+            setAiBatchSummary(
+                appliedCount > 0
+                    ? `${payload?.summary ?? 'AI analysis completed.'} Auto-applied suggestions to ${appliedCount} table(s).`
+                    : `${payload?.summary ?? 'AI analysis completed.'} No applicable suggestions were returned.`,
+            );
+        } catch (error) {
+            setAiBatchError(error instanceof Error ? error.message : 'Unable to run AI workflow analysis.');
+        } finally {
+            setIsAiLoading(false);
+        }
+    }, [canvases, hasAnyTables, isAiLoading]);
+
+    useEffect(() => {
+        if (!isFdDialogOpen) return;
+        if (fdDialogTableOptions.length === 0) {
+            if (fdDialogTableId !== '') setFdDialogTableId('');
+            return;
+        }
+
+        const exists = fdDialogTableOptions.some((entry) => entry.table.id === fdDialogTableId);
+        if (!exists) {
+            setFdDialogTableId(fdDialogTableOptions[0].table.id);
+        }
+    }, [fdDialogTableId, fdDialogTableOptions, isFdDialogOpen]);
+
+    useEffect(() => {
+        if (!isFdDialogOpen) return;
+
+        const handlePointerDown = (event: MouseEvent) => {
+            if (!(event.target instanceof Element)) {
+                setIsFdStageMenuOpen(false);
+                setIsFdTableMenuOpen(false);
+                return;
+            }
+
+            const withinStageMenu = fdStageMenuRef.current?.contains(event.target) ?? false;
+            const withinTableMenu = fdTableMenuRef.current?.contains(event.target) ?? false;
+            if (!withinStageMenu) setIsFdStageMenuOpen(false);
+            if (!withinTableMenu) setIsFdTableMenuOpen(false);
+        };
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setIsFdStageMenuOpen(false);
+                setIsFdTableMenuOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isFdDialogOpen]);
+
+    useEffect(() => {
+        if (!fdDialogTable) {
+            setFdDeterminantDraft((previous) => (previous.length === 0 ? previous : []));
+            setFdDependentDraft((previous) => (previous.length === 0 ? previous : []));
+            return;
+        }
+
+        const validColumns = new Set(fdDialogTable.columns.map((column) => column.name));
+        setFdDeterminantDraft((previous) => {
+            const next = previous.filter((column) => validColumns.has(column));
+            return next.length === previous.length ? previous : next;
+        });
+        setFdDependentDraft((previous) => {
+            const next = previous.filter((column) => validColumns.has(column));
+            return next.length === previous.length ? previous : next;
+        });
+    }, [fdDialogTable]);
+
     useEffect(() => {
         if (!isGeneratorMenuOpen) return;
 
@@ -2237,6 +2664,20 @@ export default function NormalizerPage() {
         setVerification(null);
         updateActiveCanvas(() => ({ nodes: [], edges: [] }));
     }, [updateActiveCanvas]);
+
+    const clearAllCanvases = useCallback(() => {
+        setVerification(null);
+        setIsVerificationModalOpen(false);
+        setOpenFailureReasons({});
+        setAiBatchError('');
+        setAiBatchSummary('');
+        setActiveStage(NORMALIZER_STUDIO_FALLBACK_STAGE);
+        setCanvases(createEmptyCanvases());
+        pendingNormalizerStudioWriteRef.current = null;
+
+        const storageKey = getNormalizerStudioStorageKey(storageScopeId);
+        clearPersistedNormalizerStudioState(storageKey);
+    }, [storageScopeId]);
 
     const verify = useCallback(() => {
         const reconciledCanvases = reconcileCanvasesWithContext(canvases);
@@ -2324,6 +2765,24 @@ export default function NormalizerPage() {
                             </button>
 
                             <button
+                                onClick={openFdDialog}
+                                disabled={!hasAnyTables}
+                                className="inline-flex items-center gap-2 rounded-xl border border-sky-500/35 bg-sky-500/15 px-4 py-2 text-sm font-semibold text-sky-300 disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                                <WandSparkles className="h-4 w-4" />
+                                Add FDs
+                            </button>
+
+                            <button
+                                onClick={runAiAnalysisForWorkflow}
+                                disabled={!hasAnyTables || isAiLoading}
+                                className="inline-flex items-center gap-2 rounded-xl border border-violet-500/35 bg-violet-500/15 px-4 py-2 text-sm font-semibold text-violet-300 disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                                {isAiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit className="h-4 w-4" />}
+                                {isAiLoading ? 'Analyzing all phases…' : 'Analyze with AI'}
+                            </button>
+
+                            <button
                                 onClick={verify}
                                 className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white"
                                 style={{
@@ -2333,6 +2792,15 @@ export default function NormalizerPage() {
                             >
                                 <ShieldCheck className="h-4 w-4" />
                                 Verify
+                            </button>
+
+                            <button
+                                onClick={clearAllCanvases}
+                                disabled={!hasAnyTables}
+                                className="inline-flex items-center gap-2 rounded-xl border border-rose-500/35 bg-rose-500/15 px-4 py-2 text-sm font-semibold text-rose-300 disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                                Clear all
                             </button>
                         </div>
                     </div>
@@ -2365,13 +2833,28 @@ export default function NormalizerPage() {
                             );
                         })}
                     </div>
+
+                    {(aiBatchError || aiBatchSummary) && (
+                        <div className="mt-2">
+                            {aiBatchError && (
+                                <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                                    {aiBatchError}
+                                </p>
+                            )}
+                            {!aiBatchError && aiBatchSummary && (
+                                <p className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-100">
+                                    {aiBatchSummary}
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <div className="normalizer-canvas-wrapper min-h-[460px] flex-1 overflow-hidden rounded-2xl border border-border bg-card/70">
                     <ReactFlow
                         nodes={activeCanvasNodes}
                         edges={activeCanvas.edges}
-                        nodeTypes={NODE_TYPES}
+                        nodeTypes={flowNodeTypes}
                         onInit={onFlowInit}
                         onNodesChange={onNodesChange}
                         onEdgesChange={onEdgesChange}
@@ -2600,6 +3083,292 @@ export default function NormalizerPage() {
                                         </div>
                                     ))}
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {isFdDialogOpen && (
+                    <div
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md"
+                        onClick={closeFdDialog}
+                    >
+                        <div
+                            className="w-full max-w-5xl max-h-[88vh] overflow-hidden rounded-3xl border border-border/80 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 shadow-2xl"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="flex items-start justify-between border-b border-border/70 px-5 py-4">
+                                <div>
+                                    <h2 className="text-xl font-bold text-foreground">Functional Dependency Builder</h2>
+                                    <p className="mt-1 text-xs text-muted-foreground/90">
+                                        Pick a stage and table, then add precise determinant/dependent sets from existing columns.
+                                    </p>
+                                </div>
+
+                                <button
+                                    onClick={closeFdDialog}
+                                    className="rounded-xl border border-border/80 bg-card/60 p-2 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                                    aria-label="Close functional dependency dialog"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+
+                            <div className="max-h-[calc(88vh-88px)] space-y-4 overflow-y-auto p-4">
+                                <div className="rounded-xl border border-border/70 bg-gradient-to-br from-slate-900/85 via-slate-900/65 to-slate-950/80 p-3.5">
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                        <div className="space-y-1.5">
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                                Stage
+                                            </p>
+                                            <div className="relative" ref={fdStageMenuRef}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setIsFdStageMenuOpen((previous) => !previous);
+                                                        setIsFdTableMenuOpen(false);
+                                                    }}
+                                                    className="group flex w-full items-center justify-between rounded-xl border border-border/80 bg-card/80 px-3 py-2.5 text-left transition-all hover:border-sky-500/45 hover:bg-sky-500/5"
+                                                    aria-haspopup="listbox"
+                                                    aria-expanded={isFdStageMenuOpen}
+                                                    aria-label="Select normalization stage"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-semibold text-foreground">{fdDialogStage}</p>
+                                                        <p className="truncate text-[11px] text-muted-foreground">
+                                                            {(fdStageTableCounts.find((entry) => entry.stage === fdDialogStage)?.count ?? 0)} table(s) in this stage
+                                                        </p>
+                                                    </div>
+                                                    <ChevronDown
+                                                        className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${isFdStageMenuOpen ? 'rotate-180 text-sky-300' : 'group-hover:text-sky-300'}`}
+                                                    />
+                                                </button>
+
+                                                {isFdStageMenuOpen && (
+                                                    <div
+                                                        className="absolute left-0 right-0 top-[calc(100%+0.45rem)] z-20 space-y-1 rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-xl backdrop-blur-sm"
+                                                        role="listbox"
+                                                        aria-label="Normalization stages"
+                                                    >
+                                                        {fdStageTableCounts.map((entry) => {
+                                                            const isSelected = entry.stage === fdDialogStage;
+                                                            return (
+                                                                <button
+                                                                    key={`fd_stage_${entry.stage}`}
+                                                                    type="button"
+                                                                    role="option"
+                                                                    aria-selected={isSelected}
+                                                                    onClick={() => {
+                                                                        setFdDialogStage(entry.stage);
+                                                                        setFdDialogError('');
+                                                                        setFdDeterminantDraft([]);
+                                                                        setFdDependentDraft([]);
+                                                                        setIsFdStageMenuOpen(false);
+                                                                    }}
+                                                                    className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors ${isSelected ? 'border border-sky-500/35 bg-sky-500/15' : 'border border-transparent hover:bg-muted/70'}`}
+                                                                >
+                                                                    <div className="min-w-0">
+                                                                        <p className="truncate text-xs font-semibold text-foreground">{entry.stage}</p>
+                                                                        <p className="truncate text-[11px] text-muted-foreground">{entry.count} table(s)</p>
+                                                                    </div>
+                                                                    {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-sky-300" />}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                                Table
+                                            </p>
+                                            <div className="relative" ref={fdTableMenuRef}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (fdDialogTableOptions.length === 0) return;
+                                                        setIsFdTableMenuOpen((previous) => !previous);
+                                                        setIsFdStageMenuOpen(false);
+                                                    }}
+                                                    disabled={fdDialogTableOptions.length === 0}
+                                                    className="group flex w-full items-center justify-between rounded-xl border border-border/80 bg-card/80 px-3 py-2.5 text-left transition-all hover:border-violet-500/45 hover:bg-violet-500/5 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    aria-haspopup="listbox"
+                                                    aria-expanded={isFdTableMenuOpen}
+                                                    aria-label="Select table"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-semibold text-foreground">
+                                                            {fdDialogTable?.name ?? 'No tables in selected stage'}
+                                                        </p>
+                                                        <p className="truncate text-[11px] text-muted-foreground">
+                                                            {fdDialogTable ? `${fdDialogTable.columns.length} column(s)` : 'Add tables to this stage first'}
+                                                        </p>
+                                                    </div>
+                                                    <ChevronDown
+                                                        className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${isFdTableMenuOpen ? 'rotate-180 text-violet-300' : 'group-hover:text-violet-300'}`}
+                                                    />
+                                                </button>
+
+                                                {isFdTableMenuOpen && fdDialogTableOptions.length > 0 && (
+                                                    <div
+                                                        className="absolute left-0 right-0 top-[calc(100%+0.45rem)] z-20 space-y-1 rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-xl backdrop-blur-sm"
+                                                        role="listbox"
+                                                        aria-label="Stage tables"
+                                                    >
+                                                        {fdDialogTableOptions.map((entry) => {
+                                                            const isSelected = entry.table.id === fdDialogTableId;
+                                                            return (
+                                                                <button
+                                                                    key={`fd_table_${entry.stage}_${entry.table.id}`}
+                                                                    type="button"
+                                                                    role="option"
+                                                                    aria-selected={isSelected}
+                                                                    onClick={() => {
+                                                                        setFdDialogTableId(entry.table.id);
+                                                                        setFdDialogError('');
+                                                                        setFdDeterminantDraft([]);
+                                                                        setFdDependentDraft([]);
+                                                                        setIsFdTableMenuOpen(false);
+                                                                    }}
+                                                                    className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors ${isSelected ? 'border border-violet-500/35 bg-violet-500/15' : 'border border-transparent hover:bg-muted/70'}`}
+                                                                >
+                                                                    <div className="min-w-0">
+                                                                        <p className="truncate text-xs font-semibold text-foreground">{entry.table.name}</p>
+                                                                        <p className="truncate text-[11px] text-muted-foreground">{entry.table.columns.length} column(s)</p>
+                                                                    </div>
+                                                                    {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-violet-300" />}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {!fdDialogTable ? (
+                                    <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
+                                        No table selected. Add a table first, or choose another stage.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <div className="rounded-2xl border border-border/70 bg-card/45 p-3.5">
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                                Columns in {fdDialogTable.name}
+                                            </p>
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                {fdDialogTable.columns.map((column) => (
+                                                    <span
+                                                        key={`fd_col_${column.name}`}
+                                                        className="rounded-lg border border-border/80 bg-card/75 px-2 py-1 text-xs text-foreground/90"
+                                                    >
+                                                        {column.name}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="grid gap-3 md:grid-cols-2">
+                                            <div className="rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-500/14 to-sky-500/5 p-3.5">
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-sky-300">
+                                                    Determinant (Left Side)
+                                                </p>
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {fdDialogTable.columns.map((column) => {
+                                                        const selected = fdDeterminantDraft.includes(column.name);
+                                                        return (
+                                                            <button
+                                                                key={`det_${column.name}`}
+                                                                onClick={() => toggleFdDeterminant(column.name)}
+                                                                className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${selected
+                                                                    ? 'border-sky-400/55 bg-sky-500/25 text-sky-100'
+                                                                    : 'border-border/80 bg-card/75 text-muted-foreground hover:text-foreground'}`}
+                                                            >
+                                                                {column.name}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/14 to-violet-500/5 p-3.5">
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-violet-300">
+                                                    Dependent (Right Side)
+                                                </p>
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {fdDialogTable.columns.map((column) => {
+                                                        const selected = fdDependentDraft.includes(column.name);
+                                                        return (
+                                                            <button
+                                                                key={`dep_${column.name}`}
+                                                                onClick={() => toggleFdDependent(column.name)}
+                                                                className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${selected
+                                                                    ? 'border-violet-400/55 bg-violet-500/25 text-violet-100'
+                                                                    : 'border-border/80 bg-card/75 text-muted-foreground hover:text-foreground'}`}
+                                                            >
+                                                                {column.name}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <p className="text-xs text-muted-foreground">
+                                                {fdDeterminantDraft.length > 0 || fdDependentDraft.length > 0
+                                                    ? `${fdDeterminantDraft.join(', ') || '...'} -> ${fdDependentDraft.join(', ') || '...'}`
+                                                    : 'Select attributes to compose a functional dependency.'}
+                                            </p>
+
+                                            <button
+                                                onClick={addFunctionalDependencyToTable}
+                                                className="inline-flex items-center gap-2 rounded-lg border border-sky-500/35 bg-sky-500/15 px-3 py-2 text-xs font-semibold text-sky-300"
+                                            >
+                                                <Plus className="h-3.5 w-3.5" />
+                                                Add dependency
+                                            </button>
+                                        </div>
+
+                                        {fdDialogError && (
+                                            <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                                                {fdDialogError}
+                                            </p>
+                                        )}
+
+                                        <div className="rounded-2xl border border-border/70 bg-card/45 p-3.5">
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                                Existing dependencies
+                                            </p>
+
+                                            {(fdDialogTable.fds ?? []).length === 0 ? (
+                                                <p className="mt-2 text-xs text-muted-foreground">No manual dependencies on this table yet.</p>
+                                            ) : (
+                                                <div className="mt-2 space-y-2">
+                                                    {(fdDialogTable.fds ?? []).map((fd, index) => (
+                                                        <div
+                                                            key={`fd_existing_${index}`}
+                                                            className="flex items-center justify-between gap-2 rounded-lg border border-border/75 bg-card/75 px-2.5 py-2 text-xs"
+                                                        >
+                                                            <span className="text-foreground/90">
+                                                                {fd.determinant.join(', ')} {'->'} {fd.dependent.join(', ')}
+                                                            </span>
+                                                            <button
+                                                                onClick={() => removeFunctionalDependencyFromTable(index)}
+                                                                className="rounded border border-rose-500/35 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/20"
+                                                            >
+                                                                Remove
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
