@@ -971,7 +971,12 @@ export async function recordAttemptViolationEvent(options: {
 
   let nextViolationCount = toNumber(attempt.violation_count);
 
-  if (attempt.status === 'in_progress' && options.eventType === 'tab_switch') {
+  const shouldIncreaseViolationCount =
+    attempt.status === 'in_progress'
+    && (options.eventType === 'tab_switch' || options.eventType === 'blur')
+    && (options.actionTaken === 'warned' || options.actionTaken === 'force_submitted');
+
+  if (shouldIncreaseViolationCount) {
     const updateRes = await sql.raw(
       `
       UPDATE attempts

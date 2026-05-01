@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
+import { getSuspiciousShortcutDescriptor, getViewportCoverageRatio } from '@/lib/test/tamper-detection';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -48,6 +49,7 @@ interface Question {
 interface AttemptRecord {
   id: string;
   status: 'in_progress' | 'submitted';
+  violation_count?: number;
 }
 
 interface FeedbackState {
@@ -162,7 +164,11 @@ export default function InteractiveQuizAttemptPage() {
   const questionStartedAtRef = useRef<number>(Date.now());
   const advancingRef = useRef(false);
   const violationCountRef = useRef(0);
-  const lastTabSwitchAtRef = useRef(0);
+  const lastPrimaryViolationAtRef = useRef(0);
+  const blurStartedAtRef = useRef<number | null>(null);
+  const viewportDropStartedAtRef = useRef<number | null>(null);
+  const maxViewportCoverageRef = useRef(0);
+  const hadFullscreenRef = useRef(false);
   const forceSubmitInProgressRef = useRef(false);
   const answersRef = useRef<Record<string, string>>({});
   const timingRef = useRef<Record<string, number>>({});
@@ -234,13 +240,13 @@ export default function InteractiveQuizAttemptPage() {
 
   const recordViolation = useCallback(
     async (
-      eventType: 'tab_switch',
+      eventType: 'tab_switch' | 'blur',
       actionTaken: 'warned' | 'force_submitted',
       payload?: Record<string, unknown>,
     ) => {
       if (!attemptId || !testId) return;
       try {
-        await fetch(`/api/tests/${testId}/attempts/${attemptId}/violations`, {
+        const response = await fetch(`/api/tests/${testId}/attempts/${attemptId}/violations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -250,6 +256,12 @@ export default function InteractiveQuizAttemptPage() {
             occurred_at: new Date().toISOString(),
           }),
         });
+
+        const data = await response.json().catch(() => null);
+        const nextCount = data?.event?.violation_count;
+        if (typeof nextCount === 'number') {
+          violationCountRef.current = nextCount;
+        }
       } catch {
         // Logging failures should not block the attempt UI.
       }
@@ -402,6 +414,10 @@ export default function InteractiveQuizAttemptPage() {
           return;
         }
 
+        violationCountRef.current = typeof attempt.violation_count === 'number'
+          ? attempt.violation_count
+          : 0;
+
         const resolvedSettings = normalizeInteractiveSettings(loadedTest.interactive_settings);
         const rawQuestions = (questionsData.questions || []) as Question[];
         const mcqQuestions = rawQuestions.filter((question) => question.question_type === 'mcq' && question.options.length >= 2);
@@ -466,48 +482,222 @@ export default function InteractiveQuizAttemptPage() {
       return;
     }
 
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== 'hidden') return;
+    const PRIMARY_VIOLATION_COOLDOWN_MS = 1400;
+    const BLUR_MIN_DURATION_MS = 900;
+    const VIEWPORT_DROP_THRESHOLD = 0.14;
+    const VIEWPORT_DROP_MIN_DURATION_MS = 1600;
 
-      const now = Date.now();
-      if (now - lastTabSwitchAtRef.current < 1000) {
+    const raisePrimaryViolation = (
+      eventType: 'tab_switch' | 'blur',
+      reason: string,
+      payload: Record<string, unknown> = {},
+    ) => {
+      if (submitting || autoSubmitTriggered || forceSubmitInProgressRef.current) {
         return;
       }
-      lastTabSwitchAtRef.current = now;
+
+      const now = Date.now();
+      if (now - lastPrimaryViolationAtRef.current < PRIMARY_VIOLATION_COOLDOWN_MS) {
+        return;
+      }
+
+      lastPrimaryViolationAtRef.current = now;
+      blurStartedAtRef.current = null;
 
       const nextCount = violationCountRef.current + 1;
       violationCountRef.current = nextCount;
+      const action = nextCount >= 2 ? 'force_submitted' : 'warned';
 
       if (nextCount === 1) {
         setTabSwitchPopup({
           step: 1,
-          message: 'Warning: tab switch detected. Another switch will auto-submit your quiz.',
+          message: 'Warning: focus loss detected. Another integrity violation will auto-submit your quiz.',
           dismissible: true,
-        });
-        void recordViolation('tab_switch', 'warned', {
-          source: 'interactive_quiz_ui',
-          visibility_state: document.visibilityState,
-          tab_switch_count: nextCount,
         });
       } else {
         setTabSwitchPopup({
           step: 2,
-          message: 'Second tab switch detected. Auto-submitting your quiz now.',
+          message: 'Repeated integrity violations detected. Auto-submitting your quiz now.',
         });
-        void recordViolation('tab_switch', 'force_submitted', {
-          source: 'interactive_quiz_ui',
-          visibility_state: document.visibilityState,
-          tab_switch_count: nextCount,
-        });
+      }
+
+      void recordViolation(eventType, action, {
+        source: 'interactive_quiz_ui',
+        reason,
+        has_focus: document.hasFocus(),
+        visibility_state: document.visibilityState,
+        violation_count: nextCount,
+        ...payload,
+      });
+
+      if (nextCount >= 2) {
         void forceSubmitForViolation();
       }
     };
 
+    const startBlurWindow = () => {
+      if (document.visibilityState === 'hidden') {
+        return;
+      }
+
+      if (blurStartedAtRef.current === null) {
+        blurStartedAtRef.current = Date.now();
+      }
+    };
+
+    const finalizeBlurWindow = (reason: string) => {
+      const startedAt = blurStartedAtRef.current;
+      blurStartedAtRef.current = null;
+
+      if (!startedAt || document.visibilityState === 'hidden') {
+        return;
+      }
+
+      const durationMs = Date.now() - startedAt;
+      if (durationMs < BLUR_MIN_DURATION_MS) {
+        return;
+      }
+
+      raisePrimaryViolation('blur', reason, {
+        blur_duration_ms: durationMs,
+      });
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        viewportDropStartedAtRef.current = null;
+        raisePrimaryViolation('tab_switch', 'visibility_hidden');
+        return;
+      }
+
+      maxViewportCoverageRef.current = Math.max(
+        maxViewportCoverageRef.current,
+        getViewportCoverageRatio(),
+      );
+    };
+
+    const onWindowBlur = () => {
+      startBlurWindow();
+    };
+
+    const onWindowFocus = () => {
+      finalizeBlurWindow('window_blur');
+    };
+
+    const onPageHide = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        return;
+      }
+
+      raisePrimaryViolation('tab_switch', 'pagehide');
+    };
+
+    const onFullscreenChange = () => {
+      if (document.fullscreenElement) {
+        hadFullscreenRef.current = true;
+        maxViewportCoverageRef.current = Math.max(
+          maxViewportCoverageRef.current,
+          getViewportCoverageRatio(),
+        );
+        return;
+      }
+
+      if (hadFullscreenRef.current) {
+        raisePrimaryViolation('blur', 'fullscreen_exit', {
+          fullscreen_active: false,
+        });
+      }
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const shortcut = getSuspiciousShortcutDescriptor(event);
+      if (!shortcut) {
+        return;
+      }
+
+      raisePrimaryViolation('blur', 'overlay_shortcut', {
+        shortcut,
+      });
+    };
+
+    const pollFocusAndViewport = () => {
+      if (submitting || autoSubmitTriggered || forceSubmitInProgressRef.current) {
+        blurStartedAtRef.current = null;
+        viewportDropStartedAtRef.current = null;
+        return;
+      }
+
+      if (document.visibilityState === 'hidden') {
+        blurStartedAtRef.current = null;
+        viewportDropStartedAtRef.current = null;
+        return;
+      }
+
+      if (!document.hasFocus()) {
+        startBlurWindow();
+      } else {
+        finalizeBlurWindow('focus_poll_loss');
+      }
+
+      const coverage = getViewportCoverageRatio();
+      maxViewportCoverageRef.current = Math.max(maxViewportCoverageRef.current, coverage);
+      const baselineCoverage = maxViewportCoverageRef.current;
+      const coverageDrop = baselineCoverage - coverage;
+
+      if (baselineCoverage >= 0.9 && coverageDrop >= VIEWPORT_DROP_THRESHOLD) {
+        if (viewportDropStartedAtRef.current === null) {
+          viewportDropStartedAtRef.current = Date.now();
+          return;
+        }
+
+        if (Date.now() - viewportDropStartedAtRef.current >= VIEWPORT_DROP_MIN_DURATION_MS) {
+          viewportDropStartedAtRef.current = Date.now();
+          raisePrimaryViolation('blur', 'viewport_shrink', {
+            baseline_coverage: Number(baselineCoverage.toFixed(3)),
+            current_coverage: Number(coverage.toFixed(3)),
+            coverage_drop: Number(coverageDrop.toFixed(3)),
+          });
+        }
+
+        return;
+      }
+
+      viewportDropStartedAtRef.current = null;
+    };
+
+    hadFullscreenRef.current = !!document.fullscreenElement;
+    maxViewportCoverageRef.current = Math.max(
+      maxViewportCoverageRef.current,
+      getViewportCoverageRatio(),
+    );
+
     document.addEventListener('visibilitychange', onVisibilityChange);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('focus', onWindowFocus);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('keydown', onKeyDown, true);
+
+    const pollId = window.setInterval(pollFocusAndViewport, 700);
+
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('focus', onWindowFocus);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.clearInterval(pollId);
     };
-  }, [attemptId, autoSubmitTriggered, forceSubmitForViolation, loading, recordViolation, testId]);
+  }, [
+    attemptId,
+    autoSubmitTriggered,
+    forceSubmitForViolation,
+    loading,
+    recordViolation,
+    submitting,
+    testId,
+  ]);
 
   useEffect(() => {
     if (!currentQuestion || feedback || submitting || processingAnswer) {
@@ -758,17 +948,15 @@ export default function InteractiveQuizAttemptPage() {
                 onClick={() => void handleOptionSelect(option.key)}
                 disabled={disabled}
                 aria-pressed={isPending}
-                className={`group rounded-xl border px-4 py-3 text-left text-sm transition disabled:cursor-not-allowed ${
-                  isPending
+                className={`group rounded-xl border px-4 py-3 text-left text-sm transition disabled:cursor-not-allowed ${isPending
                     ? 'border-orange-400/60 bg-orange-400/15 text-foreground shadow-[0_0_0_1px_rgba(251,146,60,0.35)]'
                     : 'border-border/70 bg-background/70 hover:border-orange-300/40 hover:bg-orange-400/[0.06]'
-                } ${disabled && !isPending ? 'opacity-60' : ''}`}
+                  } ${disabled && !isPending ? 'opacity-60' : ''}`}
               >
-                <span className={`inline-flex w-7 shrink-0 rounded-md border px-2 py-0.5 text-xs font-semibold ${
-                  isPending
+                <span className={`inline-flex w-7 shrink-0 rounded-md border px-2 py-0.5 text-xs font-semibold ${isPending
                     ? 'border-orange-400/60 bg-orange-400/20 text-orange-100'
                     : 'border-border/70 bg-background/80 text-muted-foreground'
-                }`}>
+                  }`}>
                   {option.key}
                 </span>
                 <span className="ml-3 text-foreground">{option.text}</span>
@@ -851,11 +1039,10 @@ export default function InteractiveQuizAttemptPage() {
                   : 'No points for this one. Stay sharp for the next question.'}
             </p>
 
-            <div className={`mt-4 rounded-xl border px-3 py-2 text-sm font-semibold ${
-              feedback.isCorrect
+            <div className={`mt-4 rounded-xl border px-3 py-2 text-sm font-semibold ${feedback.isCorrect
                 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
                 : 'border-rose-500/30 bg-rose-500/10 text-rose-200'
-            }`}>
+              }`}>
               {feedback.isCorrect ? `+${feedback.points} points` : '+0 points'}
             </div>
 

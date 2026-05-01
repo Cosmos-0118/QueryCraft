@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
+import { getSuspiciousShortcutDescriptor, getViewportCoverageRatio } from '@/lib/test/tamper-detection';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -55,7 +56,7 @@ interface AttemptRecord {
 
 interface ViolationEvent {
   id: string;
-  event_type: 'tab_switch' | 'copy' | 'paste' | 'cut' | 'context_menu';
+  event_type: 'tab_switch' | 'blur' | 'copy' | 'paste' | 'cut' | 'context_menu';
   action_taken: 'logged' | 'warned' | 'blocked' | 'force_submitted';
   event_payload?: Record<string, unknown> | null;
   occurred_at: string;
@@ -127,6 +128,8 @@ function formatViolationEventType(eventType: ViolationEvent['event_type']) {
   switch (eventType) {
     case 'tab_switch':
       return 'Tab switch';
+    case 'blur':
+      return 'Focus loss';
     case 'copy':
       return 'Copy blocked';
     case 'paste':
@@ -170,7 +173,11 @@ export default function TestAttemptPage() {
   const pendingSaveRef = useRef(false);
   const scheduleAutoSaveRef = useRef<(() => void) | null>(null);
   const violationCountRef = useRef(0);
-  const lastTabSwitchAtRef = useRef(0);
+  const lastPrimaryViolationAtRef = useRef(0);
+  const blurStartedAtRef = useRef<number | null>(null);
+  const viewportDropStartedAtRef = useRef<number | null>(null);
+  const maxViewportCoverageRef = useRef(0);
+  const hadFullscreenRef = useRef(false);
   const blockedEventLastAtRef = useRef<Record<string, number>>({});
   const forceSubmitInProgressRef = useRef(false);
 
@@ -559,7 +566,7 @@ export default function TestAttemptPage() {
       }
 
       forceSubmitSucceeded = true;
-      setSaveMessage('Attempt auto-submitted after repeated tab switching.');
+      setSaveMessage('Attempt auto-submitted after repeated integrity violations.');
       setTabSwitchPopup({
         step: 2,
         message: 'Test auto submitted. Redirecting to your result...',
@@ -588,6 +595,11 @@ export default function TestAttemptPage() {
   useEffect(() => {
     if (loading || submitted || !attemptId || !testId) return;
 
+    const PRIMARY_VIOLATION_COOLDOWN_MS = 1400;
+    const BLUR_MIN_DURATION_MS = 900;
+    const VIEWPORT_DROP_THRESHOLD = 0.14;
+    const VIEWPORT_DROP_MIN_DURATION_MS = 1600;
+
     const logBlocked = (
       eventType: Extract<ViolationEvent['event_type'], 'copy' | 'paste' | 'cut' | 'context_menu'>,
       event: Event,
@@ -607,14 +619,22 @@ export default function TestAttemptPage() {
       });
     };
 
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== 'hidden') return;
-
-      const now = Date.now();
-      if (now - lastTabSwitchAtRef.current < 1000) {
+    const raisePrimaryViolation = (
+      eventType: Extract<ViolationEvent['event_type'], 'tab_switch' | 'blur'>,
+      reason: string,
+      payload: Record<string, unknown> = {},
+    ) => {
+      if (submitted || submitting || autoSubmitTriggered || forceSubmitInProgressRef.current) {
         return;
       }
-      lastTabSwitchAtRef.current = now;
+
+      const now = Date.now();
+      if (now - lastPrimaryViolationAtRef.current < PRIMARY_VIOLATION_COOLDOWN_MS) {
+        return;
+      }
+
+      lastPrimaryViolationAtRef.current = now;
+      blurStartedAtRef.current = null;
 
       const nextCount = violationCountRef.current + 1;
       const actionTaken: ViolationEvent['action_taken'] = nextCount >= 2 ? 'force_submitted' : 'warned';
@@ -625,25 +645,158 @@ export default function TestAttemptPage() {
       if (nextCount === 1) {
         setTabSwitchPopup({
           step: 1,
-          message: 'Warning: tab switch detected. Another switch will auto-submit your attempt.',
+          message: 'Warning: focus loss detected. Another integrity violation will auto-submit your attempt.',
           dismissible: true,
         });
       } else {
         setTabSwitchPopup({
           step: 2,
-          message: 'Second tab switch detected. Auto-submitting your attempt now.',
+          message: 'Repeated integrity violations detected. Auto-submitting your attempt now.',
         });
       }
 
-      void recordViolation('tab_switch', actionTaken, {
+      void recordViolation(eventType, actionTaken, {
         source: 'attempt_ui',
+        reason,
+        has_focus: document.hasFocus(),
         visibility_state: document.visibilityState,
-        tab_switch_count: nextCount,
+        violation_count: nextCount,
+        ...payload,
       });
 
       if (nextCount >= 2) {
         void forceSubmitForViolation();
       }
+    };
+
+    const startBlurWindow = () => {
+      if (document.visibilityState === 'hidden') {
+        return;
+      }
+
+      if (blurStartedAtRef.current === null) {
+        blurStartedAtRef.current = Date.now();
+      }
+    };
+
+    const finalizeBlurWindow = (reason: string) => {
+      const startedAt = blurStartedAtRef.current;
+      blurStartedAtRef.current = null;
+
+      if (!startedAt || document.visibilityState === 'hidden') {
+        return;
+      }
+
+      const durationMs = Date.now() - startedAt;
+      if (durationMs < BLUR_MIN_DURATION_MS) {
+        return;
+      }
+
+      raisePrimaryViolation('blur', reason, {
+        blur_duration_ms: durationMs,
+      });
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        viewportDropStartedAtRef.current = null;
+        raisePrimaryViolation('tab_switch', 'visibility_hidden');
+        return;
+      }
+
+      maxViewportCoverageRef.current = Math.max(
+        maxViewportCoverageRef.current,
+        getViewportCoverageRatio(),
+      );
+    };
+
+    const onWindowBlur = () => {
+      startBlurWindow();
+    };
+
+    const onWindowFocus = () => {
+      finalizeBlurWindow('window_blur');
+    };
+
+    const onPageHide = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        return;
+      }
+
+      raisePrimaryViolation('tab_switch', 'pagehide');
+    };
+
+    const onFullscreenChange = () => {
+      if (document.fullscreenElement) {
+        hadFullscreenRef.current = true;
+        maxViewportCoverageRef.current = Math.max(
+          maxViewportCoverageRef.current,
+          getViewportCoverageRatio(),
+        );
+        return;
+      }
+
+      if (hadFullscreenRef.current) {
+        raisePrimaryViolation('blur', 'fullscreen_exit', {
+          fullscreen_active: false,
+        });
+      }
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const shortcut = getSuspiciousShortcutDescriptor(event);
+      if (!shortcut) {
+        return;
+      }
+
+      raisePrimaryViolation('blur', 'overlay_shortcut', {
+        shortcut,
+      });
+    };
+
+    const pollFocusAndViewport = () => {
+      if (submitted || submitting || autoSubmitTriggered || forceSubmitInProgressRef.current) {
+        blurStartedAtRef.current = null;
+        viewportDropStartedAtRef.current = null;
+        return;
+      }
+
+      if (document.visibilityState === 'hidden') {
+        blurStartedAtRef.current = null;
+        viewportDropStartedAtRef.current = null;
+        return;
+      }
+
+      if (!document.hasFocus()) {
+        startBlurWindow();
+      } else {
+        finalizeBlurWindow('focus_poll_loss');
+      }
+
+      const coverage = getViewportCoverageRatio();
+      maxViewportCoverageRef.current = Math.max(maxViewportCoverageRef.current, coverage);
+      const baselineCoverage = maxViewportCoverageRef.current;
+      const coverageDrop = baselineCoverage - coverage;
+
+      if (baselineCoverage >= 0.9 && coverageDrop >= VIEWPORT_DROP_THRESHOLD) {
+        if (viewportDropStartedAtRef.current === null) {
+          viewportDropStartedAtRef.current = Date.now();
+          return;
+        }
+
+        if (Date.now() - viewportDropStartedAtRef.current >= VIEWPORT_DROP_MIN_DURATION_MS) {
+          viewportDropStartedAtRef.current = Date.now();
+          raisePrimaryViolation('blur', 'viewport_shrink', {
+            baseline_coverage: Number(baselineCoverage.toFixed(3)),
+            current_coverage: Number(coverage.toFixed(3)),
+            coverage_drop: Number(coverageDrop.toFixed(3)),
+          });
+        }
+
+        return;
+      }
+
+      viewportDropStartedAtRef.current = null;
     };
 
     const onCopy = (event: ClipboardEvent) => {
@@ -662,11 +815,24 @@ export default function TestAttemptPage() {
       logBlocked('context_menu', event);
     };
 
+    hadFullscreenRef.current = !!document.fullscreenElement;
+    maxViewportCoverageRef.current = Math.max(
+      maxViewportCoverageRef.current,
+      getViewportCoverageRatio(),
+    );
+
     document.addEventListener('visibilitychange', onVisibilityChange);
     document.addEventListener('copy', onCopy);
     document.addEventListener('paste', onPaste);
     document.addEventListener('cut', onCut);
     document.addEventListener('contextmenu', onContextMenu);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('focus', onWindowFocus);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('keydown', onKeyDown, true);
+
+    const pollId = window.setInterval(pollFocusAndViewport, 700);
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -674,8 +840,23 @@ export default function TestAttemptPage() {
       document.removeEventListener('paste', onPaste);
       document.removeEventListener('cut', onCut);
       document.removeEventListener('contextmenu', onContextMenu);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('focus', onWindowFocus);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.clearInterval(pollId);
     };
-  }, [attemptId, forceSubmitForViolation, loading, recordViolation, submitted, testId]);
+  }, [
+    attemptId,
+    autoSubmitTriggered,
+    forceSubmitForViolation,
+    loading,
+    recordViolation,
+    submitted,
+    submitting,
+    testId,
+  ]);
 
   const navigateToQuestion = useCallback(
     (targetIndex: number) => {
@@ -996,13 +1177,12 @@ export default function TestAttemptPage() {
               <button
                 key={question.id}
                 onClick={() => navigateToQuestion(index)}
-                className={`h-8 w-8 rounded-full border text-xs font-semibold transition ${
-                  isActive
+                className={`h-8 w-8 rounded-full border text-xs font-semibold transition ${isActive
                     ? 'border-teal-400/50 bg-teal-400/15 text-teal-200'
                     : isAnswered
                       ? 'border-emerald-500/40 bg-emerald-500/12 text-emerald-300'
                       : 'border-border/70 bg-background/50 text-muted-foreground hover:border-border hover:text-foreground'
-                }`}
+                  }`}
               >
                 {index + 1}
               </button>
@@ -1042,11 +1222,10 @@ export default function TestAttemptPage() {
                           if (saveMessage) setSaveMessage(null);
                           scheduleAutoSave();
                         }}
-                        className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm transition ${
-                          isSelected
+                        className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm transition ${isSelected
                             ? 'border-teal-400/50 bg-teal-400/15 text-teal-100'
                             : 'border-border/70 bg-background/70 text-foreground hover:border-border'
-                        }`}
+                          }`}
                       >
                         <span className="font-semibold">{option.key}.</span> {option.text}
                       </button>
