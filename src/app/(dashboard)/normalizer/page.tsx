@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
     addEdge,
     applyEdgeChanges,
@@ -75,6 +76,14 @@ interface StageVerification {
 interface VerificationSummary {
     allPass: boolean;
     stages: StageVerification[];
+}
+
+interface GeneratorMenuLayout {
+    left: number;
+    width: number;
+    maxHeight: number;
+    top?: number;
+    bottom?: number;
 }
 
 const STAGES: CanvasStage[] = ['UNF', '1NF', '2NF', '3NF', '4NF', '5NF'];
@@ -229,29 +238,414 @@ function hasUniqueValues(columnIndex: number, rows: string[][]): boolean {
     return true;
 }
 
-function inferPrimaryKey(columns: string[], rows: string[][]): string[] {
+function normalizeAttributeName(value: string): string {
+    return value.trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function isIdentifierLikeColumn(column: string): boolean {
+    return /(^id$|_id$|id$|_key$|key$|_code$|code$|_no$|_number$|uuid$)/i.test(column);
+}
+
+function* columnCombinations(columns: string[], size: number): Generator<string[]> {
+    if (size <= 0 || size > columns.length) return;
+
+    const combo: string[] = [];
+
+    function* dfs(start: number, remaining: number): Generator<string[]> {
+        if (remaining === 0) {
+            yield [...combo];
+            return;
+        }
+
+        for (let index = start; index <= columns.length - remaining; index += 1) {
+            combo.push(columns[index]);
+            yield* dfs(index + 1, remaining - 1);
+            combo.pop();
+        }
+    }
+
+    yield* dfs(0, size);
+}
+
+function isUniqueKey(columns: string[], key: string[], rows: string[][]): boolean {
+    if (rows.length === 0 || key.length === 0) return false;
+
+    const indexes = key.map((column) => columns.indexOf(column)).filter((index) => index >= 0);
+    if (indexes.length !== key.length) return false;
+
+    const seen = new Set<string>();
+    for (const row of rows) {
+        const tuple = indexes.map((index) => row[index] ?? '').join('\u241F');
+        if (seen.has(tuple)) return false;
+        seen.add(tuple);
+    }
+
+    return true;
+}
+
+function collectUniqueCandidates(columns: string[], rows: string[][], maxSize = 3): string[][] {
+    const candidates: string[][] = [];
+    const bounded = Math.max(1, Math.min(maxSize, columns.length));
+
+    for (let size = 1; size <= bounded; size += 1) {
+        for (const combo of columnCombinations(columns, size)) {
+            if (isUniqueKey(columns, combo, rows)) {
+                candidates.push(combo);
+            }
+        }
+    }
+
+    return candidates;
+}
+
+function alignColumnsByName(targetColumns: string[], sourceColumns: string[]): string[] | null {
+    const normalizedTargetMap = new Map(
+        targetColumns.map((column) => [normalizeAttributeName(column), column]),
+    );
+
+    const aligned: string[] = [];
+    for (const source of sourceColumns) {
+        const target = normalizedTargetMap.get(normalizeAttributeName(source));
+        if (!target) return null;
+        aligned.push(target);
+    }
+
+    return aligned;
+}
+
+function tupleSetForColumns(columns: string[], rows: string[][], projectedColumns: string[]): Set<string> {
+    const indexes = projectedColumns.map((column) => columns.indexOf(column));
+    if (indexes.some((index) => index < 0)) return new Set<string>();
+
+    const tuples = new Set<string>();
+    for (const row of rows) {
+        const parts = indexes.map((index) => row[index] ?? '');
+        if (parts.every((part) => part.trim().length === 0)) continue;
+        tuples.add(parts.join('\u241F'));
+    }
+
+    return tuples;
+}
+
+function rowsReferenceParentKey(
+    childColumns: string[],
+    childRows: string[][],
+    childKeyColumns: string[],
+    parentColumns: string[],
+    parentRows: string[][],
+    parentKeyColumns: string[],
+): boolean {
+    if (childRows.length === 0) return true;
+    if (parentRows.length === 0) return false;
+
+    const childKeys = tupleSetForColumns(childColumns, childRows, childKeyColumns);
+    if (childKeys.size === 0) return false;
+
+    const parentKeys = tupleSetForColumns(parentColumns, parentRows, parentKeyColumns);
+    if (parentKeys.size === 0) return false;
+
+    for (const tuple of childKeys) {
+        if (!parentKeys.has(tuple)) return false;
+    }
+
+    return true;
+}
+
+function dedupeForeignKeys(
+    foreignKeys: Array<{ columns: string[]; referencesTable: string; referencesColumns: string[] }>,
+): Array<{ columns: string[]; referencesTable: string; referencesColumns: string[] }> {
+    const seen = new Set<string>();
+    const deduped: Array<{ columns: string[]; referencesTable: string; referencesColumns: string[] }> = [];
+
+    for (const foreignKey of foreignKeys) {
+        const key = `${foreignKey.columns.map(normalizeAttributeName).join('::')}|${normalizeAttributeName(foreignKey.referencesTable)}|${foreignKey.referencesColumns.map(normalizeAttributeName).join('::')}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(foreignKey);
+    }
+
+    return deduped;
+}
+
+function inferForeignKeysFromContext(args: {
+    tableName: string;
+    columns: string[];
+    primaryKey: string[];
+    sampleData: string[][];
+    contextTables?: TableSchema[];
+}): Array<{ columns: string[]; referencesTable: string; referencesColumns: string[] }> {
+    const { tableName, columns, primaryKey, sampleData, contextTables = [] } = args;
+
+    const candidatesByChildKey = new Map<string, {
+        score: number;
+        foreignKey: { columns: string[]; referencesTable: string; referencesColumns: string[] };
+    }>();
+    const ambiguousChildKeys = new Set<string>();
+
+    for (const parent of contextTables) {
+        if (!parent || parent.primaryKey.length === 0) continue;
+        if (normalizeAttributeName(parent.name) === normalizeAttributeName(tableName)) continue;
+
+        const alignedChildColumns = alignColumnsByName(columns, parent.primaryKey);
+        if (!alignedChildColumns || alignedChildColumns.length === 0) continue;
+
+        const childHasMoreColumns = columns.length > alignedChildColumns.length;
+        if (!childHasMoreColumns) continue;
+
+        const parentRows = parent.sampleData ?? [];
+        const dataBackedReference = rowsReferenceParentKey(
+            columns,
+            sampleData,
+            alignedChildColumns,
+            parent.columns.map((column) => column.name),
+            parentRows,
+            parent.primaryKey,
+        );
+
+        const structuralSignal = alignedChildColumns.some((column) => isIdentifierLikeColumn(column));
+        if (!dataBackedReference && !structuralSignal) continue;
+
+        let score = 0;
+        if (dataBackedReference) score += 120;
+        if (alignedChildColumns.some((column) => primaryKey.includes(column))) score += 20;
+        if (alignedChildColumns.every((column) => primaryKey.includes(column))) score += 14;
+        score += alignedChildColumns.reduce((sum, column) => sum + (isIdentifierLikeColumn(column) ? 8 : 0), 0);
+        score += parent.primaryKey.length === 1 ? 4 : 0;
+
+        const childKey = alignedChildColumns.map(normalizeAttributeName).join('::');
+        const foreignKey = {
+            columns: alignedChildColumns,
+            referencesTable: parent.name,
+            referencesColumns: [...parent.primaryKey],
+        };
+
+        const previous = candidatesByChildKey.get(childKey);
+        if (!previous) {
+            candidatesByChildKey.set(childKey, { score, foreignKey });
+            continue;
+        }
+
+        if (score > previous.score) {
+            candidatesByChildKey.set(childKey, { score, foreignKey });
+            ambiguousChildKeys.delete(childKey);
+            continue;
+        }
+
+        if (score === previous.score) {
+            ambiguousChildKeys.add(childKey);
+        }
+    }
+
+    const inferred = Array.from(candidatesByChildKey.entries())
+        .filter(([childKey]) => !ambiguousChildKeys.has(childKey))
+        .map(([, candidate]) => candidate.foreignKey);
+
+    return dedupeForeignKeys(inferred);
+}
+
+function buildPrimaryKeyDependencies(columns: string[], primaryKey: string[]): FunctionalDependency[] {
+    if (primaryKey.length === 0) return [];
+
+    const dependents = columns.filter((column) => !primaryKey.includes(column));
+    if (dependents.length === 0) return [];
+
+    return [{
+        determinant: [...primaryKey],
+        dependent: dependents,
+    }];
+}
+
+function mergeFunctionalDependencies(...groups: FunctionalDependency[][]): FunctionalDependency[] {
+    const seen = new Set<string>();
+    const merged: FunctionalDependency[] = [];
+
+    for (const group of groups) {
+        for (const fd of group) {
+            const determinant = Array.from(new Set(fd.determinant));
+            const dependent = Array.from(new Set(fd.dependent)).filter((attribute) => !determinant.includes(attribute));
+            if (determinant.length === 0 || dependent.length === 0) continue;
+
+            const key = `${determinant.map(normalizeAttributeName).sort().join('::')}->${dependent.map(normalizeAttributeName).sort().join('::')}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            merged.push({ determinant, dependent });
+        }
+    }
+
+    return merged;
+}
+
+function reconcileTableWithContext(table: TableSchema, contextTables: TableSchema[]): TableSchema {
+    const columns = table.columns.map((column) => column.name);
+    const sampleData = table.sampleData ?? [];
+
+    const primaryKey = inferPrimaryKey(columns, sampleData, { contextTables });
+    const contextualForeignKeys = inferForeignKeysFromContext({
+        tableName: table.name,
+        columns,
+        primaryKey,
+        sampleData,
+        contextTables,
+    });
+
+    const foreignKeys = dedupeForeignKeys([...(table.foreignKeys ?? []), ...contextualForeignKeys]);
+    const fds = mergeFunctionalDependencies(
+        buildPrimaryKeyDependencies(columns, primaryKey),
+        table.fds ?? [],
+    );
+
+    return {
+        ...table,
+        primaryKey,
+        foreignKeys,
+        fds,
+        columns: table.columns.map((column) => ({
+            ...column,
+            isKey: primaryKey.includes(column.name),
+        })),
+    };
+}
+
+function inferPrimaryKey(
+    columns: string[],
+    rows: string[][],
+    context?: { contextTables?: TableSchema[] },
+): string[] {
     if (columns.length === 0) return [];
 
-    const idIndex = columns.findIndex((column) => /^id$/i.test(column) || /_id$/i.test(column));
-    if (idIndex >= 0 && hasUniqueValues(idIndex, rows)) {
-        return [columns[idIndex]];
+    const contextTables = context?.contextTables ?? [];
+    const contextKeyColumns = new Set(
+        contextTables
+            .flatMap((table) => table.primaryKey)
+            .map((column) => normalizeAttributeName(column)),
+    );
+
+    const isContextKeyColumn = (column: string): boolean => contextKeyColumns.has(normalizeAttributeName(column));
+
+    const scoreKey = (key: string[]): number => {
+        const sizePenalty = key.length * 100;
+        const identifierBonus = key.reduce((sum, column) => sum + (isIdentifierLikeColumn(column) ? 30 : 0), 0);
+        const exactIdBonus = key.some((column) => /^id$/i.test(column)) ? 18 : 0;
+        const contextBonus = key.reduce((sum, column) => sum + (isContextKeyColumn(column) ? 95 : 0), 0);
+        const nonIdentifierPenalty = key.reduce((sum, column) => sum + (!isIdentifierLikeColumn(column) ? 6 : 0), 0);
+
+        return sizePenalty - identifierBonus - exactIdBonus - contextBonus + nonIdentifierPenalty;
+    };
+
+    const uniqueSingles = columns
+        .filter((column, index) => hasUniqueValues(index, rows))
+        .map((column) => [column]);
+
+    const uniqueCandidates = collectUniqueCandidates(columns, rows, 3);
+
+    if (uniqueSingles.length > 0) {
+        const singlesWithStrongSignal = uniqueSingles.filter(([column]) =>
+            isIdentifierLikeColumn(column) || isContextKeyColumn(column),
+        );
+
+        if (singlesWithStrongSignal.length > 0) {
+            return [...singlesWithStrongSignal].sort((left, right) => scoreKey(left) - scoreKey(right))[0];
+        }
+    }
+
+    if (contextTables.length > 0 && uniqueCandidates.length > 0) {
+        const contextualCandidates: string[][] = [];
+
+        for (const table of contextTables) {
+            if (table.primaryKey.length === 0) continue;
+            const alignedContextKey = alignColumnsByName(columns, table.primaryKey);
+            if (!alignedContextKey || alignedContextKey.length === 0) continue;
+
+            if (isUniqueKey(columns, alignedContextKey, rows)) {
+                contextualCandidates.push(alignedContextKey);
+                continue;
+            }
+
+            const supersets = uniqueCandidates.filter((candidate) =>
+                alignedContextKey.every((contextColumn) => candidate.includes(contextColumn)),
+            );
+
+            if (supersets.length > 0) {
+                contextualCandidates.push(
+                    [...supersets].sort((left, right) => scoreKey(left) - scoreKey(right))[0],
+                );
+            }
+        }
+
+        const contextual = contextualCandidates.length > 0
+            ? contextualCandidates
+            : uniqueCandidates.filter((key) => key.some((column) => isContextKeyColumn(column)));
+
+        if (contextual.length > 0) {
+            const bestContextual = [...contextual].sort((left, right) => scoreKey(left) - scoreKey(right))[0];
+            const bestSingle = uniqueSingles.length > 0
+                ? [...uniqueSingles].sort((left, right) => scoreKey(left) - scoreKey(right))[0]
+                : null;
+
+            if (!bestSingle) {
+                return bestContextual;
+            }
+
+            const singleIsWeak = bestSingle.every((column) =>
+                !isIdentifierLikeColumn(column) && !isContextKeyColumn(column),
+            );
+
+            if (singleIsWeak || scoreKey(bestContextual) <= scoreKey(bestSingle) + 40) {
+                return bestContextual;
+            }
+        }
+    }
+
+    const hasIdentifierWithDuplicates = columns.some((column, index) =>
+        isIdentifierLikeColumn(column) && !hasUniqueValues(index, rows),
+    );
+
+    if (hasIdentifierWithDuplicates) {
+        const identifierComposites = uniqueCandidates.filter((key) =>
+            key.length > 1 && key.some((column) => isIdentifierLikeColumn(column)),
+        );
+
+        if (identifierComposites.length > 0) {
+            return [...identifierComposites].sort((left, right) => scoreKey(left) - scoreKey(right))[0];
+        }
+    }
+
+    if (uniqueSingles.length > 0) {
+        return [...uniqueSingles].sort((left, right) => scoreKey(left) - scoreKey(right))[0];
+    }
+
+    if (uniqueCandidates.length > 0) {
+        return [...uniqueCandidates].sort((left, right) => scoreKey(left) - scoreKey(right))[0];
     }
 
     for (let index = 0; index < columns.length; index += 1) {
-        if (hasUniqueValues(index, rows)) {
+        if (/^id$/i.test(columns[index]) || /_id$/i.test(columns[index])) {
             return [columns[index]];
         }
     }
 
-    if (idIndex >= 0) return [columns[idIndex]];
     return [columns[0]];
 }
 
-function buildTableFromText(name: string, text: string, fallbackIndex: number): TableSchema | null {
+function buildTableFromText(
+    name: string,
+    text: string,
+    fallbackIndex: number,
+    contextTables?: TableSchema[],
+): TableSchema | null {
     const parsed = parseTableText(text);
     if (!parsed || parsed.rows.length === 0) return null;
 
-    const primaryKey = inferPrimaryKey(parsed.columns, parsed.rows);
+    const primaryKey = inferPrimaryKey(parsed.columns, parsed.rows, { contextTables });
+    const foreignKeys = inferForeignKeysFromContext({
+        tableName: name.trim() || `Table_${fallbackIndex}`,
+        columns: parsed.columns,
+        primaryKey,
+        sampleData: parsed.rows,
+        contextTables,
+    });
+
     const columns: Column[] = parsed.columns.map((columnName) => ({
         name: columnName,
         type: 'text',
@@ -263,8 +657,8 @@ function buildTableFromText(name: string, text: string, fallbackIndex: number): 
         name: name.trim() || `Table_${fallbackIndex}`,
         columns,
         primaryKey,
-        foreignKeys: [],
-        fds: [],
+        foreignKeys,
+        fds: buildPrimaryKeyDependencies(parsed.columns, primaryKey),
         mvds: [],
         sampleData: parsed.rows,
     };
@@ -433,6 +827,7 @@ function buildTableFromGenerator(
     sourceIndex: number,
     fallbackIndex: number,
     overrideName?: string,
+    contextTables?: TableSchema[],
 ): TableSchema {
     const resolvedTables = inferForeignKeys(allGeneratorTables);
     const source = resolvedTables[sourceIndex] ?? allGeneratorTables[sourceIndex];
@@ -442,7 +837,7 @@ function buildTableFromGenerator(
     const sourcePrimaryKey = source.columns.filter((column) => column.primaryKey).map((column) => column.name);
     const primaryKey = sourcePrimaryKey.length > 0
         ? sourcePrimaryKey
-        : inferPrimaryKey(columnNames, sampleData);
+        : inferPrimaryKey(columnNames, sampleData, { contextTables });
 
     const columns: Column[] = source.columns.map((column) => ({
         name: column.name,
@@ -450,13 +845,23 @@ function buildTableFromGenerator(
         isKey: primaryKey.includes(column.name),
     }));
 
-    const foreignKeys = source.columns
+    const sourceForeignKeys = source.columns
         .filter((column) => !!column.foreignKey)
         .map((column) => ({
             columns: [column.name],
             referencesTable: column.foreignKey!.table,
             referencesColumns: [column.foreignKey!.column],
         }));
+
+    const contextualForeignKeys = inferForeignKeysFromContext({
+        tableName: (overrideName ?? source.name).trim() || `Table_${fallbackIndex}`,
+        columns: columnNames,
+        primaryKey,
+        sampleData,
+        contextTables,
+    });
+
+    const foreignKeys = dedupeForeignKeys([...sourceForeignKeys, ...contextualForeignKeys]);
 
     const fds = buildGeneratorDependencies(source, primaryKey, foreignKeys, sampleData);
 
@@ -520,14 +925,14 @@ function renderTableLabel(table: TableSchema): ReactNode {
             </div>
 
             <div className="overflow-hidden rounded-xl border border-border/85 bg-card/80">
-                <div className="max-h-[360px] overflow-x-hidden overflow-y-auto">
+                <div>
                     <table className="table-fixed border-separate border-spacing-0 text-xs" style={{ width: `${tableWidth}px`, minWidth: '100%' }}>
                         <colgroup>
                             {columnWidths.map((width, index) => (
                                 <col key={`${table.id}_col_${index}`} style={{ width: `${width}px` }} />
                             ))}
                         </colgroup>
-                        <thead className="sticky top-0 z-10">
+                        <thead>
                             <tr className="bg-muted/75 backdrop-blur-sm">
                                 {table.columns.map((column) => (
                                     <th
@@ -584,9 +989,118 @@ function renderTableLabel(table: TableSchema): ReactNode {
                         PK: {column}
                     </span>
                 ))}
+
+                {table.foreignKeys.map((foreignKey, index) => (
+                    <span
+                        key={`${table.id}_fk_${index}_${foreignKey.columns.join('_')}`}
+                        className="rounded-lg border border-sky-400/35 bg-sky-500/12 px-2 py-1 text-xs font-semibold text-sky-300"
+                    >
+                        FK: {foreignKey.columns.join(', ')} {'->'} {foreignKey.referencesTable}({foreignKey.referencesColumns.join(', ')})
+                    </span>
+                ))}
             </div>
         </div>
     );
+}
+
+function buildForeignKeyEdgesForNode(
+    node: Node<CanvasNodeData>,
+    existingNodes: Node<CanvasNodeData>[],
+    existingEdges: Edge[],
+): Edge[] {
+    if (!isCanvasNodeData(node.data) || node.data.table.foreignKeys.length === 0) return [];
+
+    const nameToNode = new Map(
+        existingNodes
+            .filter((candidate) => isCanvasNodeData(candidate.data))
+            .map((candidate) => [normalizeAttributeName(candidate.data.table.name), candidate]),
+    );
+
+    const nextEdges: Edge[] = [];
+
+    for (let index = 0; index < node.data.table.foreignKeys.length; index += 1) {
+        const foreignKey = node.data.table.foreignKeys[index];
+        const targetNode = nameToNode.get(normalizeAttributeName(foreignKey.referencesTable));
+        if (!targetNode) continue;
+
+        const edgeId = `fk_${node.id}_${targetNode.id}_${foreignKey.columns.join('_')}_${index}`;
+        const alreadyExists = existingEdges.some((edge) => edge.id === edgeId)
+            || nextEdges.some((edge) => edge.id === edgeId);
+        if (alreadyExists) continue;
+
+        nextEdges.push({
+            id: edgeId,
+            source: node.id,
+            target: targetNode.id,
+            type: 'smoothstep',
+            animated: true,
+            label: `FK: ${foreignKey.columns.join(', ')} -> ${foreignKey.referencesTable}`,
+            style: {
+                stroke: 'color-mix(in oklab, var(--warning) 55%, var(--border))',
+                strokeWidth: 1.6,
+            },
+            labelStyle: {
+                fill: 'var(--muted-foreground)',
+                fontSize: 11,
+                fontWeight: 600,
+            },
+        });
+    }
+
+    return nextEdges;
+}
+
+function reconcileCanvasesWithContext(canvases: Record<CanvasStage, StageCanvas>): Record<CanvasStage, StageCanvas> {
+    const next = createEmptyCanvases();
+
+    for (let stageIndex = 0; stageIndex < STAGES.length; stageIndex += 1) {
+        const stage = STAGES[stageIndex];
+        const previousTables = STAGES
+            .slice(0, stageIndex)
+            .flatMap((previousStage) => next[previousStage].nodes)
+            .filter((node) => isCanvasNodeData(node.data))
+            .map((node) => node.data.table);
+
+        const sourceStage = canvases[stage];
+        const reconciledNodes: Node<CanvasNodeData>[] = [];
+
+        for (const sourceNode of sourceStage.nodes) {
+            if (!isCanvasNodeData(sourceNode.data)) {
+                reconciledNodes.push(sourceNode);
+                continue;
+            }
+
+            const siblingTables = reconciledNodes
+                .filter((node) => isCanvasNodeData(node.data))
+                .map((node) => node.data.table);
+
+            const contextTables = [...siblingTables, ...previousTables];
+            const reconciledTable = reconcileTableWithContext(sourceNode.data.table, contextTables);
+
+            reconciledNodes.push({
+                ...sourceNode,
+                data: {
+                    ...sourceNode.data,
+                    table: reconciledTable,
+                    label: renderTableLabel(reconciledTable),
+                },
+            });
+        }
+
+        let reconciledEdges = [...sourceStage.edges];
+        for (const node of reconciledNodes) {
+            const relatedNodes = reconciledNodes.filter((candidate) => candidate.id !== node.id);
+            const inferredEdges = buildForeignKeyEdgesForNode(node, relatedNodes, reconciledEdges);
+            reconciledEdges = [...reconciledEdges, ...inferredEdges];
+        }
+
+        next[stage] = {
+            nodes: reconciledNodes,
+            edges: reconciledEdges,
+        };
+    }
+
+    return next;
 }
 
 function TableCanvasNode({ data, selected }: NodeProps<Node<CanvasNodeData>>) {
@@ -597,9 +1111,12 @@ function TableCanvasNode({ data, selected }: NodeProps<Node<CanvasNodeData>>) {
     );
 }
 
-const NODE_TYPES = {
+const NODE_TYPES = Object.freeze({
     table: TableCanvasNode,
-} satisfies NodeTypes;
+}) satisfies NodeTypes;
+
+const FLOW_FIT_VIEW_OPTIONS = { padding: 0.25 } as const;
+const FLOW_PRO_OPTIONS = { hideAttribution: true } as const;
 
 function stageSatisfied(stage: CanvasStage, detected: NormalForm): boolean {
     if (stage === 'UNF') return detected === 'UNF';
@@ -655,11 +1172,40 @@ export default function NormalizerPage() {
     const [draftTableText, setDraftTableText] = useState('');
     const [selectedGeneratorIndex, setSelectedGeneratorIndex] = useState('0');
     const [isGeneratorMenuOpen, setIsGeneratorMenuOpen] = useState(false);
+    const [generatorMenuPlacement, setGeneratorMenuPlacement] = useState<'top' | 'bottom'>('bottom');
+    const [generatorMenuLayout, setGeneratorMenuLayout] = useState<GeneratorMenuLayout | null>(null);
     const [createTableError, setCreateTableError] = useState('');
     const generatorMenuRef = useRef<HTMLDivElement | null>(null);
+    const generatorMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+    const generatorMenuDropdownRef = useRef<HTMLDivElement | null>(null);
 
     const activeCanvas = canvases[activeStage];
-    const stableNodeTypes = useMemo(() => NODE_TYPES, []);
+    const previousStageTables = useMemo(() => {
+        const currentStageIndex = STAGES.indexOf(activeStage);
+        if (currentStageIndex <= 0) return [];
+
+        return STAGES
+            .slice(0, currentStageIndex)
+            .flatMap((stage) => canvases[stage].nodes)
+            .filter((node) => isCanvasNodeData(node.data))
+            .map((node) => node.data.table);
+    }, [activeStage, canvases]);
+
+    const currentCanvasTables = useMemo(
+        () => activeCanvas.nodes
+            .filter((node) => isCanvasNodeData(node.data))
+            .map((node) => node.data.table),
+        [activeCanvas.nodes],
+    );
+
+    const keyContextTables = useMemo(() => {
+        const byId = new Map<string, TableSchema>();
+        for (const table of [...currentCanvasTables, ...previousStageTables]) {
+            byId.set(table.id, table);
+        }
+        return Array.from(byId.values());
+    }, [currentCanvasTables, previousStageTables]);
+
     const selectedGeneratorTable = useMemo(() => {
         const index = Number(selectedGeneratorIndex);
         if (!Number.isInteger(index) || index < 0 || index >= generatorTables.length) {
@@ -667,6 +1213,53 @@ export default function NormalizerPage() {
         }
         return generatorTables[index] as GeneratorTableDef;
     }, [generatorTables, selectedGeneratorIndex]);
+
+    const closeGeneratorMenu = useCallback(() => {
+        setIsGeneratorMenuOpen(false);
+        setGeneratorMenuLayout(null);
+    }, []);
+
+    const updateGeneratorMenuPlacement = useCallback(() => {
+        const trigger = generatorMenuTriggerRef.current;
+        if (!trigger || typeof window === 'undefined') {
+            setGeneratorMenuPlacement('bottom');
+            setGeneratorMenuLayout(null);
+            return;
+        }
+
+        const rect = trigger.getBoundingClientRect();
+        const viewportPadding = 12;
+        const menuGap = 6;
+        const estimatedMenuHeight = Math.min(320, Math.max(140, generatorTables.length * 56));
+
+        const maxLeft = Math.max(viewportPadding, window.innerWidth - rect.width - viewportPadding);
+        const left = Math.min(Math.max(viewportPadding, rect.left), maxLeft);
+        const width = Math.min(rect.width, window.innerWidth - viewportPadding * 2);
+
+        const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+        const spaceAbove = rect.top - viewportPadding;
+        const shouldPlaceTop = spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow;
+
+        if (shouldPlaceTop) {
+            const maxHeight = Math.max(96, Math.min(320, spaceAbove - menuGap));
+            setGeneratorMenuPlacement('top');
+            setGeneratorMenuLayout({
+                left,
+                width,
+                bottom: Math.max(viewportPadding, window.innerHeight - rect.top + menuGap),
+                maxHeight,
+            });
+            return;
+        }
+
+        setGeneratorMenuPlacement('bottom');
+        setGeneratorMenuLayout({
+            left,
+            width,
+            top: Math.max(viewportPadding, rect.bottom + menuGap),
+            maxHeight: Math.max(96, Math.min(320, spaceBelow - menuGap)),
+        });
+    }, [generatorTables.length]);
 
     const activeCanvasNodes = useMemo(
         () => activeCanvas.nodes.map((node) => (node.type === 'table' ? node : { ...node, type: 'table' })),
@@ -748,26 +1341,38 @@ export default function NormalizerPage() {
             selectable: true,
         };
 
-        updateActiveCanvas((canvas) => ({
-            ...canvas,
-            nodes: [...canvas.nodes, node],
-        }));
+        updateActiveCanvas((canvas) => {
+            const nextNodes = [...canvas.nodes, node];
+            const foreignKeyEdges = buildForeignKeyEdgesForNode(node, canvas.nodes, canvas.edges);
+
+            return {
+                ...canvas,
+                nodes: nextNodes,
+                edges: [...canvas.edges, ...foreignKeyEdges],
+            };
+        });
     }, [activeCanvas.nodes.length, updateActiveCanvas]);
 
     const closeCreateDialog = useCallback(() => {
         setIsCreateDialogOpen(false);
         setCreateTableError('');
-    }, []);
+        closeGeneratorMenu();
+    }, [closeGeneratorMenu]);
 
     const openCreateDialog = useCallback(() => {
         setIsCreateDialogOpen(true);
         setCreateTableError('');
         setSelectedGeneratorIndex('0');
-        setIsGeneratorMenuOpen(false);
-    }, []);
+        closeGeneratorMenu();
+    }, [closeGeneratorMenu]);
 
     const createFromPastedData = useCallback(() => {
-        const table = buildTableFromText(draftTableName, draftTableText, activeCanvas.nodes.length + 1);
+        const table = buildTableFromText(
+            draftTableName,
+            draftTableText,
+            activeCanvas.nodes.length + 1,
+            keyContextTables,
+        );
         if (!table) {
             setCreateTableError('Paste header and data rows before creating the table.');
             return;
@@ -777,7 +1382,7 @@ export default function NormalizerPage() {
         closeCreateDialog();
         setDraftTableName('');
         setDraftTableText('');
-    }, [activeCanvas.nodes.length, addTableToActiveCanvas, closeCreateDialog, draftTableName, draftTableText]);
+    }, [activeCanvas.nodes.length, addTableToActiveCanvas, closeCreateDialog, draftTableName, draftTableText, keyContextTables]);
 
     const createBlank = useCallback(() => {
         const table = buildBlankTable(draftTableName, activeCanvas.nodes.length + 1);
@@ -809,27 +1414,36 @@ export default function NormalizerPage() {
             index,
             activeCanvas.nodes.length + 1,
             draftTableName,
+            keyContextTables,
         );
 
         addTableToActiveCanvas(table);
         closeCreateDialog();
         setDraftTableName('');
         setDraftTableText('');
-        setIsGeneratorMenuOpen(false);
-    }, [activeCanvas.nodes.length, addTableToActiveCanvas, closeCreateDialog, draftTableName, generatorTables, selectedGeneratorIndex]);
+        closeGeneratorMenu();
+    }, [activeCanvas.nodes.length, addTableToActiveCanvas, closeCreateDialog, closeGeneratorMenu, draftTableName, generatorTables, keyContextTables, selectedGeneratorIndex]);
 
     useEffect(() => {
         if (!isGeneratorMenuOpen) return;
 
         const handlePointerDown = (event: MouseEvent) => {
-            if (!(event.target instanceof Element) || !generatorMenuRef.current?.contains(event.target)) {
-                setIsGeneratorMenuOpen(false);
+            if (!(event.target instanceof Element)) {
+                closeGeneratorMenu();
+                return;
+            }
+
+            const withinTrigger = generatorMenuRef.current?.contains(event.target) ?? false;
+            const withinDropdown = generatorMenuDropdownRef.current?.contains(event.target) ?? false;
+
+            if (!withinTrigger && !withinDropdown) {
+                closeGeneratorMenu();
             }
         };
 
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
-                setIsGeneratorMenuOpen(false);
+                closeGeneratorMenu();
             }
         };
 
@@ -840,7 +1454,23 @@ export default function NormalizerPage() {
             document.removeEventListener('mousedown', handlePointerDown);
             document.removeEventListener('keydown', handleKeyDown);
         };
-    }, [isGeneratorMenuOpen]);
+    }, [closeGeneratorMenu, isGeneratorMenuOpen]);
+
+    useEffect(() => {
+        if (!isGeneratorMenuOpen) return;
+
+        const handleRelayout = () => {
+            updateGeneratorMenuPlacement();
+        };
+
+        window.addEventListener('resize', handleRelayout);
+        window.addEventListener('scroll', handleRelayout, true);
+
+        return () => {
+            window.removeEventListener('resize', handleRelayout);
+            window.removeEventListener('scroll', handleRelayout, true);
+        };
+    }, [isGeneratorMenuOpen, updateGeneratorMenuPlacement]);
 
     const removeSelected = useCallback(() => {
         if (!selectedNodeId) return;
@@ -859,8 +1489,11 @@ export default function NormalizerPage() {
     }, [updateActiveCanvas]);
 
     const verify = useCallback(() => {
+        const reconciledCanvases = reconcileCanvasesWithContext(canvases);
+        setCanvases(reconciledCanvases);
+
         const stages: StageVerification[] = STAGES.map((stage) => {
-            const checks: TableVerification[] = canvases[stage].nodes
+            const checks: TableVerification[] = reconciledCanvases[stage].nodes
                 .filter((node) => isCanvasNodeData(node.data))
                 .map((node) => {
                     const table = node.data.table;
@@ -988,18 +1621,18 @@ export default function NormalizerPage() {
                     <ReactFlow
                         nodes={activeCanvasNodes}
                         edges={activeCanvas.edges}
-                        nodeTypes={stableNodeTypes}
+                        nodeTypes={NODE_TYPES}
                         onNodesChange={onNodesChange}
                         onEdgesChange={onEdgesChange}
                         onConnect={onConnect}
                         nodesConnectable={false}
                         fitView
-                        fitViewOptions={{ padding: 0.25 }}
+                        fitViewOptions={FLOW_FIT_VIEW_OPTIONS}
                         minZoom={0.2}
                         maxZoom={2.5}
                         nodeDragThreshold={1}
                         deleteKeyCode={['Backspace', 'Delete']}
-                        proOptions={{ hideAttribution: true }}
+                        proOptions={FLOW_PRO_OPTIONS}
                     >
                         <Background
                             variant={BackgroundVariant.Dots}
@@ -1267,8 +1900,17 @@ export default function NormalizerPage() {
                                         <div className="flex flex-wrap items-start gap-2">
                                             <div className="relative min-w-[320px] flex-1" ref={generatorMenuRef}>
                                                 <button
+                                                    ref={generatorMenuTriggerRef}
                                                     type="button"
-                                                    onClick={() => setIsGeneratorMenuOpen((open) => !open)}
+                                                    onClick={() => {
+                                                        if (isGeneratorMenuOpen) {
+                                                            closeGeneratorMenu();
+                                                            return;
+                                                        }
+
+                                                        updateGeneratorMenuPlacement();
+                                                        setIsGeneratorMenuOpen(true);
+                                                    }}
                                                     className="group flex w-full items-center justify-between rounded-xl border border-border/80 bg-card px-3 py-2.5 text-left transition-all hover:border-sky-500/45 hover:bg-sky-500/5"
                                                     aria-haspopup="listbox"
                                                     aria-expanded={isGeneratorMenuOpen}
@@ -1290,44 +1932,6 @@ export default function NormalizerPage() {
                                                             }`}
                                                     />
                                                 </button>
-
-                                                {isGeneratorMenuOpen && (
-                                                    <div className="absolute inset-x-0 top-[calc(100%+0.35rem)] z-20 rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-xl backdrop-blur-sm">
-                                                        <div className="max-h-56 space-y-1 overflow-y-auto pr-1" role="listbox" aria-label="Generator tables">
-                                                            {generatorTables.map((table, index) => {
-                                                                const value = String(index);
-                                                                const isSelected = value === selectedGeneratorIndex;
-
-                                                                return (
-                                                                    <button
-                                                                        key={`${table.name}_${index}`}
-                                                                        type="button"
-                                                                        role="option"
-                                                                        aria-selected={isSelected}
-                                                                        onClick={() => {
-                                                                            setSelectedGeneratorIndex(value);
-                                                                            setCreateTableError('');
-                                                                            setIsGeneratorMenuOpen(false);
-                                                                        }}
-                                                                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors ${isSelected
-                                                                            ? 'border border-sky-500/35 bg-sky-500/15'
-                                                                            : 'border border-transparent hover:bg-muted/70'
-                                                                            }`}
-                                                                    >
-                                                                        <div className="min-w-0">
-                                                                            <p className="truncate text-xs font-semibold text-foreground">{table.name}</p>
-                                                                            <p className="truncate text-[11px] text-muted-foreground">
-                                                                                {table.columns.length} cols • {table.rowCount} rows
-                                                                            </p>
-                                                                        </div>
-
-                                                                        {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-sky-300" />}
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                )}
                                             </div>
 
                                             <button
@@ -1373,6 +1977,59 @@ export default function NormalizerPage() {
                             </div>
                         </div>
                     </div>
+                )}
+
+                {isCreateDialogOpen && isGeneratorMenuOpen && generatorMenuLayout && typeof document !== 'undefined' && createPortal(
+                    <div
+                        ref={generatorMenuDropdownRef}
+                        className={`fixed z-[80] rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-xl backdrop-blur-sm ${generatorMenuPlacement === 'top' ? 'origin-bottom' : 'origin-top'}`}
+                        style={{
+                            left: generatorMenuLayout.left,
+                            width: generatorMenuLayout.width,
+                            top: generatorMenuLayout.top,
+                            bottom: generatorMenuLayout.bottom,
+                        }}
+                    >
+                        <div
+                            className="space-y-1 overflow-y-auto pr-1"
+                            style={{ maxHeight: `${generatorMenuLayout.maxHeight}px` }}
+                            role="listbox"
+                            aria-label="Generator tables"
+                        >
+                            {generatorTables.map((table, index) => {
+                                const value = String(index);
+                                const isSelected = value === selectedGeneratorIndex;
+
+                                return (
+                                    <button
+                                        key={`${table.name}_${index}`}
+                                        type="button"
+                                        role="option"
+                                        aria-selected={isSelected}
+                                        onClick={() => {
+                                            setSelectedGeneratorIndex(value);
+                                            setCreateTableError('');
+                                            closeGeneratorMenu();
+                                        }}
+                                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors ${isSelected
+                                            ? 'border border-sky-500/35 bg-sky-500/15'
+                                            : 'border border-transparent hover:bg-muted/70'
+                                            }`}
+                                    >
+                                        <div className="min-w-0">
+                                            <p className="truncate text-xs font-semibold text-foreground">{table.name}</p>
+                                            <p className="truncate text-[11px] text-muted-foreground">
+                                                {table.columns.length} cols • {table.rowCount} rows
+                                            </p>
+                                        </div>
+
+                                        {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-sky-300" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>,
+                    document.body,
                 )}
             </div>
         </ReactFlowProvider>
