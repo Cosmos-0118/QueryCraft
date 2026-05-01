@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTestAuthStore, type TestAuthUser } from '@/stores/test-auth-store';
+import {
+  LEGACY_TEST_AUTH_STORAGE_KEY,
+  useTestAuthStore,
+  type TestAuthUser,
+} from '@/stores/test-auth-store';
 
 /**
  * Drop-in shape mirroring useAuth() so that existing test-module code that
@@ -31,34 +35,119 @@ export function useTestAuth() {
   const hydrated = useTestAuthStore((state) => state.hydrated);
   const clearSession = useTestAuthStore((state) => state.clearSession);
   const setSession = useTestAuthStore((state) => state.setSession);
+  const markHydrated = useTestAuthStore((state) => state.markHydrated);
   const router = useRouter();
-  const lastSyncedTokenRef = useRef<string | null>(null);
+  const bootstrapStartedRef = useRef(false);
+  const legacyCleanupDoneRef = useRef(false);
 
   const compatUser = useMemo(() => toCompat(user), [user]);
 
   useEffect(() => {
-    if (!token) {
-      lastSyncedTokenRef.current = null;
+    if (legacyCleanupDoneRef.current) {
       return;
     }
 
-    if (lastSyncedTokenRef.current === token) {
+    legacyCleanupDoneRef.current = true;
+
+    if (typeof window === 'undefined') {
       return;
     }
 
-    lastSyncedTokenRef.current = token;
-    void fetch('/api/test-auth/session', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }).catch(() => {
-      // Ignore sync failures; API calls can still pass Authorization directly when needed.
-    });
-  }, [token]);
+    try {
+      localStorage.removeItem(LEGACY_TEST_AUTH_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (hydrated || bootstrapStartedRef.current) {
+      return;
+    }
+
+    bootstrapStartedRef.current = true;
+    let cancelled = false;
+
+    const hydrateFromServer = async () => {
+      try {
+        const res = await fetch('/api/test-auth/me', {
+          method: 'GET',
+          credentials: 'same-origin',
+        });
+
+        if (!res.ok) {
+          if (!cancelled) {
+            const currentUser = useTestAuthStore.getState().user;
+            if (!currentUser) {
+              clearSession();
+            }
+          }
+          return;
+        }
+
+        const data = await res.json().catch(() => null) as {
+          user?: {
+            id?: unknown;
+            email?: unknown;
+            role?: unknown;
+            display_name?: unknown;
+          };
+        } | null;
+
+        const serverUser = data?.user;
+        if (
+          !serverUser
+          || typeof serverUser.id !== 'string'
+          || typeof serverUser.email !== 'string'
+          || (serverUser.role !== 'admin' && serverUser.role !== 'teacher' && serverUser.role !== 'student')
+          || typeof serverUser.display_name !== 'string'
+        ) {
+          if (!cancelled) {
+            const currentUser = useTestAuthStore.getState().user;
+            if (!currentUser) {
+              clearSession();
+            }
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setSession({
+            user: {
+              id: serverUser.id,
+              email: serverUser.email,
+              role: serverUser.role,
+              displayName: serverUser.display_name,
+            },
+            token: null,
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          const currentUser = useTestAuthStore.getState().user;
+          if (!currentUser) {
+            clearSession();
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          markHydrated();
+        }
+      }
+    };
+
+    void hydrateFromServer();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearSession, hydrated, markHydrated, setSession]);
 
   const logout = () => {
-    void fetch('/api/test-auth/logout', { method: 'POST' }).catch(() => {
+    void fetch('/api/test-auth/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+    }).catch(() => {
       // Clear local auth state even if server cookie cleanup fails.
     });
     clearSession();
@@ -69,7 +158,7 @@ export function useTestAuth() {
     user: compatUser,
     rawUser: user,
     token,
-    isAuthenticated: !!user && !!token,
+    isAuthenticated: !!user,
     hydrated,
     setSession,
     logout,
@@ -120,7 +209,12 @@ export function useAuthorizedFetch() {
       if (token) {
         headers.set('Authorization', `Bearer ${token}`);
       }
-      return fetch(input, { ...init, headers });
+
+      return fetch(input, {
+        ...init,
+        headers,
+        credentials: init.credentials ?? 'same-origin',
+      });
     },
     [token],
   );

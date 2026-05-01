@@ -1,6 +1,6 @@
 # Security Model
 
-Last updated: 2026-04-05
+Last updated: 2026-05-01
 
 This document describes the security properties that are currently implemented in QueryCraft.
 
@@ -16,6 +16,20 @@ Main security goals in the current architecture:
 - Keep SQL execution isolated from external databases.
 
 ## Implemented Controls
+
+### 0. Test Module Signed Sessions (Server-Validated)
+
+Implemented in `src/lib/test-auth/crypto.ts`, `src/lib/test-auth/session.ts`, and `src/lib/security/test-module-security.ts`:
+
+- Test module auth uses HMAC-signed server tokens with claim validation (`iss`, `aud`, `iat`, `nbf`, `exp`, `jti`, `v`).
+- Session authority is an HTTP-only cookie (`qc_test_auth`) set on login/password setup.
+- API authorization decisions are derived from verified server session claims, not client query/body identity parameters.
+- Student/teacher access checks are centralized and enforced for tests, attempts, reviews, and related endpoints.
+
+Production requirement:
+
+- `TEST_AUTH_SECRET` must be configured with at least 32 characters in production.
+- The deterministic fallback secret is development-only and intentionally rejected in production.
 
 ### 1. Browser Security Headers
 
@@ -38,6 +52,8 @@ Implemented in `src/stores/auth-store.ts`:
 
 Important: this is not a server-validated authentication model.
 
+Note: the statement above applies to the legacy local account model used for non-test-module features. The test module now has server-validated signed sessions.
+
 ### 3. Per-User Data Scoping
 
 Implemented by `src/lib/utils/user-storage.ts` and user-scoped persisted stores:
@@ -45,6 +61,11 @@ Implemented by `src/lib/utils/user-storage.ts` and user-scoped persisted stores:
 - Persisted data keys are namespaced as `querycraft:<userId>:<featureKey>`.
 - Account deletion removes all scoped keys for that user.
 - Store rehydration runs when active user scope changes.
+
+Additional hardening for test module auth state:
+
+- Test-module client auth state is no longer persisted in localStorage.
+- Client auth is hydrated from `/api/test-auth/me` using the HTTP-only cookie.
 
 ### 4. SQL Execution Isolation
 
@@ -56,11 +77,15 @@ Implemented by `src/lib/utils/user-storage.ts` and user-scoped persisted stores:
 
 The following are currently not implemented:
 
-- JWT or server-side session validation.
-- HTTP-only auth cookies.
+- App-wide HTTP-only auth cookies for every auth surface.
 - Rate limiting.
 - MFA.
 - Server-side audit trails.
+
+Clarification:
+
+- HTTP-only auth cookies and server-side signed session validation are implemented for the test module.
+- They are not yet generalized across every legacy feature in the app.
 
 Additional practical considerations:
 
