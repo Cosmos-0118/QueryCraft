@@ -64,6 +64,33 @@ function normalizeName(name: string) {
   return name.trim().toLowerCase();
 }
 
+function ReviewMetricCard({
+  label,
+  value,
+  helper,
+  tone = 'default',
+}: {
+  label: string;
+  value: string | number;
+  helper: string;
+  tone?: 'default' | 'success' | 'warning' | 'primary';
+}) {
+  const toneClass = {
+    default: 'border-border/70 bg-background/50 text-foreground',
+    success: 'border-success/30 bg-success/10 text-success',
+    warning: 'border-warning/30 bg-warning/10 text-warning',
+    primary: 'border-primary/30 bg-primary/10 text-primary',
+  }[tone];
+
+  return (
+    <div className={`rounded-2xl border p-4 shadow-sm ${toneClass}`}>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <p className="mt-2 text-3xl font-bold tracking-tight">{value}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+    </div>
+  );
+}
+
 function toSubmission(attempt: ReviewAttempt): Submission {
   const isSubmitted = attempt.status === 'submitted';
   const answerCount = isSubmitted
@@ -369,126 +396,135 @@ export default function TestReviewPage() {
   }
 
   return (
-    <div className="relative mx-auto flex min-h-full w-full max-w-5xl flex-col px-5 py-9 sm:px-6 lg:px-8 lg:py-12">
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.08),transparent_45%),radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.08),transparent_45%)]" />
+    <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,color-mix(in_oklab,var(--primary)_12%,transparent),transparent_45%),radial-gradient(ellipse_at_top_right,color-mix(in_oklab,var(--accent)_10%,transparent),transparent_45%)]" />
 
-      <div className="mb-7 space-y-4">
-        <div>
-          <Link
-            href={`/tests/${test.id}`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-          >
-            <ArrowLeft size={13} />
-            Back to Test Details
-          </Link>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">{test.title}</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            Track live submissions and inspect student results.
-          </p>
+      <div className="mb-6 rounded-3xl border border-border/70 bg-card/85 p-5 shadow-xl shadow-black/10 sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <Link
+              href={`/tests/${test.id}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+            >
+              <ArrowLeft size={13} />
+              Back to Test Details
+            </Link>
+            <div className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+              <Eye size={12} />
+              Teacher Review Board
+            </div>
+            <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">{test.title}</h1>
+            <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+              Review who submitted, publish results, and open each student&apos;s answers from one clean dashboard.
+            </p>
+          </div>
+
+          {isClassicTest && stats.submitted > 0 && (
+            <button
+              onClick={() => void handlePublishAll()}
+              disabled={publishingAll}
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-4 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {publishingAll ? 'Publishing...' : 'Publish All Results'}
+            </button>
+          )}
         </div>
 
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2 rounded-2xl border border-border/75 bg-card/75 p-2.5">
-          <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
-            Total <span className="text-primary">{stats.total}</span>
-          </span>
-          <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3 py-1.5 text-center text-xs font-semibold text-emerald-300">
-            Submitted {stats.submitted}
-          </span>
-          <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-1.5 text-center text-xs font-semibold text-amber-300">
-            Pending {stats.pending}
-          </span>
-          <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-background/65 px-3 py-1.5 text-center text-xs font-semibold text-foreground">
-            Avg Score <span className="text-primary">{stats.avgScore}%</span>
-          </span>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ReviewMetricCard label="Students" value={stats.total} helper="Assigned students" tone="primary" />
+          <ReviewMetricCard label="Submitted" value={stats.submitted} helper="Ready to review" tone="success" />
+          <ReviewMetricCard label="Pending" value={stats.pending} helper="Not submitted yet" tone="warning" />
+          <ReviewMetricCard label="Average Score" value={`${stats.avgScore}%`} helper="Submitted attempts" />
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border/75 bg-card/85 p-5 shadow-xl shadow-black/10 sm:p-6">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-            <Filter size={12} />
-            Filter Submissions
+      <div className="rounded-3xl border border-border/75 bg-card/85 p-5 shadow-xl shadow-black/10 sm:p-6">
+        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Submissions</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Use filters to focus on submitted or pending students.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              <Filter size={12} />
+              Filter
+            </div>
             {(['all', 'submitted', 'pending'] as const).map((item) => (
               <button
                 key={item}
                 onClick={() => setFilter(item)}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] transition ${
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] transition ${
                   filter === item
-                    ? 'border-teal-400/40 bg-teal-400/12 text-teal-200'
+                    ? 'border-primary/40 bg-primary/12 text-primary'
                     : 'border-border/70 bg-background/50 text-muted-foreground hover:border-border hover:text-foreground'
                 }`}
               >
                 {item}
               </button>
             ))}
-            {isClassicTest && stats.submitted > 0 && (
-              <button
-                onClick={() => void handlePublishAll()}
-                disabled={publishingAll}
-                className="ml-2 rounded-full border border-emerald-400/40 bg-emerald-400/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-emerald-200 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {publishingAll ? 'Publishing...' : 'Publish All Results'}
-              </button>
-            )}
           </div>
         </div>
 
-        <div className="space-y-2">
+        <div className="grid gap-3">
           {filteredSubmissions.length === 0 && (
-            <div className="rounded-xl border border-border/60 bg-background/40 px-3 py-4 text-sm text-muted-foreground">
+            <div className="rounded-2xl border border-border/60 bg-background/40 px-4 py-6 text-sm text-muted-foreground">
               No submissions match this filter.
             </div>
           )}
           {filteredSubmissions.map((submission) => (
             <div
               key={submission.id}
-              className="rounded-xl border border-border/70 bg-background/50 px-3 py-3"
+              className="rounded-2xl border border-border/70 bg-background/50 p-4 transition hover:border-primary/25 hover:bg-background/70"
             >
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{submission.student}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                    <span
-                      className={`inline-flex rounded-full border px-2 py-0.5 font-semibold uppercase tracking-[0.08em] ${
-                        submission.status === 'submitted'
-                          ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300'
-                          : 'border-amber-500/30 bg-amber-500/12 text-amber-300'
-                      }`}
-                    >
-                      {submission.status}
-                    </span>
-                    {submission.submittedAt && (
-                      <span>Submitted {new Date(submission.submittedAt).toLocaleString()}</span>
-                    )}
-                    <span>Violations: {submission.violations}</span>
-                    <span className="inline-flex items-center gap-1">
-                      <FileText size={12} />
-                      Answers: {submission.answerCount}
-                    </span>
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-sm font-bold text-primary">
+                    {submission.student.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-base font-semibold text-foreground">{submission.student}</p>
+                      <span
+                        className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] ${
+                          submission.status === 'submitted'
+                            ? 'border-success/30 bg-success/10 text-success'
+                            : 'border-warning/30 bg-warning/10 text-warning'
+                        }`}
+                      >
+                        {submission.status === 'submitted' ? 'Submitted' : 'Pending'}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>{submission.submittedAt ? `Submitted ${new Date(submission.submittedAt).toLocaleString()}` : 'No submission yet'}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <FileText size={12} />
+                        {submission.answerCount} answers
+                      </span>
+                      <span>Violations: {submission.violations}</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-lg border border-border/70 bg-card/60 px-2.5 py-1 text-xs font-semibold text-foreground">
-                    {typeof submission.score === 'number' ? `${submission.score}%` : 'Not graded'}
-                  </span>
+                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                  <div className="rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-center">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Score</p>
+                    <p className="text-sm font-bold text-foreground">{typeof submission.score === 'number' ? `${submission.score}%` : 'Not graded'}</p>
+                  </div>
 
                   {isClassicTest && submission.status === 'submitted' && submission.attemptId && (
                     <button
                       onClick={() => void handleTogglePublish(submission)}
                       disabled={publishingIds.has(submission.id)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
                         submission.published
-                          ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300 hover:bg-emerald-500/20'
-                          : 'border-amber-500/30 bg-amber-500/12 text-amber-300 hover:bg-amber-500/20'
+                          ? 'border-success/30 bg-success/10 text-success hover:bg-success/15'
+                          : 'border-warning/30 bg-warning/10 text-warning hover:bg-warning/15'
                       }`}
                     >
                       {submission.published ? (
-                        <><CheckCircle2 size={12} /> Published</>
+                        <><CheckCircle2 size={13} /> Published</>
                       ) : (
-                        <><Clock3 size={12} /> Unpublished</>
+                        <><Clock3 size={13} /> Unpublished</>
                       )}
                     </button>
                   )}
@@ -496,14 +532,14 @@ export default function TestReviewPage() {
                   {submission.status === 'submitted' && submission.attemptId ? (
                     <Link
                       href={`/tests/${test.id}/result?attemptId=${encodeURIComponent(submission.attemptId)}`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                      className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
                     >
-                      <Eye size={12} />
+                      <Eye size={13} />
                       View Answers
                     </Link>
                   ) : (
-                    <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300">
-                      <XCircle size={12} />
+                    <span className="inline-flex h-10 items-center gap-1 rounded-xl border border-warning/25 bg-warning/10 px-3 text-xs font-semibold text-warning">
+                      <XCircle size={13} />
                       Waiting
                     </span>
                   )}
