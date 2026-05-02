@@ -74,7 +74,8 @@ async function hydrateEnv() {
       if (!line || line.startsWith('#')) continue;
       const parsed = parseEnvLine(line);
       if (!parsed) continue;
-      if (typeof process.env[parsed.key] === 'string') continue;
+      const existingValue = process.env[parsed.key];
+      if (typeof existingValue === 'string' && existingValue.trim().length > 0) continue;
       process.env[parsed.key] = parsed.value;
     }
   }

@@ -6,11 +6,6 @@ import {
   type InteractiveQuizSettings,
   type TestModuleType,
 } from '@/lib/test/interactive-quiz';
-import {
-  randomizeCatalogueQuestions,
-  type CatalogueDifficulty,
-  type CatalogueQuestion,
-} from '@/lib/catalogue';
 
 type TestStatus = 'draft' | 'published' | 'closed' | 'archived';
 type AttemptStatus = 'in_progress' | 'submitted';
@@ -253,6 +248,18 @@ interface EvaluationResult {
   feedback: string;
 }
 
+type CatalogueDifficulty = 'easy' | 'medium' | 'hard';
+interface CatalogueQuestion {
+  id: string;
+  unit: number;
+  prompt: string;
+  options: QuestionOption[];
+  correct_answer: string;
+  difficulty: CatalogueDifficulty;
+  marks: number;
+  explanation?: string;
+}
+
 function toNumber(value: number | string | null | undefined): number {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
@@ -410,6 +417,109 @@ function normalizeAnswerText(value: string) {
 function normalizeChoice(value: string) {
   const compact = value.toLowerCase().replace(/[^a-z0-9]/g, '');
   return compact.slice(0, 1);
+}
+
+async function randomizeCatalogueQuestionsFromDb(options: {
+  count: number;
+  units?: number[];
+  difficulty?: CatalogueDifficulty | 'mixed';
+  excludeIds?: Iterable<string>;
+}): Promise<CatalogueQuestion[]> {
+  const normalizedCount = Math.max(0, Math.min(100, Math.floor(options.count)));
+  if (normalizedCount === 0) return [];
+
+  const requestedUnits = Array.from(
+    new Set((options.units ?? [])
+      .map((value) => Math.floor(Number(value)))
+      .filter((value) => Number.isFinite(value) && value >= 1 && value <= 99)),
+  );
+
+  const excluded = Array.from(
+    new Set(Array.from(options.excludeIds ?? []).map((id) => String(id).trim()).filter(Boolean)),
+  );
+
+  const rows = await sql.raw(
+    `
+    SELECT
+      qb.tags->>'catalogue_id' AS catalogue_id,
+      qb.tags->>'unit' AS unit_raw,
+      qb.prompt,
+      qb.difficulty,
+      qb.marks,
+      qb.explanation,
+      qb.answer_key,
+      COALESCE(opt.options_json, '[]'::jsonb) AS options_json
+    FROM question_bank qb
+    LEFT JOIN LATERAL (
+      SELECT jsonb_agg(
+        jsonb_build_object(
+          'key', qo.option_key,
+          'text', qo.option_text
+        )
+        ORDER BY qo.display_order ASC
+      ) AS options_json
+      FROM question_options qo
+      WHERE qo.question_id = qb.id
+    ) opt ON true
+    WHERE qb.tags->>'origin' = 'catalogue'
+      AND qb.tags ? 'catalogue_id'
+      AND ($1::int[] IS NULL OR (qb.tags->>'unit')::int = ANY($1::int[]))
+      AND ($2::text IS NULL OR qb.difficulty = $2)
+      AND ($3::text[] IS NULL OR (qb.tags->>'catalogue_id') <> ALL($3::text[]))
+    ORDER BY random()
+    LIMIT $4;
+    `,
+    [
+      requestedUnits.length > 0 ? requestedUnits : null,
+      options.difficulty && options.difficulty !== 'mixed' ? options.difficulty : null,
+      excluded.length > 0 ? excluded : null,
+      normalizedCount,
+    ],
+  );
+
+  return (rows.rows as Array<{
+    catalogue_id: string | null;
+    unit_raw: string | null;
+    prompt: string;
+    difficulty: CatalogueDifficulty;
+    marks: string | number;
+    explanation: string | null;
+    answer_key: unknown;
+    options_json: unknown;
+  }>).flatMap((row) => {
+    const id = row.catalogue_id?.trim();
+    if (!id) return [];
+
+    const unit = Number.parseInt(row.unit_raw ?? '', 10);
+    if (!Number.isFinite(unit)) return [];
+
+    const optionsList = sanitizeQuestionOptions(row.options_json) ?? [];
+    if (optionsList.length < 2) return [];
+
+    const answerKey = asObject(row.answer_key) ?? {};
+    const correct = normalizeOptionKey(
+      asString(answerKey.correctOptionKey)
+      ?? asString(answerKey.correctAnswer)
+      ?? '',
+    );
+    if (!correct || !optionsList.some((opt) => opt.key === correct)) return [];
+
+    const marks = Math.max(0.25, toNumber(row.marks));
+    const difficulty = row.difficulty === 'easy' || row.difficulty === 'medium' || row.difficulty === 'hard'
+      ? row.difficulty
+      : 'medium';
+
+    return [{
+      id,
+      unit,
+      prompt: row.prompt,
+      options: optionsList,
+      correct_answer: correct,
+      difficulty,
+      marks,
+      explanation: row.explanation ?? undefined,
+    } satisfies CatalogueQuestion];
+  });
 }
 
 function matchesExpectedAnswer(answer: string, expected: string) {
@@ -1738,7 +1848,7 @@ export async function addRandomQuestionsFromBankToTest(options: {
     .map((row) => row.catalogue_question_id)
     .filter((id): id is string => typeof id === 'string' && id.length > 0);
 
-  const catalogueQuestions: CatalogueQuestion[] = await randomizeCatalogueQuestions({
+  const catalogueQuestions: CatalogueQuestion[] = await randomizeCatalogueQuestionsFromDb({
     count: normalizedCount,
     units: requestedUnits,
     difficulty: difficultyFilter,
