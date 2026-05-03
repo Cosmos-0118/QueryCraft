@@ -12,6 +12,10 @@ import {
   TEST_PROCTORING_CONFIG,
 } from '@/lib/test/tamper-detection';
 import {
+  clearAttemptNavigationLock,
+  setAttemptNavigationLock,
+} from '@/lib/test/attempt-navigation-lock';
+import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
@@ -256,6 +260,12 @@ export default function TestAttemptPage() {
         answersRef.current = mappedAnswers;
         lastSavedSnapshotRef.current = JSON.stringify(mappedAnswers);
         lastSavedAnswersRef.current = { ...mappedAnswers };
+
+        if (attempt.status === 'in_progress') {
+          setAttemptNavigationLock(`/tests/${testId}/attempt`);
+        } else {
+          clearAttemptNavigationLock();
+        }
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           setError('Unable to load attempt page');
@@ -269,6 +279,15 @@ export default function TestAttemptPage() {
 
     return () => controller.abort();
   }, [hydrated, isAuthenticated, isStudent, router, testId, user]);
+
+  useEffect(() => {
+    return () => {
+      // Cleanup stale lock when leaving attempt page for submitted flow.
+      if (submitted || autoSubmitTriggered) {
+        clearAttemptNavigationLock();
+      }
+    };
+  }, [autoSubmitTriggered, submitted]);
 
   useEffect(() => {
     if (!test?.duration_minutes) return;
@@ -320,6 +339,7 @@ export default function TestAttemptPage() {
             ? data.attempt.id
             : attemptId;
 
+        clearAttemptNavigationLock();
         setSubmitted(true);
         setSaveMessage('Time is up. Your attempt was auto-submitted.');
         window.setTimeout(() => {
@@ -563,6 +583,7 @@ export default function TestAttemptPage() {
       }
 
       forceSubmitSucceeded = true;
+      clearAttemptNavigationLock();
       setSaveMessage('Attempt auto-submitted after repeated integrity violations.');
       setTabSwitchPopup({
         step: 2,
@@ -1017,6 +1038,7 @@ export default function TestAttemptPage() {
           ? data.attempt.id
           : attemptId;
 
+      clearAttemptNavigationLock();
       setSubmitted(true);
       setAutoSubmitTriggered(true);
       setSaveMessage('Attempt submitted successfully.');

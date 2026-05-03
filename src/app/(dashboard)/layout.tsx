@@ -8,6 +8,10 @@ import { useThemeStore, type ThemeMode } from '@/stores/theme-store';
 import { useLoadingStore } from '@/stores/loading-store';
 import { THEME_OPTIONS } from '@/lib/theme';
 import {
+  getAttemptNavigationLockEventName,
+  readAttemptNavigationLock,
+} from '@/lib/test/attempt-navigation-lock';
+import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
   Settings, Moon, Sun, Palette, Sparkles, FunctionSquare,
   CircuitBoard, LogOut, ChevronRight, Check,
@@ -124,6 +128,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [lockedAttemptPath, setLockedAttemptPath] = useState<string | null>(null);
   const redirected = useRef(false);
   const { start: startLoading, stop: stopLoading } = useLoadingStore();
 
@@ -141,6 +146,59 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       stopLoading();
     }
   }, [mounted, isAuthenticated, startLoading, stopLoading]);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const lockEventName = getAttemptNavigationLockEventName();
+    const syncLock = () => {
+      const lock = readAttemptNavigationLock();
+      setLockedAttemptPath(lock?.attemptPath ?? null);
+    };
+
+    syncLock();
+    const onFocus = () => syncLock();
+    const onStorage = () => syncLock();
+    const onLockChanged = () => syncLock();
+
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(lockEventName, onLockChanged);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(lockEventName, onLockChanged);
+    };
+  }, [mounted]);
+
+  useEffect(() => {
+    if (!mounted || !isAuthenticated || !lockedAttemptPath) return;
+    if (pathname === lockedAttemptPath) return;
+    router.replace(lockedAttemptPath);
+  }, [isAuthenticated, lockedAttemptPath, mounted, pathname, router]);
+
+  useEffect(() => {
+    if (!mounted || !isAuthenticated || !lockedAttemptPath) return;
+
+    const onClickCapture = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      const anchor = target?.closest('a[href]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+
+      const href = anchor.getAttribute('href') ?? '';
+      if (!href.startsWith('/')) return; // ignore external or hash links
+      if (href === lockedAttemptPath) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      router.replace(lockedAttemptPath);
+    };
+
+    document.addEventListener('click', onClickCapture, true);
+    return () => {
+      document.removeEventListener('click', onClickCapture, true);
+    };
+  }, [isAuthenticated, lockedAttemptPath, mounted, router]);
 
   if (!mounted || !isAuthenticated) {
     return null;
