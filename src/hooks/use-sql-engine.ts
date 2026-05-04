@@ -529,11 +529,12 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
       const result = executorRef.current.execute(sql);
       const shouldPersist = !isolated && (options?.persist ?? true);
       if (!result.error && shouldPersist && shouldPersistSql(sql)) {
+        const executedDatabase = executorRef.current.getActiveDatabase();
         persistedStatementsRef.current = [
           ...persistedStatementsRef.current,
           {
             sql,
-            database: activeDatabaseRef.current,
+            database: executedDatabase,
           },
         ];
         if (engineCache) engineCache.statements = persistedStatementsRef.current;
@@ -577,7 +578,7 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
           if (!stmtResult.error && shouldPersistSql(stmtResult.statement)) {
             newEntries.push({
               sql: stmtResult.statement,
-              database: activeDatabaseRef.current,
+              database: stmtResult.database ?? activeDatabaseRef.current,
             });
           }
         }

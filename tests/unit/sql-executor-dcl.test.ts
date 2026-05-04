@@ -64,4 +64,24 @@ describe('SqlExecutor DCL (users and grants)', () => {
     expect(grants.error).toBeUndefined();
     expect(grants.rowCount).toBeGreaterThan(0);
   });
+
+  it('denies multi-table reads when one referenced table is not granted', () => {
+    executor.execute('CREATE TABLE public_reports (id INTEGER PRIMARY KEY, title TEXT)');
+    executor.execute('CREATE TABLE private_reports (id INTEGER PRIMARY KEY, secret TEXT)');
+    executor.execute("INSERT INTO public_reports VALUES (1, 'Visible')");
+    executor.execute("INSERT INTO private_reports VALUES (1, 'Hidden')");
+
+    executor.execute("CREATE USER 'limited'@'localhost' IDENTIFIED BY 'x'");
+    executor.execute("GRANT SELECT ON main.public_reports TO 'limited'@'localhost'");
+    executor.execute("SET USER 'limited'@'localhost'");
+
+    const allowed = executor.execute('SELECT title FROM public_reports');
+    expect(allowed.error).toBeUndefined();
+
+    const denied = executor.execute(
+      'SELECT p.title, r.secret FROM public_reports p JOIN private_reports r ON r.id = p.id',
+    );
+    expect(denied.error).toBeDefined();
+    expect(denied.error?.toLowerCase()).toContain('access denied');
+  });
 });

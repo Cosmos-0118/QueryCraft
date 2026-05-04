@@ -70,4 +70,12 @@ describe('SQL statement splitter', () => {
     expect(statements[0].toUpperCase()).toContain('FOR EACH ROW');
     expect(statements[1].trim().toUpperCase()).toBe('SELECT * FROM STUDENTS;');
   });
+
+  it('does not treat -- as a comment marker when not followed by whitespace', () => {
+    const sql = 'SELECT 1--2; SELECT 3;';
+    const statements = splitSqlStatements(sql);
+    expect(statements).toHaveLength(2);
+    expect(statements[0]).toBe('SELECT 1--2;');
+    expect(statements[1]).toBe('SELECT 3;');
+  });
 });

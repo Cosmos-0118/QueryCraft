@@ -79,7 +79,7 @@ describe('SqlExecutor triggers', () => {
     expect(String(create.rows[0]?.['Create Trigger'] ?? '')).toContain('CREATE TRIGGER');
   });
 
-  it('supports MySQL trigger delimiters and FOR EACH ROW syntax', () => {
+  it('rejects unsupported SET NEW trigger rewrites with a clear error', () => {
     const setup = executor.loadSQL(`
       CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT);
       DELIMITER $$
@@ -91,18 +91,10 @@ describe('SqlExecutor triggers', () => {
       DELIMITER ;
     `);
 
-    expect(setup.error).toBeUndefined();
-
-    const insert = executor.execute("INSERT INTO students VALUES (1, 'Alice')");
-    expect(insert.error).toBeUndefined();
-
-    const rows = executor.execute('SELECT name FROM students WHERE id = 1;');
-    expect(rows.error).toBeUndefined();
-    expect(rows.rows[0]?.name).toBe('ALICE');
+    expect(setup.error).toBeDefined();
+    expect(setup.error?.toLowerCase()).toContain('not supported');
 
     const showCreate = executor.execute('SHOW CREATE TRIGGER trg_students_bi;');
-    expect(showCreate.error).toBeUndefined();
-    expect(String(showCreate.rows[0]?.['Create Trigger'] ?? '')).toContain('FOR EACH ROW');
-    expect(String(showCreate.rows[0]?.['Create Trigger'] ?? '')).toContain('BEFORE INSERT');
+    expect(showCreate.error).toBeDefined();
   });
 });

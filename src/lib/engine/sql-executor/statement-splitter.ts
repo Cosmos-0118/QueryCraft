@@ -1,3 +1,5 @@
+import { isEscapedByBackslash, isMySqlLineCommentStart } from './sql-lexer';
+
 function isWordChar(ch: string): boolean {
   return /[A-Za-z0-9_]/.test(ch);
 }
@@ -127,11 +129,16 @@ export function splitSqlStatements(sql: string): string[] {
     }
 
     if (!inSingle && !inDouble && !inBacktick) {
-      if (ch === '-' && next === '-') {
-        buffer += ch;
-        buffer += next;
+      if (isMySqlLineCommentStart(source, i)) {
+        if (ch === '#') {
+          buffer += ch;
+          i += 1;
+        } else {
+          buffer += ch;
+          buffer += next;
+          i += 2;
+        }
         inLineComment = true;
-        i += 2;
         continue;
       }
       if (ch === '/' && next === '*') {
@@ -144,21 +151,65 @@ export function splitSqlStatements(sql: string): string[] {
     }
 
     if (!inDouble && !inBacktick && ch === "'") {
-      inSingle = !inSingle;
+      if (inSingle) {
+        if (next === "'") {
+          buffer += ch;
+          buffer += next;
+          i += 2;
+          lineHasOnlyWhitespace = false;
+          continue;
+        }
+        if (isEscapedByBackslash(source, i)) {
+          buffer += ch;
+          i += 1;
+          lineHasOnlyWhitespace = false;
+          continue;
+        }
+        inSingle = false;
+      } else {
+        inSingle = true;
+      }
       buffer += ch;
       i += 1;
+      lineHasOnlyWhitespace = false;
       continue;
     }
     if (!inSingle && !inBacktick && ch === '"') {
-      inDouble = !inDouble;
+      if (inDouble) {
+        if (next === '"') {
+          buffer += ch;
+          buffer += next;
+          i += 2;
+          lineHasOnlyWhitespace = false;
+          continue;
+        }
+        if (isEscapedByBackslash(source, i)) {
+          buffer += ch;
+          i += 1;
+          lineHasOnlyWhitespace = false;
+          continue;
+        }
+        inDouble = false;
+      } else {
+        inDouble = true;
+      }
       buffer += ch;
       i += 1;
+      lineHasOnlyWhitespace = false;
       continue;
     }
     if (!inSingle && !inDouble && ch === '`') {
+      if (inBacktick && next === '`') {
+        buffer += ch;
+        buffer += next;
+        i += 2;
+        lineHasOnlyWhitespace = false;
+        continue;
+      }
       inBacktick = !inBacktick;
       buffer += ch;
       i += 1;
+      lineHasOnlyWhitespace = false;
       continue;
     }
 

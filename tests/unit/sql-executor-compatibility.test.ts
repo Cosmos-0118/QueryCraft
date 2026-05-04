@@ -54,6 +54,30 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(result.rows[0]?.label).toBe('Alice-ok');
   });
 
+  it('keeps comment-like tokens and type names intact inside string literals', () => {
+    const result = executor.execute("SELECT 'DATE -- /* JSON */ TIME' AS payload");
+    expect(result.error).toBeUndefined();
+    expect(result.rows[0]?.payload).toBe('DATE -- /* JSON */ TIME');
+  });
+
+  it('applies MySQL type compatibility rewrites in CREATE TABLE contexts only', () => {
+    const create = executor.execute(
+      'CREATE TABLE typed_events (event_date DATE, payload JSON, flag TINYINT(1))',
+    );
+    expect(create.error).toBeUndefined();
+
+    const desc = executor.execute('DESCRIBE typed_events');
+    expect(desc.error).toBeUndefined();
+    const byField = new Map(desc.rows.map((row) => [String(row.Field), String(row.Type)]));
+    expect(byField.get('event_date')).toBe('TEXT');
+    expect(byField.get('payload')).toBe('TEXT');
+    expect(byField.get('flag')).toBe('INTEGER');
+
+    const select = executor.execute("SELECT 'DATE' AS token");
+    expect(select.error).toBeUndefined();
+    expect(select.rows[0]?.token).toBe('DATE');
+  });
+
   it('supports VAR_POP/VARIANCE/VAR_SAMP compatibility aggregates', () => {
     const result = executor.execute(
       'SELECT VAR_POP(gpa) AS vp, VARIANCE(gpa) AS vv, VAR_SAMP(gpa) AS vs FROM students',

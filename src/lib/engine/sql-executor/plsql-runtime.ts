@@ -1,4 +1,5 @@
 import type { QueryResult, Row } from '@/types/database';
+import { isEscapedByBackslash, isMySqlLineCommentStart } from './sql-lexer';
 
 interface CursorState {
   rows: Row[];
@@ -129,11 +130,15 @@ function splitRuntimeStatements(sql: string): string[] {
     }
 
     if (!inSingle && !inDouble && !inBacktick) {
-      if (ch === '-' && next === '-') {
-        buffer += ch;
-        buffer += next;
+      if (isMySqlLineCommentStart(sql, index)) {
+        if (ch === '#') {
+          buffer += ch;
+        } else {
+          buffer += ch;
+          buffer += next;
+          index += 1;
+        }
         inLineComment = true;
-        index += 1;
         continue;
       }
 
@@ -147,18 +152,52 @@ function splitRuntimeStatements(sql: string): string[] {
     }
 
     if (!inDouble && !inBacktick && ch === "'") {
-      inSingle = !inSingle;
+      if (inSingle) {
+        if (next === "'") {
+          buffer += ch;
+          buffer += next;
+          index += 1;
+          continue;
+        }
+        if (isEscapedByBackslash(sql, index)) {
+          buffer += ch;
+          continue;
+        }
+        inSingle = false;
+      } else {
+        inSingle = true;
+      }
       buffer += ch;
       continue;
     }
 
     if (!inSingle && !inBacktick && ch === '"') {
-      inDouble = !inDouble;
+      if (inDouble) {
+        if (next === '"') {
+          buffer += ch;
+          buffer += next;
+          index += 1;
+          continue;
+        }
+        if (isEscapedByBackslash(sql, index)) {
+          buffer += ch;
+          continue;
+        }
+        inDouble = false;
+      } else {
+        inDouble = true;
+      }
       buffer += ch;
       continue;
     }
 
     if (!inSingle && !inDouble && ch === '`') {
+      if (inBacktick && next === '`') {
+        buffer += ch;
+        buffer += next;
+        index += 1;
+        continue;
+      }
       inBacktick = !inBacktick;
       buffer += ch;
       continue;

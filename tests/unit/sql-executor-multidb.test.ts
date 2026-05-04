@@ -60,4 +60,50 @@ describe('SqlExecutor multi-database behavior', () => {
     const result = executor.execute('DROP DATABASE main');
     expect(result.error).toBeDefined();
   });
+
+  it('cleans up stored function metadata when dropping a database', () => {
+    executor.execute('CREATE DATABASE analytics');
+    executor.useDatabase('analytics');
+
+    const createFn = executor.execute(`
+      CREATE FUNCTION add_one(x INT)
+      RETURNS INT
+      DETERMINISTIC
+      BEGIN
+        RETURN x + 1;
+      END;
+    `);
+    expect(createFn.error).toBeUndefined();
+
+    const beforeDrop = executor.execute("SHOW FUNCTION STATUS LIKE 'add_one';");
+    expect(beforeDrop.error).toBeUndefined();
+    expect(beforeDrop.rowCount).toBe(1);
+
+    const drop = executor.execute('DROP DATABASE analytics');
+    expect(drop.error).toBeUndefined();
+
+    executor.useDatabase('main');
+    const afterDrop = executor.execute("SHOW FUNCTION STATUS LIKE 'add_one';");
+    expect(afterDrop.error).toBeUndefined();
+    expect(afterDrop.rowCount).toBe(0);
+  });
+
+  it('records effective database for each statement in multi-db batches', () => {
+    executor.execute('CREATE DATABASE lab');
+
+    const result = executor.loadSQL(`
+      USE lab;
+      CREATE TABLE sample (id INTEGER PRIMARY KEY, note TEXT);
+      USE main;
+      CREATE TABLE sample_main (id INTEGER PRIMARY KEY, note TEXT);
+    `);
+
+    expect(result.error).toBeUndefined();
+    expect(result.statementResults?.map((entry) => entry.database)).toEqual([
+      'lab',
+      'lab',
+      'main',
+      'main',
+    ]);
+  });
 });

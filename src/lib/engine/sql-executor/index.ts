@@ -7,6 +7,7 @@ import { splitSqlStatements } from './statement-splitter';
 import { isPlSqlBlock, runPlSqlBlock } from './plsql-runtime';
 import { extractCursorDefinitions, normalizeMySqlTriggerDefinition } from './mysql-compat';
 import { rewriteViewUpdate, rewriteViewDelete, rewriteViewInsert } from './view-manager';
+import { extractReferencedTables, replaceSqlIdentifiers } from './sql-lexer';
 import type { SqlJs, SqlJsDatabase, SupportedPrivilege, DbUser, GrantEntry } from './types';
 import { SUPPORTED_PRIVILEGES } from './types';
 
@@ -861,7 +862,7 @@ export class SqlExecutor {
     params: ProcedureParam[],
     args: string[],
   ): { sql: string; error?: string } {
-    let rewritten = body;
+    const replacements = new Map<string, string>();
 
     for (let i = 0; i < params.length; i += 1) {
       const param = params[i];
@@ -875,14 +876,10 @@ export class SqlExecutor {
       }
 
       const argSql = this.toSqlLiteral(args[i] ?? 'NULL');
-      const namePattern = new RegExp(
-        `\\b${param.name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`,
-        'gi',
-      );
-      rewritten = rewritten.replace(namePattern, argSql);
+      replacements.set(param.name.toLowerCase(), argSql);
     }
 
-    return { sql: rewritten };
+    return { sql: replaceSqlIdentifiers(body, replacements) };
   }
 
   private executeStoredProcedure(
@@ -1249,29 +1246,58 @@ export class SqlExecutor {
     return false;
   }
 
-  private extractTargetTable(sql: string): string | undefined {
-    const norm = sql.replace(/\s+/g, ' ').trim();
-    // SELECT ... FROM table / INSERT INTO table / UPDATE table / DELETE FROM table
-    const m =
-      norm.match(/\bFROM\s+[`"']?(\w+)[`"']?/i) ??
-      norm.match(/\bINTO\s+[`"']?(\w+)[`"']?/i) ??
-      norm.match(/^UPDATE\s+[`"']?(\w+)[`"']?/i);
-    return m ? m[1] : undefined;
+  private extractPrivilegeTargets(
+    sql: string,
+    required: SupportedPrivilege,
+  ): Array<{ database: string; table?: string }> {
+    if (!['SELECT', 'INSERT', 'UPDATE', 'DELETE'].includes(required)) {
+      return [{ database: this.activeDatabase }];
+    }
+
+    const refs = extractReferencedTables(sql);
+    if (refs.length === 0) {
+      return [{ database: this.activeDatabase }];
+    }
+
+    const deduped = new Map<string, { database: string; table?: string }>();
+    for (const ref of refs) {
+      const resolvedDb = ref.database
+        ? (this.resolveDatabaseName(ref.database) ?? ref.database)
+        : this.activeDatabase;
+      const table = ref.table;
+      const key = `${resolvedDb.toLowerCase()}.${table.toLowerCase()}`;
+      if (!deduped.has(key)) {
+        deduped.set(key, { database: resolvedDb, table });
+      }
+    }
+
+    return Array.from(deduped.values());
   }
 
   private denyIfNoPrivilege(sql: string, startTime: number): QueryResult | null {
     const required = this.requiredPrivilegeForSql(sql);
     if (!required) return null;
-    const targetTable = this.extractTargetTable(sql);
-    if (this.hasPrivilege(required, this.activeDatabase, targetTable)) return null;
 
-    return sqlErrorEngine.fromMessage(
-      `Access denied for user '${this.getCurrentUserDisplay()}' to ${required} on database '${this.activeDatabase}'`,
-      {
-        sql,
-        startTime,
-      },
-    );
+    const targets = this.extractPrivilegeTargets(sql, required);
+    for (const target of targets) {
+      if (this.hasPrivilege(required, target.database, target.table)) {
+        continue;
+      }
+
+      const scope = target.table
+        ? `${target.database}.${target.table}`
+        : `database '${target.database}'`;
+
+      return sqlErrorEngine.fromMessage(
+        `Access denied for user '${this.getCurrentUserDisplay()}' to ${required} on ${scope}`,
+        {
+          sql,
+          startTime,
+        },
+      );
+    }
+
+    return null;
   }
 
   private getActiveDb(): SqlJsDatabase | null {
@@ -2069,6 +2095,11 @@ export class SqlExecutor {
             this.procedures.delete(key);
           }
         }
+        for (const key of Array.from(this.functions.keys())) {
+          if (key.startsWith(`${dbName.toLowerCase()}.`)) {
+            this.functions.delete(key);
+          }
+        }
         for (const key of Array.from(this.triggers.keys())) {
           if (key.startsWith(`${dbName.toLowerCase()}.`)) {
             this.triggers.delete(key);
@@ -2092,7 +2123,15 @@ export class SqlExecutor {
     }
 
     {
-      const normalizedTrigger = normalizeMySqlTriggerDefinition(rawSql);
+      const triggerNormalization = normalizeMySqlTriggerDefinition(rawSql);
+      if (triggerNormalization.error) {
+        return sqlErrorEngine.fromMessage(triggerNormalization.error, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      const normalizedTrigger = triggerNormalization.normalized;
       if (normalizedTrigger) {
         const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
         const parsedName = this.parseQualifiedName(normalizedTrigger.name);
@@ -2260,7 +2299,16 @@ export class SqlExecutor {
         );
       if (funcHeader) {
         const extracted = this.extractRoutineBody(rawSql.trim());
-        if (extracted) {
+        if (!extracted) {
+          return sqlErrorEngine.fromMessage(
+            'Invalid CREATE FUNCTION body. Expected BEGIN ... END block.',
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+
         const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
         const name = this.parseQualifiedName(funcHeader[1]);
         if (!name) {
@@ -2312,78 +2360,6 @@ export class SqlExecutor {
           name: funcName,
           params: this.parseProcedureParams(funcHeader[2] ?? ''),
           body: extracted.body,
-          definition: rawSql.trim().replace(/;$/, ''),
-        });
-
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-        }
-      }
-    }
-
-    // CREATE FUNCTION
-    {
-      const createFunc = rawSql
-        .trim()
-        .match(
-          /^CREATE\s+FUNCTION(?:\s+IF\s+NOT\s+EXISTS)?\s+([^\s(]+)\s*\(([\s\S]*?)\)\s*RETURNS\s+[\s\S]+?\s+(?:DETERMINISTIC\s+)?BEGIN\s+([\s\S]*?)\s*END\s*;?$/i,
-        );
-      if (createFunc) {
-        const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
-        const name = this.parseQualifiedName(createFunc[1]);
-        if (!name) {
-          return sqlErrorEngine.fromMessage('Invalid function name in CREATE FUNCTION', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = name.database
-          ? (this.resolveDatabaseName(name.database) ?? name.database)
-          : this.activeDatabase;
-        if (!this.databases.has(dbName)) {
-          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        if (!this.hasPrivilege('CREATE', dbName)) {
-          return sqlErrorEngine.fromMessage(
-            `Access denied for user '${this.getCurrentUserDisplay()}' to CREATE function in database '${dbName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const funcName = name.name;
-        const funcKey = this.functionKey(dbName, funcName);
-        if (this.functions.has(funcKey)) {
-          if (hasIfNotExists) {
-            return {
-              columns: [],
-              rows: [],
-              rowCount: 0,
-              executionTimeMs: performance.now() - startTime,
-            };
-          }
-          return sqlErrorEngine.fromMessage(`Function '${funcName}' already exists`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        this.functions.set(funcKey, {
-          database: dbName,
-          name: funcName,
-          params: this.parseProcedureParams(createFunc[2] ?? ''),
-          body: createFunc[3].trim(),
           definition: rawSql.trim().replace(/;$/, ''),
         });
 
@@ -3081,6 +3057,7 @@ export class SqlExecutor {
       finalResult = result;
       statementResults.push({
         statement,
+        database: this.activeDatabase,
         columns: result.columns,
         rows: result.rows,
         rowCount: result.rowCount,

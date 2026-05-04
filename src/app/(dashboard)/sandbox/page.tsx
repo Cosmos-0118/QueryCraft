@@ -462,13 +462,19 @@ export default function SandboxPage() {
   );
 
   const toSqlUserSpec = useCallback((userDisplay: string): string => {
+    const escapeSqlLiteral = (value: string): string => value.replace(/'/g, "''");
+
     const trimmed = userDisplay.trim();
     if (!trimmed) return "'admin'@'localhost'";
-    if (trimmed.includes('@')) {
-      const [username, host] = trimmed.split('@');
-      return `'${username || 'admin'}'@'${host || 'localhost'}'`;
+
+    const atIndex = trimmed.lastIndexOf('@');
+    if (atIndex > -1) {
+      const username = trimmed.slice(0, atIndex).trim() || 'admin';
+      const host = trimmed.slice(atIndex + 1).trim() || 'localhost';
+      return `'${escapeSqlLiteral(username)}'@'${escapeSqlLiteral(host)}'`;
     }
-    return `'${trimmed}'@'localhost'`;
+
+    return `'${escapeSqlLiteral(trimmed)}'@'localhost'`;
   }, []);
 
   const loadGrantsForUser = useCallback(
