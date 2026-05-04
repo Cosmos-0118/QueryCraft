@@ -563,10 +563,11 @@ export default function SandboxPage() {
         },
       ]
     : [];
+  const hasOutputSection = Boolean(result?.error || statementResults.length > 0);
 
   return (
     <>
-      <div className="qc-sandbox-page flex h-full flex-col gap-3 rounded-2xl p-6 lg:p-8">
+      <div className="qc-sandbox-page flex min-h-full flex-col gap-3 rounded-2xl p-6 lg:p-8">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
@@ -838,9 +839,9 @@ export default function SandboxPage() {
         )}
 
         {/* Main content */}
-        <div className="grid flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-4">
-          {/* Editor + Results */}
-          <div className="flex flex-col gap-3 overflow-auto lg:col-span-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+          {/* Editor */}
+          <div className="flex flex-col gap-3 lg:col-span-3">
             <SqlEditor
               value={store.query}
               onChange={store.setQuery}
@@ -850,10 +851,11 @@ export default function SandboxPage() {
               executionFeedback={editorFeedback}
               hasOutput={Boolean(result)}
               focusRequestKey={editorFocusRequestKey}
+              className="shrink-0"
             />
 
             {/* Run bar */}
-            <div className="flex items-center gap-2">
+            <div className="shrink-0 flex items-center gap-2">
               <button
                 onClick={handleExecute}
                 disabled={!isReady}
@@ -872,51 +874,10 @@ export default function SandboxPage() {
                 </button>
               )}
             </div>
-
-            {/* Error */}
-            {result?.error && (
-              <SqlErrorAlert error={result.error} details={result.errorDetails} />
-            )}
-
-            {/* Per-statement output */}
-            {!result?.error && statementResults.length > 0 &&
-              statementResults.map((entry, index) => {
-                const statementLabel = `Statement ${index + 1}`;
-
-                if (entry.columns.length > 0) {
-                  return (
-                    <div key={`${statementLabel}-${index}`} className="space-y-1.5">
-                      <p className="px-1 text-[11px] font-medium text-muted-foreground">
-                        {statementLabel}
-                      </p>
-                      <ResultPanel
-                        columns={entry.columns}
-                        rows={entry.rows}
-                        rowCount={entry.rowCount}
-                        executionTimeMs={entry.executionTimeMs}
-                      />
-                    </div>
-                  );
-                }
-
-                return (
-                  <div
-                    key={`${statementLabel}-${index}`}
-                    className="qc-sandbox-success-banner flex items-center gap-2.5 rounded-xl px-4 py-3 text-sm"
-                  >
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    <span>
-                      {statementLabel}: query executed successfully.{' '}
-                      {entry.rowCount > 0 ? `${entry.rowCount} row(s) affected.` : 'No rows returned.'}{' '}
-                      ({entry.executionTimeMs.toFixed(1)}ms)
-                    </span>
-                  </div>
-                );
-              })}
           </div>
 
           {/* Sidebar */}
-          <div className="flex flex-col gap-3 overflow-auto">
+          <div className="flex flex-col gap-3">
             <SchemaBrowser tables={tables} />
             <Link
               href="/sandbox/history"
@@ -939,6 +900,66 @@ export default function SandboxPage() {
             </Link>
           </div>
         </div>
+
+        {hasOutputSection && (
+          <div className="qc-sandbox-surface-soft flex flex-col rounded-xl p-2 sm:p-3">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/85">
+                Query Output
+              </span>
+              {!result?.error && (
+                <span className="text-[11px] text-muted-foreground/80">
+                  {statementResults.length} statement{statementResults.length === 1 ? '' : 's'}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-3 pr-1">
+              {/* Error */}
+              {result?.error && (
+                <SqlErrorAlert error={result.error} details={result.errorDetails} />
+              )}
+
+              {/* Per-statement output */}
+              {!result?.error && statementResults.length > 0 &&
+                statementResults.map((entry, index) => {
+                  const statementLabel = `Statement ${index + 1}`;
+
+                  if (entry.columns.length > 0) {
+                    return (
+                      <div key={`${statementLabel}-${index}`} className="space-y-1.5">
+                        <p className="px-1 text-[11px] font-medium text-muted-foreground">
+                          {statementLabel}
+                        </p>
+                        <ResultPanel
+                          columns={entry.columns}
+                          rows={entry.rows}
+                          rowCount={entry.rowCount}
+                          executionTimeMs={entry.executionTimeMs}
+                          compact
+                          scrollMode="page"
+                        />
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={`${statementLabel}-${index}`}
+                      className="qc-sandbox-success-banner flex items-center gap-2.5 rounded-xl px-4 py-3 text-sm"
+                    >
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <span>
+                        {statementLabel}: query executed successfully.{' '}
+                        {entry.rowCount > 0 ? `${entry.rowCount} row(s) affected.` : 'No rows returned.'}{' '}
+                        ({entry.executionTimeMs.toFixed(1)}ms)
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modals */}
