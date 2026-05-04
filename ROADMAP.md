@@ -110,7 +110,7 @@ Implement a self-contained engine with zero UI dependencies:
   - Tables with only 1-2 columns (cannot decompose further)
   - Empty tables / tables with no sample data
 
-### [ ] Step 3: Write comprehensive unit tests (`tests/unit/normalizer-engine.test.ts`)
+### [ ] Step 3: Write comprehensive unit tests (`tests/normalizer/engine/normalizer-engine.test.ts`)
 
 Cover at least these scenarios:
 

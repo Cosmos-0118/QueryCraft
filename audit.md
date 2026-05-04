@@ -1,88 +1,74 @@
-# MySQL Sandbox Re-Audit Report (Pass 2)
+# MySQL Sandbox Re-Audit Report (Pass 3)
 
 Date: 2026-05-04
-Scope: QueryCraft SQL sandbox engine authorization model, lexer-based table extraction, MySQL compatibility transforms, and regression behavior.
+Scope: QueryCraft SQL sandbox authorization, lexer-driven privilege target extraction, and newly modularized command handlers.
 
 ## Overall Rating
 
-**8.4 / 10**
+**9.2 / 10**
 
-The latest hardening pass fixed the previous critical verb-classification flaw and closed multiple compatibility gaps. Remaining risk is concentrated in privilege-target modeling for CTE and mixed-verb statements.
+This pass resolves the two highest-severity authorization gaps from Pass 2. The privilege model now tracks both mutation targets and read-side sources (including CTE bodies), and focused regression tests pass.
 
 ## Verification Snapshot
 
 - Static re-review of:
   - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts)
   - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts)
-  - [src/lib/engine/sql-executor/mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts)
-  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts)
-  - [src/lib/engine/sql-error-engine.ts](src/lib/engine/sql-error-engine.ts)
+  - [src/lib/engine/sql-executor/internal/alter-table-compat.ts](src/lib/engine/sql-executor/internal/alter-table-compat.ts)
+  - [src/lib/engine/sql-executor/internal/database-commands.ts](src/lib/engine/sql-executor/internal/database-commands.ts)
+  - [tests/sql/executor/privileges/sql-executor-dcl.test.ts](tests/sql/executor/privileges/sql-executor-dcl.test.ts)
 - Regression run:
-  - `npm test -- tests/unit/sql-executor*.test.ts tests/unit/sql-splitter.test.ts tests/unit/plsql-runtime.test.ts`
-  - Result: 13 test files, 97 tests passed.
-- Focused ad-hoc probes (temporary tests, not committed):
-  - Probe A: non-CTE `DELETE ... (SELECT ... FROM secret)` was denied, while CTE-equivalent `WITH src AS (SELECT ... FROM secret) DELETE ...` was allowed under the same grants.
-  - Probe B: `INSERT INTO sink SELECT ... FROM secret` succeeded with only `INSERT` grants (no `SELECT` grants) when `INSERT` existed on both source and target tables.
+  - `npm test -- tests/sql/executor/privileges/sql-executor-dcl.test.ts`
+  - Result: 1 file, 10 tests passed.
 
 ## Findings (Ordered by Criticality)
 
-## 1) High: CTE source tables are skipped by privilege target extraction
+## 1) Low: Lexer-based SQL modeling still has bounded dialect coverage
 
 **Evidence**
-- CTE parsing computes a post-CTE start index:
-  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L373)
-  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L410)
-- Reference extraction for privilege targets scans from that start index:
-  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L564)
-  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L566)
-- Authorization uses these extracted references directly:
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1258)
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1290)
+- Privilege derivation is implemented via custom token parsing and clause walkers in:
+  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts)
+- Authorization hard-denies or allows based on derived targets:
+  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts)
 
 **Impact**
-- Tables referenced only inside CTE definitions can evade table-level privilege checks.
-- Equivalent non-CTE forms may be denied while CTE forms are allowed, creating an authorization bypass by query shape.
+- As SQL shape complexity grows (dialect edge cases, uncommon syntactic forms), parser drift risk remains.
+- Current implementation appears secure for covered cases, but untested syntactic variants can still produce false deny/allow behavior.
 
 **Recommendation**
-- Extend table-reference extraction to include CTE body references, while still excluding CTE alias names as physical tables.
-- Add regression tests for CTE-based DELETE/UPDATE/INSERT with unauthorized CTE source tables.
+- Keep the current deny-by-default fallback and grow coverage with grammar-edge regression tests (nested CTEs, exotic JOIN/DELETE forms, quoted/qualified aliases, and deeply nested derived tables).
 
 ---
 
-## 2) Medium: Single-verb privilege mapping causes mixed-verb authorization drift
+## 2) Low: ALTER TABLE compatibility rebuild path can diverge from native engine semantics
 
 **Evidence**
-- Statement privilege is resolved to one verb for the whole SQL statement:
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1207)
-- That one privilege is applied to every extracted table target:
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1287)
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1290)
+- Compatibility layer reconstructs tables for several ALTER operations:
+  - [src/lib/engine/sql-executor/internal/alter-table-compat.ts](src/lib/engine/sql-executor/internal/alter-table-compat.ts)
+  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts)
 
 **Impact**
-- Mixed-verb statements such as `INSERT ... SELECT` can execute without `SELECT` privilege if write-verb grants align with current checks.
-- This diverges from MySQL privilege semantics and can permit read-side access through write-oriented grants.
+- Rebuild-based emulation can differ from full MySQL behavior around indexes/constraints/default expressions in edge migrations.
+- This is primarily a compatibility correctness risk, not a direct authorization bypass.
 
 **Recommendation**
-- Move to clause-aware privilege derivation per table reference:
-  - `INSERT` on target table(s), `SELECT` on source tables.
-  - `UPDATE`/`DELETE` on mutation targets and `SELECT` on read-side subqueries/joins as needed.
+- Add targeted migration tests for index metadata preservation and column-definition roundtrips across chained ALTER statements.
 
 ## Resolved Since Previous Pass
 
-- CTE-prefixed DML verb classification now uses lexer-aware leading-verb extraction:
-  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L535)
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1207)
-  - [tests/unit/sql-executor-dcl.test.ts](tests/unit/sql-executor-dcl.test.ts#L88)
-- Unsupported-feature top-level error now includes specific raw reason context:
-  - [src/lib/engine/sql-error-engine.ts](src/lib/engine/sql-error-engine.ts#L250)
-- CREATE TRIGGER header parsing now handles quoted identifiers via structured parsing:
-  - [src/lib/engine/sql-executor/mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts#L134)
-  - [tests/unit/sql-executor-triggers.test.ts](tests/unit/sql-executor-triggers.test.ts#L103)
-- CONCAT compatibility rewrite now supports nested calls:
-  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts#L192)
-  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts#L788)
-  - [tests/unit/sql-executor-compatibility.test.ts](tests/unit/sql-executor-compatibility.test.ts#L57)
+- CTE body references are now included in privilege derivation:
+  - `collectCteBodyReadReferences(...)` in [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts)
+- Mixed-verb statements now derive per-table privileges (e.g., `INSERT` + `SELECT` targets):
+  - `extractPrivilegeTableTargets(...)` in [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts)
+  - `extractPrivilegeTargets(...)` in [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts)
+- Regression tests now cover:
+  - CTE-based DML with missing source-table `SELECT`
+  - `INSERT ... SELECT` requiring source-table `SELECT`
+  - [tests/sql/executor/privileges/sql-executor-dcl.test.ts](tests/sql/executor/privileges/sql-executor-dcl.test.ts)
+- `SqlExecutor` command handling was split into dedicated internal modules, reducing central complexity:
+  - [src/lib/engine/sql-executor/internal/database-commands.ts](src/lib/engine/sql-executor/internal/database-commands.ts)
+  - [src/lib/engine/sql-executor/internal/alter-table-compat.ts](src/lib/engine/sql-executor/internal/alter-table-compat.ts)
 
 ## Final Assessment
 
-The engine is materially stronger than the previous pass and currently stable under its regression suite. The highest-priority next step is a second authorization-model refinement focused on CTE source table accounting and mixed-verb privilege semantics.
+The engine is now in a materially stronger and more predictable state than Pass 2, with the prior authorization bypass paths closed and validated by tests. Remaining risk is mostly long-tail SQL-shape coverage, best handled through additional regression cases rather than architectural rework.

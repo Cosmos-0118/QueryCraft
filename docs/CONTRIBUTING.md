@@ -55,7 +55,7 @@ For Test module schema work, ensure `TEST_DB_URL` is configured before running m
 
 ### SQL Runtime Changes
 
-- If you modify SQL executor behavior, add or update tests in `tests/unit`.
+- If you modify SQL executor behavior, add or update tests under `tests/sql/executor/` (see `tests/README.md`).
 - Keep statement splitting, compatibility translation, and runtime behavior in sync.
 
 ### UI/UX Changes
