@@ -1018,8 +1018,9 @@ export default function TestDetailPage() {
                         />
                         <label
                           htmlFor="import-questions-json"
-                          className={`inline-flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-primary/25 bg-primary/15 px-3 text-xs font-semibold text-primary transition hover:bg-primary/20 ${parsingImport || importingQuestions ? 'pointer-events-none opacity-60' : ''
-                            }`}
+                          className={`inline-flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-primary/25 bg-primary/15 px-3 text-xs font-semibold text-primary transition hover:bg-primary/20 ${
+                            parsingImport || importingQuestions ? 'pointer-events-none opacity-60' : ''
+                          }`}
                         >
                           Choose File
                         </label>

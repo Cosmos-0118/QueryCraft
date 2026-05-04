@@ -47,3 +47,4 @@ next-env.d.ts
 /uploads/faculty-questions/*
 !/uploads/faculty-questions/.gitkeep
 !/uploads/faculty-questions/README.md
+bugs.txt
