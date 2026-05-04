@@ -643,16 +643,10 @@ export function handleDatabaseCommand(
   }
 
   {
-    const m = norm.match(/^SHOW\s+(?:FULL\s+)?TABLES\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?\s*;?$/i);
+    const m = norm.match(/^SHOW\s+(FULL\s+)?TABLES\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?\s*;?$/i);
     if (m) {
-      if (!this.isCurrentUserAdmin()) {
-        return sqlErrorEngine.fromMessage('Access denied. Only admin can drop databases.', {
-          sql: rawSql,
-          startTime,
-        });
-      }
-
-      const requestedName = m[1];
+      const isFull = Boolean(m[1]);
+      const requestedName = m[2];
       const dbName = this.resolveDatabaseName(requestedName);
       if (!dbName) {
         return sqlErrorEngine.fromMessage(`Unknown database '${requestedName}'`, {
@@ -660,20 +654,94 @@ export function handleDatabaseCommand(
           startTime,
         });
       }
+
+      if (!this.hasPrivilege('SELECT', dbName)) {
+        return sqlErrorEngine.fromMessage(
+          `Access denied for user '${this.getCurrentUserDisplay()}' to SHOW TABLES on database '${dbName}'`,
+          {
+            sql: rawSql,
+            startTime,
+          },
+        );
+      }
+
       const db = this.databases.get(dbName);
       if (!db) return null;
+
       const result = db.exec(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
       );
       const key = `Tables_in_${dbName}`;
       const rows: Row[] =
         result.length > 0
-          ? result[0].values.map(([tableName]) => ({ [key]: String(tableName) }))
+          ? result[0].values.map(([tableName]) =>
+              isFull
+                ? { [key]: String(tableName), Table_type: 'BASE TABLE' }
+                : { [key]: String(tableName) },
+            )
           : [];
+
       return {
-        columns: [key],
+        columns: isFull ? [key, 'Table_type'] : [key],
         rows,
         rowCount: rows.length,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  {
+    const m = norm.match(/^SHOW\s+CREATE\s+VIEW\s+(.+)\s*;?$/i);
+    if (m) {
+      const parsed = this.parseQualifiedName(m[1]);
+      if (!parsed) {
+        return sqlErrorEngine.fromMessage('Invalid view name in SHOW CREATE VIEW', {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      const dbName = parsed.database
+        ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
+        : this.activeDatabase;
+      const db = this.databases.get(dbName);
+      if (!db) {
+        return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      if (!this.hasPrivilege('SELECT', dbName)) {
+        return sqlErrorEngine.fromMessage(
+          `Access denied for user '${this.getCurrentUserDisplay()}' to SHOW CREATE VIEW on database '${dbName}'`,
+          {
+            sql: rawSql,
+            startTime,
+          },
+        );
+      }
+
+      const escapedName = parsed.name.replace(/'/g, "''");
+      const result = db.exec(
+        `SELECT sql FROM sqlite_master WHERE type='view' AND lower(name)=lower('${escapedName}') LIMIT 1`,
+      );
+      if (result.length === 0 || result[0].values.length === 0) {
+        return sqlErrorEngine.fromMessage(`Unknown view '${parsed.name}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      return {
+        columns: ['View', 'Create View'],
+        rows: [
+          {
+            View: parsed.name,
+            'Create View': String(result[0].values[0]?.[0] ?? ''),
+          },
+        ],
+        rowCount: 1,
         executionTimeMs: performance.now() - startTime,
       };
     }

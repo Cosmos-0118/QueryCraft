@@ -7,7 +7,12 @@ import { splitSqlStatements } from './statement-splitter';
 import { isPlSqlBlock, runPlSqlBlock } from './plsql-runtime';
 import { extractCursorDefinitions } from './mysql-compat';
 import { rewriteViewUpdate, rewriteViewDelete, rewriteViewInsert } from './view-manager';
-import { extractLeadingSqlVerb, extractPrivilegeTableTargets, replaceSqlIdentifiers } from './sql-lexer';
+import {
+  extractLeadingSqlVerb,
+  extractPrivilegeTableTargets,
+  replaceSqlIdentifiers,
+  transformSqlCodeSegments,
+} from './sql-lexer';
 import {
   escapeRegex,
   extractRoutineBody as extractRoutineBodyHelper,
@@ -75,6 +80,100 @@ interface SchemaObjectSnapshot {
   sql: string;
 }
 
+interface UnsupportedMySqlPattern {
+  pattern: RegExp;
+  reason: string;
+}
+
+const SQLITE_EXECUTABLE_VERBS = new Set([
+  'ALTER',
+  'ANALYZE',
+  'ATTACH',
+  'BEGIN',
+  'COMMIT',
+  'CREATE',
+  'DELETE',
+  'DETACH',
+  'DROP',
+  'EXPLAIN',
+  'INSERT',
+  'PRAGMA',
+  'REINDEX',
+  'RELEASE',
+  'RENAME',
+  'REPLACE',
+  'ROLLBACK',
+  'SAVEPOINT',
+  'SELECT',
+  'START',
+  'UPDATE',
+  'VACUUM',
+  'VALUES',
+  'WITH',
+]);
+
+const PRIVILEGE_EXEMPT_VERBS = new Set([
+  'BEGIN',
+  'COMMIT',
+  'ROLLBACK',
+  'SAVEPOINT',
+  'RELEASE',
+  'START',
+  'SET',
+  'USE',
+]);
+
+const UNSUPPORTED_MYSQL_PATTERNS: UnsupportedMySqlPattern[] = [
+  {
+    pattern: /^LOAD\s+(?:DATA|XML)\b/i,
+    reason: 'Bulk file import commands require filesystem and server-side MySQL capabilities.',
+  },
+  {
+    pattern: /^HANDLER\b/i,
+    reason: 'HANDLER statements depend on MySQL storage-engine cursor internals.',
+  },
+  {
+    pattern: /^XA\b/i,
+    reason: 'XA distributed transaction commands are not available in the SQLite runtime.',
+  },
+  {
+    pattern: /^(?:START|STOP)\s+(?:SLAVE|REPLICA)\b/i,
+    reason: 'Replication control commands require a real MySQL replication server.',
+  },
+  {
+    pattern: /^CHANGE\s+(?:MASTER|REPLICATION\s+SOURCE)\b/i,
+    reason: 'Replication source configuration commands require a real MySQL server.',
+  },
+  {
+    pattern: /^RESET\s+(?:MASTER|SLAVE|REPLICA)\b/i,
+    reason: 'Replication reset commands are server-level MySQL operations.',
+  },
+  {
+    pattern: /^LOCK\s+INSTANCE\b/i,
+    reason: 'Instance lock commands require server-level MySQL locking.',
+  },
+  {
+    pattern: /^UNLOCK\s+INSTANCE\b/i,
+    reason: 'Instance unlock commands require server-level MySQL locking.',
+  },
+  {
+    pattern: /^BINLOG\b/i,
+    reason: 'BINLOG commands require MySQL binary log infrastructure.',
+  },
+  {
+    pattern: /^(?:INSTALL|UNINSTALL)\s+PLUGIN\b/i,
+    reason: 'Plugin management requires a server process and plugin subsystem.',
+  },
+  {
+    pattern: /^SHUTDOWN\b/i,
+    reason: 'SHUTDOWN is a server control command and is not supported in embedded mode.',
+  },
+  {
+    pattern: /^CLONE\b/i,
+    reason: 'CLONE requires MySQL server-side clone plugin support.',
+  },
+];
+
 export class SqlExecutor {
   private sqlModule: SqlJs | null = null;
   private databases = new Map<string, SqlJsDatabase>();
@@ -88,6 +187,8 @@ export class SqlExecutor {
   private currentUserKey = 'admin@localhost';
   private readonly runtimeCursorScope = 'session';
   private lastRowCount = 0;
+  private preparedStatements = new Map<string, string>();
+  private sessionVariables = new Map<string, string>();
 
   private procedureKey(database: string, name: string): string {
     return `${database.toLowerCase()}.${name.toLowerCase()}`;
@@ -702,6 +803,256 @@ export class SqlExecutor {
     return { database: this.activeDatabase, table: identifier };
   }
 
+  private parseSetUserVariableAssignments(
+    rawAssignments: string,
+  ): Array<{ name: string; valueSqlLiteral: string }> | null {
+    const assignments = this.splitCommaSafe(rawAssignments);
+    if (assignments.length === 0) return null;
+
+    const parsed: Array<{ name: string; valueSqlLiteral: string }> = [];
+    for (const assignment of assignments) {
+      const match = assignment.trim().match(/^@([A-Za-z_][\w$]*)\s*(?:=|:=)\s*([\s\S]+)$/);
+      if (!match) {
+        return null;
+      }
+
+      parsed.push({
+        name: match[1].toLowerCase(),
+        valueSqlLiteral: this.toSqlLiteral(match[2]),
+      });
+    }
+
+    return parsed;
+  }
+
+  private decodeSqlStringLiteral(raw: string): string | null {
+    const trimmed = raw.trim();
+    if (trimmed.length < 2) return null;
+
+    if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+      return trimmed.slice(1, -1).replace(/''/g, "'").replace(/\\'/g, "'");
+    }
+
+    if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      return trimmed.slice(1, -1).replace(/""/g, '"').replace(/\\"/g, '"');
+    }
+
+    return null;
+  }
+
+  private resolvePreparedSqlSource(sourceToken: string): { sql?: string; error?: string } {
+    const trimmed = sourceToken.trim().replace(/;$/, '');
+    const variableMatch = trimmed.match(/^@([A-Za-z_][\w$]*)$/);
+
+    if (variableMatch) {
+      const key = variableMatch[1].toLowerCase();
+      const raw = this.sessionVariables.get(key);
+      if (!raw) {
+        return {
+          error: `Unknown user variable '@${variableMatch[1]}' in PREPARE`,
+        };
+      }
+
+      const decoded = this.decodeSqlStringLiteral(raw);
+      if (decoded === null) {
+        return {
+          error: `PREPARE source variable '@${variableMatch[1]}' must contain SQL text as a quoted string.`,
+        };
+      }
+
+      return { sql: decoded };
+    }
+
+    const decoded = this.decodeSqlStringLiteral(trimmed);
+    if (decoded === null) {
+      return { error: 'PREPARE expects a quoted SQL string or @variable source.' };
+    }
+
+    return { sql: decoded };
+  }
+
+  private injectPreparedStatementArguments(
+    templateSql: string,
+    argumentLiterals: string[],
+  ): { sql?: string; error?: string } {
+    let argIndex = 0;
+    let missingArgument = false;
+
+    const injected = transformSqlCodeSegments(templateSql, (segment) =>
+      segment.replace(/\?/g, () => {
+        const literal = argumentLiterals[argIndex];
+        if (literal === undefined) {
+          missingArgument = true;
+          return '?';
+        }
+
+        argIndex += 1;
+        return literal;
+      }),
+    );
+
+    if (missingArgument) {
+      return {
+        error: `Prepared statement expects ${argIndex + 1} parameter(s) but received ${argumentLiterals.length}.`,
+      };
+    }
+
+    if (argIndex < argumentLiterals.length) {
+      return {
+        error: `Prepared statement expects ${argIndex} parameter(s) but received ${argumentLiterals.length}.`,
+      };
+    }
+
+    return { sql: injected };
+  }
+
+  private handlePreparedStatementCommand(rawSql: string, startTime: number): QueryResult | null {
+    const cleaned = stripComments(rawSql).trim();
+    if (!cleaned) return null;
+
+    const setMatch = cleaned.match(/^SET\s+([\s\S]+)$/i);
+    if (setMatch) {
+      const parsedAssignments = this.parseSetUserVariableAssignments(
+        setMatch[1].replace(/;$/, '').trim(),
+      );
+      if (parsedAssignments) {
+        for (const assignment of parsedAssignments) {
+          this.sessionVariables.set(assignment.name, assignment.valueSqlLiteral);
+        }
+
+        return {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          executionTimeMs: performance.now() - startTime,
+        };
+      }
+    }
+
+    const prepareMatch = cleaned.match(/^PREPARE\s+([A-Za-z_][\w$]*)\s+FROM\s+([\s\S]+)$/i);
+    if (prepareMatch) {
+      const key = prepareMatch[1].toLowerCase();
+      const source = this.resolvePreparedSqlSource(prepareMatch[2]);
+      if (!source.sql) {
+        return sqlErrorEngine.fromMessage(source.error ?? 'Invalid PREPARE source', {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      this.preparedStatements.set(key, source.sql);
+      return {
+        columns: [],
+        rows: [],
+        rowCount: 0,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+
+    const executeMatch = cleaned.match(
+      /^EXECUTE\s+([A-Za-z_][\w$]*)(?:\s+USING\s+([\s\S]+))?\s*;?$/i,
+    );
+    if (executeMatch) {
+      const statementName = executeMatch[1];
+      const key = statementName.toLowerCase();
+      const templateSql = this.preparedStatements.get(key);
+      if (!templateSql) {
+        return sqlErrorEngine.fromMessage(`Unknown prepared statement '${statementName}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      const usingClause = executeMatch[2]?.replace(/;$/, '').trim() ?? '';
+      const argumentLiterals: string[] = [];
+      if (usingClause) {
+        const args = this.splitCommaSafe(usingClause);
+        for (const arg of args) {
+          const variableMatch = arg.trim().match(/^@([A-Za-z_][\w$]*)$/);
+          if (!variableMatch) {
+            return sqlErrorEngine.fromMessage(
+              'EXECUTE ... USING supports only @user_variable arguments in sandbox mode.',
+              {
+                sql: rawSql,
+                startTime,
+              },
+            );
+          }
+
+          argumentLiterals.push(this.sessionVariables.get(variableMatch[1].toLowerCase()) ?? 'NULL');
+        }
+      }
+
+      const injected = this.injectPreparedStatementArguments(templateSql, argumentLiterals);
+      if (!injected.sql) {
+        return sqlErrorEngine.fromMessage(injected.error ?? 'Invalid EXECUTE arguments', {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      return this.execute(injected.sql);
+    }
+
+    const deallocateMatch = cleaned.match(
+      /^(?:DEALLOCATE|DROP)\s+PREPARE\s+([A-Za-z_][\w$]*)\s*;?$/i,
+    );
+    if (deallocateMatch) {
+      const statementName = deallocateMatch[1];
+      const key = statementName.toLowerCase();
+      if (!this.preparedStatements.has(key)) {
+        return sqlErrorEngine.fromMessage(`Unknown prepared statement '${statementName}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      this.preparedStatements.delete(key);
+      return {
+        columns: [],
+        rows: [],
+        rowCount: 0,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+
+    return null;
+  }
+
+  private detectUnsupportedMySqlCommand(rawSql: string, translatedSql: string): string | null {
+    const cleaned = stripComments(rawSql);
+    const normalized = cleaned.replace(/\s+/g, ' ').trim();
+    if (!normalized) return null;
+
+    for (const unsupported of UNSUPPORTED_MYSQL_PATTERNS) {
+      if (unsupported.pattern.test(normalized)) {
+        return `${unsupported.reason} Unsupported in the SQLite-backed sandbox runtime.`;
+      }
+    }
+
+    const leadingVerb = extractLeadingSqlVerb(cleaned);
+    if (!leadingVerb) return null;
+
+    const translatedLeadingVerb = extractLeadingSqlVerb(translatedSql);
+    if (translatedLeadingVerb && SQLITE_EXECUTABLE_VERBS.has(translatedLeadingVerb)) {
+      return null;
+    }
+
+    if (leadingVerb === 'SHOW' && /^\s*SHOW\b/i.test(translatedSql.trim())) {
+      return `Unsupported SHOW command variant: '${normalized}'. This sandbox supports many SHOW commands, but not this variant yet.`;
+    }
+
+    if (leadingVerb === 'SHOW') {
+      return null;
+    }
+
+    if (!SQLITE_EXECUTABLE_VERBS.has(leadingVerb)) {
+      return `Unsupported MySQL command '${leadingVerb}'. This command requires MySQL server features that are unavailable in the SQLite-backed sandbox.`;
+    }
+
+    return null;
+  }
+
   private getGrantEntries(userKey: string): GrantEntry[] {
     return this.grants.get(userKey) ?? [];
   }
@@ -802,7 +1153,17 @@ export class SqlExecutor {
     if (leadingVerb === 'DELETE' || leadingVerb === 'TRUNCATE') return 'DELETE';
     if (leadingVerb === 'CALL') return 'EXECUTE';
     if (leadingVerb === 'ALTER') return 'ALTER';
+    if (leadingVerb === 'VACUUM') return 'ALTER';
     if (leadingVerb === 'DROP' || leadingVerb === 'RENAME') return 'DROP';
+    if (leadingVerb === 'ANALYZE') return 'SELECT';
+    if (leadingVerb === 'REINDEX') return 'INDEX';
+    if (leadingVerb === 'ATTACH') return 'CREATE';
+    if (leadingVerb === 'DETACH') return 'DROP';
+
+    if (leadingVerb === 'PRAGMA') {
+      const norm = cleaned.replace(/\s+/g, ' ').trim();
+      return /=/.test(norm) ? 'ALTER' : 'SELECT';
+    }
 
     if (leadingVerb === 'CREATE') {
       const norm = cleaned.replace(/\s+/g, ' ').trim().toUpperCase();
@@ -880,6 +1241,20 @@ export class SqlExecutor {
 
   private denyIfNoPrivilege(sql: string, startTime: number): QueryResult | null {
     const targets = this.extractPrivilegeTargets(sql);
+
+    if (targets.length === 0 && !this.isCurrentUserAdmin()) {
+      const leadingVerb = extractLeadingSqlVerb(stripComments(sql));
+      if (leadingVerb && !PRIVILEGE_EXEMPT_VERBS.has(leadingVerb)) {
+        return sqlErrorEngine.fromMessage(
+          `Access denied for user '${this.getCurrentUserDisplay()}' to execute '${leadingVerb}' statements without explicit sandbox privilege support.`,
+          {
+            sql,
+            startTime,
+          },
+        );
+      }
+    }
+
     for (const target of targets) {
       if (this.hasPrivilege(target.privilege, target.database, target.table)) {
         continue;
@@ -935,6 +1310,8 @@ export class SqlExecutor {
     this.triggers.clear();
     this.cursors.clear();
     this.lastRowCount = 0;
+    this.preparedStatements.clear();
+    this.sessionVariables.clear();
     const mainDb = new SQL.Database();
     mainDb.run('PRAGMA foreign_keys = ON;');
     this.databases.set('main', mainDb);
@@ -1025,6 +1402,9 @@ export class SqlExecutor {
     const virtualResult = this.handleDatabaseCommand(normalizedSql, start);
     if (virtualResult) return virtualResult;
 
+    const preparedStatementResult = this.handlePreparedStatementCommand(normalizedSql, start);
+    if (preparedStatementResult) return preparedStatementResult;
+
     const permissionError = this.denyIfNoPrivilege(normalizedSql, start);
     if (permissionError) return permissionError;
 
@@ -1066,6 +1446,15 @@ export class SqlExecutor {
     }
 
     let finalSql = translated.sql ?? normalizedSql;
+
+    const unsupportedReason = this.detectUnsupportedMySqlCommand(normalizedSql, finalSql);
+    if (unsupportedReason) {
+      return sqlErrorEngine.fromMessage(unsupportedReason, {
+        sql,
+        translatedSql: finalSql,
+        startTime: start,
+      });
+    }
 
     // Substitute ROW_COUNT() with the last tracked row count
     finalSql = finalSql.replace(/\bROW_COUNT\s*\(\s*\)/gi, String(this.lastRowCount));
@@ -1225,6 +1614,8 @@ export class SqlExecutor {
     this.triggers.clear();
     this.cursors.clear();
     this.lastRowCount = 0;
+    this.preparedStatements.clear();
+    this.sessionVariables.clear();
     this.sqlModule = null;
     this.activeDatabase = 'main';
     this.users.clear();

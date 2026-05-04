@@ -33,6 +33,15 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(String(result.rows[0]?.['Create Table']).toUpperCase()).toContain('CREATE TABLE');
   });
 
+  it('supports SHOW CREATE VIEW', () => {
+    executor.execute('CREATE VIEW v_students AS SELECT id, name FROM students');
+
+    const result = executor.execute('SHOW CREATE VIEW v_students');
+    expect(result.error).toBeUndefined();
+    expect(result.columns).toEqual(['View', 'Create View']);
+    expect(String(result.rows[0]?.['Create View']).toUpperCase()).toContain('CREATE VIEW');
+  });
+
   it('translates LIMIT offset,count syntax', () => {
     const result = executor.execute('SELECT id FROM students ORDER BY id LIMIT 1, 1');
     expect(result.error).toBeUndefined();
@@ -60,6 +69,38 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     );
     expect(result.error).toBeUndefined();
     expect(result.rows[0]?.label).toBe('Alice-1');
+  });
+
+  it('supports PREPARE/EXECUTE/DEALLOCATE with @variables', () => {
+    const setVar = executor.execute('SET @target_id = 2');
+    expect(setVar.error).toBeUndefined();
+
+    const prepare = executor.execute(
+      "PREPARE fetch_student FROM 'SELECT name FROM students WHERE id = ?'",
+    );
+    expect(prepare.error).toBeUndefined();
+
+    const executePrepared = executor.execute('EXECUTE fetch_student USING @target_id');
+    expect(executePrepared.error).toBeUndefined();
+    expect(executePrepared.rowCount).toBe(1);
+    expect(executePrepared.rows[0]?.name).toBe('Bob');
+
+    const deallocate = executor.execute('DEALLOCATE PREPARE fetch_student');
+    expect(deallocate.error).toBeUndefined();
+  });
+
+  it('returns explicit unsupported errors for unimplemented SHOW variants', () => {
+    const result = executor.execute('SHOW OPEN TABLES');
+    expect(result.error).toBeDefined();
+    expect(result.errorDetails?.category).toBe('unsupported');
+    expect(result.error?.toLowerCase()).toContain('unsupported show');
+  });
+
+  it('returns explicit unsupported errors for server-only MySQL commands', () => {
+    const result = executor.execute("LOAD DATA INFILE '/tmp/students.csv' INTO TABLE students");
+    expect(result.error).toBeDefined();
+    expect(result.errorDetails?.category).toBe('unsupported');
+    expect(result.error?.toLowerCase()).toContain('unsupported');
   });
 
   it('keeps comment-like tokens and type names intact inside string literals', () => {

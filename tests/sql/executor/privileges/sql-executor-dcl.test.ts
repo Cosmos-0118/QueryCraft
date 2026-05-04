@@ -214,4 +214,15 @@ describe('SqlExecutor DCL (users and grants)', () => {
     const deleted = executor.execute('DELETE FROM logs WHERE id = 1');
     expect(deleted.error).toBeUndefined();
   });
+
+  it('default-denies unknown verbs for non-admin users', () => {
+    executor.execute('CREATE TABLE reports (id INTEGER PRIMARY KEY, title TEXT)');
+    executor.execute("CREATE USER 'unknown_verb_user'@'localhost' IDENTIFIED BY 'x'");
+    executor.execute("GRANT SELECT ON main.reports TO 'unknown_verb_user'@'localhost'");
+    executor.execute("SET USER 'unknown_verb_user'@'localhost'");
+
+    const denied = executor.execute('HANDLER reports OPEN');
+    expect(denied.error).toBeDefined();
+    expect(denied.error?.toLowerCase()).toContain('access denied');
+  });
 });
