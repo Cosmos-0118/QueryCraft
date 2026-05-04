@@ -40,6 +40,12 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(result.rows[0]?.id).toBe(2);
   });
 
+  it('accepts trailing identifier as table alias (MySQL-compatible)', () => {
+    const result = executor.execute('SELECT * FROM students LIM');
+    expect(result.error).toBeUndefined();
+    expect(result.rowCount).toBe(2);
+  });
+
   it('translates CONCAT() in SELECT projection', () => {
     const result = executor.execute(
       "SELECT CONCAT(name, '-ok') AS label FROM students WHERE id = 1",
