@@ -7,7 +7,7 @@ import { splitSqlStatements } from './statement-splitter';
 import { isPlSqlBlock, runPlSqlBlock } from './plsql-runtime';
 import { extractCursorDefinitions, normalizeMySqlTriggerDefinition } from './mysql-compat';
 import { rewriteViewUpdate, rewriteViewDelete, rewriteViewInsert } from './view-manager';
-import { extractReferencedTables, replaceSqlIdentifiers } from './sql-lexer';
+import { extractLeadingSqlVerb, extractReferencedTables, replaceSqlIdentifiers } from './sql-lexer';
 import type { SqlJs, SqlJsDatabase, SupportedPrivilege, DbUser, GrantEntry } from './types';
 import { SUPPORTED_PRIVILEGES } from './types';
 
@@ -1205,18 +1205,27 @@ export class SqlExecutor {
   }
 
   private requiredPrivilegeForSql(sql: string): SupportedPrivilege | null {
-    const norm = stripComments(sql).replace(/\s+/g, ' ').trim().toUpperCase();
-    if (!norm) return null;
+    const cleaned = stripComments(sql);
+    if (!cleaned.trim()) return null;
 
-    if (/^(SELECT|SHOW|DESC|DESCRIBE|EXPLAIN|WITH\b.*SELECT\b)/.test(norm)) return 'SELECT';
-    if (/^(INSERT|REPLACE)/.test(norm)) return 'INSERT';
-    if (/^UPDATE/.test(norm)) return 'UPDATE';
-    if (/^(DELETE|TRUNCATE)/.test(norm)) return 'DELETE';
-    if (/^CALL/.test(norm)) return 'EXECUTE';
-    if (/^CREATE\s+INDEX/.test(norm)) return 'INDEX';
-    if (/^CREATE/.test(norm)) return 'CREATE';
-    if (/^ALTER/.test(norm)) return 'ALTER';
-    if (/^(DROP|RENAME)/.test(norm)) return 'DROP';
+    const leadingVerb = extractLeadingSqlVerb(cleaned);
+    if (!leadingVerb) return null;
+
+    if (['SELECT', 'SHOW', 'DESC', 'DESCRIBE', 'EXPLAIN'].includes(leadingVerb)) {
+      return 'SELECT';
+    }
+    if (leadingVerb === 'INSERT' || leadingVerb === 'REPLACE') return 'INSERT';
+    if (leadingVerb === 'UPDATE') return 'UPDATE';
+    if (leadingVerb === 'DELETE' || leadingVerb === 'TRUNCATE') return 'DELETE';
+    if (leadingVerb === 'CALL') return 'EXECUTE';
+    if (leadingVerb === 'ALTER') return 'ALTER';
+    if (leadingVerb === 'DROP' || leadingVerb === 'RENAME') return 'DROP';
+
+    if (leadingVerb === 'CREATE') {
+      const norm = cleaned.replace(/\s+/g, ' ').trim().toUpperCase();
+      if (/^CREATE\s+INDEX\b/.test(norm)) return 'INDEX';
+      return 'CREATE';
+    }
 
     return null;
   }

@@ -532,6 +532,21 @@ function collectUpdateTargets(
   return i;
 }
 
+export function extractLeadingSqlVerb(sql: string): string | null {
+  const tokens = tokenizeSql(sql);
+  if (tokens.length === 0) return null;
+
+  const { statementStart } = collectCteNames(tokens);
+  for (let i = statementStart; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (token.type === 'word') {
+      return token.upper;
+    }
+  }
+
+  return null;
+}
+
 export function extractReferencedTables(sql: string): SqlTableReference[] {
   const tokens = tokenizeSql(sql);
   if (tokens.length === 0) return [];

@@ -84,4 +84,31 @@ describe('SqlExecutor DCL (users and grants)', () => {
     expect(denied.error).toBeDefined();
     expect(denied.error?.toLowerCase()).toContain('access denied');
   });
+
+  it('denies CTE-prefixed DML when user only has SELECT privilege', () => {
+    executor.execute('CREATE TABLE docs (id INTEGER PRIMARY KEY, body TEXT)');
+    executor.execute("INSERT INTO docs VALUES (1, 'alpha')");
+
+    executor.execute("CREATE USER 'cte_user'@'localhost' IDENTIFIED BY 'x'");
+    executor.execute("GRANT SELECT ON main.docs TO 'cte_user'@'localhost'");
+    executor.execute("SET USER 'cte_user'@'localhost'");
+
+    const deleteDenied = executor.execute(
+      'WITH picked AS (SELECT id FROM docs) DELETE FROM docs WHERE id IN (SELECT id FROM picked)',
+    );
+    expect(deleteDenied.error).toBeDefined();
+    expect(deleteDenied.error?.toLowerCase()).toContain('access denied');
+
+    const updateDenied = executor.execute(
+      "WITH picked AS (SELECT id FROM docs) UPDATE docs SET body = 'updated' WHERE id IN (SELECT id FROM picked)",
+    );
+    expect(updateDenied.error).toBeDefined();
+    expect(updateDenied.error?.toLowerCase()).toContain('access denied');
+
+    const insertDenied = executor.execute(
+      "WITH src AS (SELECT 2 AS id, 'beta' AS body) INSERT INTO docs(id, body) SELECT id, body FROM src",
+    );
+    expect(insertDenied.error).toBeDefined();
+    expect(insertDenied.error?.toLowerCase()).toContain('access denied');
+  });
 });

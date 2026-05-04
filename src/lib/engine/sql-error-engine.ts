@@ -247,6 +247,17 @@ function classifyError(rawMessage: string): Classification {
 }
 
 export class SqlErrorEngine {
+  private resolveTopLevelErrorMessage(details: SqlErrorDetails): string {
+    if (details.code === 'QC_UNSUPPORTED_FEATURE') {
+      const raw = details.rawMessage.trim();
+      if (raw && raw !== details.message) {
+        return `${details.message} ${raw}`;
+      }
+    }
+
+    return details.message;
+  }
+
   fromUnknownError(error: unknown, options: BuildOptions): QueryResult {
     const rawMessage = error instanceof Error ? error.message : String(error);
     return this.fromMessage(rawMessage, options);
@@ -259,7 +270,7 @@ export class SqlErrorEngine {
       rows: [],
       rowCount: 0,
       executionTimeMs: performance.now() - options.startTime,
-      error: details.message,
+      error: this.resolveTopLevelErrorMessage(details),
       errorDetails: details,
     };
   }
@@ -276,7 +287,7 @@ export class SqlErrorEngine {
 
     return {
       ...result,
-      error: details.message,
+      error: this.resolveTopLevelErrorMessage(details),
       errorDetails: details,
     };
   }

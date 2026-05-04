@@ -93,8 +93,36 @@ describe('SqlExecutor triggers', () => {
 
     expect(setup.error).toBeDefined();
     expect(setup.error?.toLowerCase()).toContain('not supported');
+    expect(setup.error?.toLowerCase()).toContain('set new');
+    expect(setup.errorDetails?.rawMessage.toLowerCase()).toContain('set new');
 
     const showCreate = executor.execute('SHOW CREATE TRIGGER trg_students_bi;');
     expect(showCreate.error).toBeDefined();
+  });
+
+  it('supports CREATE TRIGGER headers with quoted identifiers', () => {
+    executor.execute('CREATE TABLE "order items" (id INTEGER PRIMARY KEY, v TEXT)');
+    executor.execute('CREATE TABLE item_log (id INTEGER PRIMARY KEY, message TEXT)');
+
+    const create = executor.execute(`
+      CREATE TRIGGER \`trg order items ai\`
+      AFTER INSERT ON "order items"
+      BEGIN
+        INSERT INTO item_log(message) VALUES (NEW.v);
+      END;
+    `);
+    expect(create.error).toBeUndefined();
+
+    const insert = executor.execute("INSERT INTO \"order items\" VALUES (1, 'note')");
+    expect(insert.error).toBeUndefined();
+
+    const logRows = executor.execute('SELECT message FROM item_log');
+    expect(logRows.error).toBeUndefined();
+    expect(logRows.rowCount).toBe(1);
+    expect(logRows.rows[0]?.message).toBe('note');
+
+    const showCreate = executor.execute('SHOW CREATE TRIGGER `trg order items ai`;');
+    expect(showCreate.error).toBeUndefined();
+    expect(showCreate.rowCount).toBe(1);
   });
 });

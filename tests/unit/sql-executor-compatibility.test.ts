@@ -54,6 +54,14 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(result.rows[0]?.label).toBe('Alice-ok');
   });
 
+  it('translates nested CONCAT() expressions', () => {
+    const result = executor.execute(
+      "SELECT CONCAT(name, CONCAT('-', CAST(id AS TEXT))) AS label FROM students WHERE id = 1",
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.rows[0]?.label).toBe('Alice-1');
+  });
+
   it('keeps comment-like tokens and type names intact inside string literals', () => {
     const result = executor.execute("SELECT 'DATE -- /* JSON */ TIME' AS payload");
     expect(result.error).toBeUndefined();

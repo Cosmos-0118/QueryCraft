@@ -22,19 +22,40 @@ function rewriteFunctionCalls(
     let i = openParenIndex + 1;
     let inSingle = false;
     let inDouble = false;
+    let inBacktick = false;
 
     for (; i < sql.length; i += 1) {
       const ch = sql[i];
+      const next = i + 1 < sql.length ? sql[i + 1] : '';
 
-      if (ch === "'" && !inDouble) {
+      if (ch === "'" && !inDouble && !inBacktick) {
+        if (inSingle && next === "'") {
+          i += 1;
+          continue;
+        }
         inSingle = !inSingle;
         continue;
       }
-      if (ch === '"' && !inSingle) {
+
+      if (ch === '"' && !inSingle && !inBacktick) {
+        if (inDouble && next === '"') {
+          i += 1;
+          continue;
+        }
         inDouble = !inDouble;
         continue;
       }
-      if (inSingle || inDouble) continue;
+
+      if (ch === '`' && !inSingle && !inDouble) {
+        if (inBacktick && next === '`') {
+          i += 1;
+          continue;
+        }
+        inBacktick = !inBacktick;
+        continue;
+      }
+
+      if (inSingle || inDouble || inBacktick) continue;
 
       if (ch === '(') depth += 1;
       if (ch === ')') {
@@ -166,6 +187,28 @@ function splitTopLevelComma(raw: string): string[] {
   const tail = current.trim();
   if (tail) out.push(tail);
   return out;
+}
+
+function applyConcatCompatibilityRewrites(sql: string): string {
+  let rewritten = sql;
+
+  while (true) {
+    const next = rewriteFunctionCalls(rewritten, ['CONCAT'], (_fnName, argument) => {
+      const parts = splitTopLevelComma(argument)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+
+      if (parts.length === 0) return "''";
+      if (parts.length === 1) return parts[0];
+      return parts.join(' || ');
+    });
+
+    if (next === rewritten) {
+      return next;
+    }
+
+    rewritten = next;
+  }
 }
 
 function findMatchingParen(sql: string, openIndex: number): number {
@@ -735,16 +778,14 @@ export function translateMySQL(
     next = next.replace(/\bNOW\s*\(\s*\)/gi, "datetime('now')");
     next = next.replace(/\bCURDATE\s*\(\s*\)/gi, "date('now')");
     next = next.replace(/\bCURTIME\s*\(\s*\)/gi, "time('now')");
-    next = next.replace(/\bCONCAT\s*\(([^()]+)\)/gi, (_match, args: string) => {
-      const parts = args.split(',').map((s: string) => s.trim());
-      return parts.join(' || ');
-    });
     next = next.replace(/\bISNULL\s*\(([^)]+)\)/gi, '($1 IS NULL)');
     next = next.replace(/\bDATABASE\s*\(\s*\)/gi, `'${activeDatabase}'`);
     next = next.replace(/\b(?:CURRENT_USER|USER)\s*\(\s*\)/gi, `'${activeUser}'`);
     next = next.replace(/\bVERSION\s*\(\s*\)/gi, 'sqlite_version()');
     return next;
   });
+
+  translated = applyConcatCompatibilityRewrites(translated);
 
   if (/^CREATE\s+(?:TEMPORARY\s+)?TABLE\b/i.test(upper)) {
     translated = rewriteCreateTableTypes(translated);
