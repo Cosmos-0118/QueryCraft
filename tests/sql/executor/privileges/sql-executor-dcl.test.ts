@@ -160,6 +160,49 @@ describe('SqlExecutor DCL (users and grants)', () => {
     expect(allowed.error).toBeUndefined();
   });
 
+  it('requires SELECT on tables referenced inside derived-table read sources', () => {
+    executor.execute('CREATE TABLE sink (id INTEGER PRIMARY KEY, body TEXT)');
+    executor.execute('CREATE TABLE secret_docs (id INTEGER PRIMARY KEY, body TEXT)');
+    executor.execute("INSERT INTO secret_docs VALUES (1, 'classified')");
+
+    executor.execute("CREATE USER 'derived_writer'@'localhost' IDENTIFIED BY 'x'");
+    executor.execute("GRANT INSERT ON main.sink TO 'derived_writer'@'localhost'");
+    executor.execute("SET USER 'derived_writer'@'localhost'");
+
+    const denied = executor.execute(
+      'INSERT INTO sink(id, body) SELECT id, body FROM (SELECT id, body FROM secret_docs) AS src',
+    );
+    expect(denied.error).toBeDefined();
+    expect(denied.error?.toLowerCase()).toContain('access denied');
+
+    executor.execute("SET USER 'admin'@'localhost'");
+    executor.execute("GRANT SELECT ON main.secret_docs TO 'derived_writer'@'localhost'");
+    executor.execute("SET USER 'derived_writer'@'localhost'");
+
+    const allowed = executor.execute(
+      'INSERT INTO sink(id, body) SELECT id, body FROM (SELECT id, body FROM secret_docs) AS src',
+    );
+    expect(allowed.error).toBeUndefined();
+  });
+
+  it('does not treat OUTER as a table reference in LEFT OUTER JOIN clauses', () => {
+    executor.execute('CREATE TABLE public_reports (id INTEGER PRIMARY KEY, title TEXT)');
+    executor.execute('CREATE TABLE private_reports (id INTEGER PRIMARY KEY, secret TEXT)');
+    executor.execute("INSERT INTO public_reports VALUES (1, 'Visible')");
+    executor.execute("INSERT INTO private_reports VALUES (1, 'Hidden')");
+
+    executor.execute("CREATE USER 'outer_join_reader'@'localhost' IDENTIFIED BY 'x'");
+    executor.execute("GRANT SELECT ON main.public_reports TO 'outer_join_reader'@'localhost'");
+    executor.execute("GRANT SELECT ON main.private_reports TO 'outer_join_reader'@'localhost'");
+    executor.execute("SET USER 'outer_join_reader'@'localhost'");
+
+    const joined = executor.execute(
+      'SELECT p.title, r.secret FROM public_reports p LEFT OUTER JOIN private_reports r ON r.id = p.id',
+    );
+    expect(joined.error).toBeUndefined();
+    expect(joined.rowCount).toBe(1);
+  });
+
   it('allows DELETE with only DELETE privilege on the target table', () => {
     executor.execute('CREATE TABLE logs (id INTEGER PRIMARY KEY, body TEXT)');
     executor.execute("INSERT INTO logs VALUES (1, 'old')");

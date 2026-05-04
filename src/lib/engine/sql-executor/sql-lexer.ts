@@ -340,6 +340,8 @@ const DISALLOWED_ALIAS_WORDS = new Set([
   'FROM',
   'INTO',
   'BY',
+  'OUTER',
+  'LATERAL',
 ]);
 
 function readAlias(tokens: SqlToken[], start: number): { alias?: string; nextIndex: number } {
@@ -503,7 +505,18 @@ const CLAUSE_BOUNDARIES = new Set([
   'USING',
 ]);
 
-const JOIN_MARKERS = new Set(['JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'CROSS', 'NATURAL']);
+const JOIN_MARKERS = new Set([
+  'JOIN',
+  'INNER',
+  'LEFT',
+  'RIGHT',
+  'FULL',
+  'CROSS',
+  'NATURAL',
+  'OUTER',
+  'LATERAL',
+  'STRAIGHT_JOIN',
+]);
 
 const READ_SOURCE_KEYWORDS = new Set(['FROM', 'JOIN', 'USING']);
 
@@ -562,6 +575,20 @@ function collectFromClauseSources(
 
     if (token.type === 'word' && JOIN_MARKERS.has(token.upper)) {
       i += 1;
+      continue;
+    }
+
+    if (token.type === 'symbol' && token.value === '(') {
+      const afterParen = skipParenthesized(tokens, i);
+
+      // Derived tables and grouped joins can hide nested reads. Walk the
+      // parenthesized segment recursively so authorization sees those tables.
+      collectReadReferences(tokens, i + 1, Math.min(afterParen, stopIndex), cteNames, (reference) => {
+        addSource({ reference });
+      });
+
+      const aliasRead = readAlias(tokens, afterParen);
+      i = skipTableHints(tokens, aliasRead.nextIndex);
       continue;
     }
 

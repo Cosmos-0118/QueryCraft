@@ -4,7 +4,7 @@ Date: 2026-05-04
 Scope: QueryCraft SQL sandbox authorization, lexer-driven privilege target extraction, and newly modularized command handlers.
 
 ## Overall Rating
-
+ 
 **9.2 / 10**
 
 This pass resolves the two highest-severity authorization gaps from Pass 2. The privilege model now tracks both mutation targets and read-side sources (including CTE bodies), and focused regression tests pass.

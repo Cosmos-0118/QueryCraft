@@ -158,6 +158,54 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     const dropIndex = executor.execute('ALTER TABLE employees DROP INDEX idx_emp_name');
     expect(dropIndex.error).toBeUndefined();
   });
+
+  it('preserves constraints and secondary indexes across ALTER TABLE rebuilds', () => {
+    executor.execute(
+      'CREATE TABLE account_limits (id INTEGER PRIMARY KEY, email TEXT UNIQUE, balance INTEGER CHECK(balance >= 0))',
+    );
+    executor.execute('CREATE INDEX idx_account_limits_balance ON account_limits(balance)');
+    executor.execute("INSERT INTO account_limits VALUES (1, 'a@example.com', 5)");
+
+    const altered = executor.execute(
+      'ALTER TABLE account_limits MODIFY balance INTEGER NOT NULL CHECK(balance >= 0)',
+    );
+    expect(altered.error).toBeUndefined();
+
+    const duplicateEmail = executor.execute(
+      "INSERT INTO account_limits VALUES (2, 'a@example.com', 8)",
+    );
+    expect(duplicateEmail.error).toBeDefined();
+    expect(duplicateEmail.errorDetails?.category).toBe('constraint');
+
+    const invalidBalance = executor.execute(
+      "INSERT INTO account_limits VALUES (3, 'b@example.com', -1)",
+    );
+    expect(invalidBalance.error).toBeDefined();
+    expect(invalidBalance.errorDetails?.category).toBe('constraint');
+
+    const indexes = executor.execute('SHOW INDEX FROM account_limits');
+    expect(indexes.error).toBeUndefined();
+    const indexNames = indexes.rows.map((row) => String(row.name ?? row.Key_name ?? ''));
+    expect(indexNames).toContain('idx_account_limits_balance');
+  });
+
+  it('rewrites preserved indexes when CHANGE renames indexed columns', () => {
+    executor.execute('CREATE TABLE payroll (id INTEGER PRIMARY KEY, salary INTEGER)');
+    executor.execute('CREATE INDEX idx_payroll_salary ON payroll(salary)');
+    executor.execute('INSERT INTO payroll VALUES (1, 1000)');
+
+    const altered = executor.execute('ALTER TABLE payroll CHANGE salary monthly_salary INTEGER');
+    expect(altered.error).toBeUndefined();
+
+    const indexes = executor.execute('SHOW INDEX FROM payroll');
+    expect(indexes.error).toBeUndefined();
+    const indexNames = indexes.rows.map((row) => String(row.name ?? row.Key_name ?? ''));
+    expect(indexNames).toContain('idx_payroll_salary');
+
+    const selected = executor.execute('SELECT monthly_salary FROM payroll WHERE monthly_salary = 1000');
+    expect(selected.error).toBeUndefined();
+    expect(selected.rowCount).toBe(1);
+  });
 });
 
 // ─── Subquery operators ────────────────────────────────────────────────

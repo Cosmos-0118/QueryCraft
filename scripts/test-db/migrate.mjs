@@ -117,16 +117,15 @@ function checksum(input) {
   return createHash('sha256').update(input).digest('hex');
 }
 
-function toMigrationMeta(fileName) {
-  const matched = /^(\d{4,})_([a-z0-9_]+)\.up\.sql$/i.exec(fileName);
+function toMigrationMetaFromDirName(dirName) {
+  const matched = /^(\d{4,})_([a-z0-9_]+)$/i.exec(dirName);
   if (!matched) return null;
 
   const [, version, slug] = matched;
   return {
     version,
     slug,
-    upFileName: fileName,
-    downFileName: `${version}_${slug}.down.sql`,
+    dirName,
   };
 }
 
@@ -135,12 +134,12 @@ async function loadMigrations() {
 
   const migrations = [];
   for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    const meta = toMigrationMeta(entry.name);
+    if (!entry.isDirectory()) continue;
+    const meta = toMigrationMetaFromDirName(entry.name);
     if (!meta) continue;
 
-    const upPath = path.join(migrationsDir, meta.upFileName);
-    const downPath = path.join(migrationsDir, meta.downFileName);
+    const upPath = path.join(migrationsDir, meta.dirName, 'up.sql');
+    const downPath = path.join(migrationsDir, meta.dirName, 'down.sql');
     const [upSql, downSqlOrNull] = await Promise.all([
       fs.readFile(upPath, 'utf-8'),
       fs.readFile(downPath, 'utf-8').catch((error) => {
@@ -205,7 +204,7 @@ async function runMigrationUp(client, migration) {
 
 async function runMigrationDown(client, migration) {
   if (!migration.downSql) {
-    throw new Error(`Down migration missing for version ${migration.version} (${migration.downFileName}).`);
+    throw new Error(`Down migration missing for version ${migration.version} (${migration.dirName}/down.sql).`);
   }
 
   await client.query('BEGIN');

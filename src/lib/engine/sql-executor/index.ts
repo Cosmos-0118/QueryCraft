@@ -8,6 +8,24 @@ import { isPlSqlBlock, runPlSqlBlock } from './plsql-runtime';
 import { extractCursorDefinitions } from './mysql-compat';
 import { rewriteViewUpdate, rewriteViewDelete, rewriteViewInsert } from './view-manager';
 import { extractLeadingSqlVerb, extractPrivilegeTableTargets, replaceSqlIdentifiers } from './sql-lexer';
+import {
+  escapeRegex,
+  extractRoutineBody as extractRoutineBodyHelper,
+  parseCreateTableMeta,
+  parseLeadingIdentifier,
+  parseProcedureParams,
+  quoteSqlLiteral,
+  replaceLeadingIdentifier,
+  rewriteSchemaSqlIdentifiers,
+  splitCommaSafe,
+  sqlReferencesIdentifier,
+  splitTopLevelComma,
+  toSqlLiteral,
+  type ParsedCreateTableMeta,
+  type ProcedureParam,
+  type RebuildColumnSpec,
+  type TableColumnMeta,
+} from './sql-structure-utils';
 import type { SqlJs, SqlJsDatabase, SupportedPrivilege, DbUser, GrantEntry } from './types';
 import { SUPPORTED_PRIVILEGES } from './types';
 import {
@@ -18,11 +36,6 @@ import {
   handleDatabaseCommand as handleDatabaseCommandExternal,
   type DatabaseCommandContext,
 } from './internal/database-commands';
-
-interface ProcedureParam {
-  name: string;
-  mode: 'IN' | 'OUT' | 'INOUT';
-}
 
 interface StoredProcedure {
   database: string;
@@ -56,15 +69,10 @@ interface StoredFunction {
   definition: string;
 }
 
-interface TableColumnMeta {
+interface SchemaObjectSnapshot {
+  type: 'index' | 'trigger';
   name: string;
-  definition: string;
-}
-
-interface RebuildColumnSpec {
-  name: string;
-  definition: string;
-  sourceName?: string;
+  sql: string;
 }
 
 export class SqlExecutor {
@@ -171,113 +179,11 @@ export class SqlExecutor {
    * and body is the content between the first top-level BEGIN and the matching END.
    */
   private extractRoutineBody(sql: string): { preamble: string; body: string } | null {
-    // Find the first top-level BEGIN
-    const beginRegex = /\bBEGIN\b/gi;
-    let beginMatch: RegExpExecArray | null;
-    let beginIdx = -1;
-
-    while ((beginMatch = beginRegex.exec(sql)) !== null) {
-      // Check it's not inside a string
-      const before = sql.slice(0, beginMatch.index);
-      const singleQuotes = (before.match(/'/g) || []).length;
-      if (singleQuotes % 2 === 0) {
-        beginIdx = beginMatch.index;
-        break;
-      }
-    }
-
-    if (beginIdx === -1) return null;
-
-    const preamble = sql.slice(0, beginIdx).trim();
-    const afterBegin = beginIdx + 5; // length of "BEGIN"
-    let depth = 1;
-    let i = afterBegin;
-    let inSingle = false;
-    let inDouble = false;
-
-    while (i < sql.length && depth > 0) {
-      const ch = sql[i];
-
-      if (ch === "'" && !inDouble) { inSingle = !inSingle; i += 1; continue; }
-      if (ch === '"' && !inSingle) { inDouble = !inDouble; i += 1; continue; }
-      if (inSingle || inDouble) { i += 1; continue; }
-
-      // Check for word boundaries for BEGIN/END
-      if (/[A-Za-z_]/.test(ch)) {
-        let wordEnd = i;
-        while (wordEnd < sql.length && /[A-Za-z0-9_]/.test(sql[wordEnd])) wordEnd += 1;
-        const word = sql.slice(i, wordEnd).toUpperCase();
-
-        if (word === 'BEGIN') {
-          depth += 1;
-        } else if (word === 'END') {
-          // Peek at next word to check for END IF / END LOOP / END CASE
-          let peek = wordEnd;
-          while (peek < sql.length && /\s/.test(sql[peek])) peek += 1;
-          let nextWordEnd = peek;
-          while (nextWordEnd < sql.length && /[A-Za-z0-9_]/.test(sql[nextWordEnd])) nextWordEnd += 1;
-          const nextWord = sql.slice(peek, nextWordEnd).toUpperCase();
-
-          if (nextWord === 'IF' || nextWord === 'LOOP' || nextWord === 'CASE' || nextWord === 'WHILE') {
-            // END IF / END LOOP etc. — don't change depth
-            i = nextWordEnd;
-            continue;
-          }
-
-          depth -= 1;
-          if (depth === 0) {
-            const body = sql.slice(afterBegin, i).trim();
-            return { preamble, body };
-          }
-        }
-        i = wordEnd;
-        continue;
-      }
-
-      i += 1;
-    }
-
-    return null;
+    return extractRoutineBodyHelper(sql);
   }
 
   private splitCommaSafe(raw: string): string[] {
-    const out: string[] = [];
-    let current = '';
-    let depth = 0;
-    let inSingle = false;
-    let inDouble = false;
-
-    for (let i = 0; i < raw.length; i += 1) {
-      const ch = raw[i];
-
-      if (ch === "'" && !inDouble) {
-        inSingle = !inSingle;
-        current += ch;
-        continue;
-      }
-      if (ch === '"' && !inSingle) {
-        inDouble = !inDouble;
-        current += ch;
-        continue;
-      }
-
-      if (!inSingle && !inDouble) {
-        if (ch === '(') depth += 1;
-        if (ch === ')') depth = Math.max(0, depth - 1);
-        if (ch === ',' && depth === 0) {
-          const piece = current.trim();
-          if (piece) out.push(piece);
-          current = '';
-          continue;
-        }
-      }
-
-      current += ch;
-    }
-
-    const tail = current.trim();
-    if (tail) out.push(tail);
-    return out;
+    return splitCommaSafe(raw);
   }
 
   private quoteIdentifier(identifier: string): string {
@@ -285,68 +191,92 @@ export class SqlExecutor {
   }
 
   private parseLeadingIdentifier(raw: string): { identifier: string; rest: string } | null {
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-
-    let match = trimmed.match(/^`([^`]+)`\s*([\s\S]*)$/);
-    if (match) return { identifier: match[1], rest: match[2] ?? '' };
-
-    match = trimmed.match(/^"([^"]+)"\s*([\s\S]*)$/);
-    if (match) return { identifier: match[1], rest: match[2] ?? '' };
-
-    match = trimmed.match(/^'([^']+)'\s*([\s\S]*)$/);
-    if (match) return { identifier: match[1], rest: match[2] ?? '' };
-
-    match = trimmed.match(/^([A-Za-z_][\w$]*)\s*([\s\S]*)$/);
-    if (match) return { identifier: match[1], rest: match[2] ?? '' };
-
-    return null;
+    return parseLeadingIdentifier(raw);
   }
 
   private splitTopLevelComma(raw: string): string[] {
-    const out: string[] = [];
-    let current = '';
-    let depth = 0;
-    let inSingle = false;
-    let inDouble = false;
-    let inBacktick = false;
+    return splitTopLevelComma(raw);
+  }
 
-    for (let i = 0; i < raw.length; i += 1) {
-      const ch = raw[i];
+  private escapeRegex(value: string): string {
+    return escapeRegex(value);
+  }
 
-      if (ch === "'" && !inDouble && !inBacktick) {
-        inSingle = !inSingle;
-        current += ch;
-        continue;
-      }
-      if (ch === '"' && !inSingle && !inBacktick) {
-        inDouble = !inDouble;
-        current += ch;
-        continue;
-      }
-      if (ch === '`' && !inSingle && !inDouble) {
-        inBacktick = !inBacktick;
-        current += ch;
-        continue;
-      }
+  private quoteSqlLiteral(value: string): string {
+    return quoteSqlLiteral(value);
+  }
 
-      if (!inSingle && !inDouble && !inBacktick) {
-        if (ch === '(') depth += 1;
-        if (ch === ')') depth = Math.max(0, depth - 1);
-        if (ch === ',' && depth === 0) {
-          const piece = current.trim();
-          if (piece) out.push(piece);
-          current = '';
-          continue;
-        }
-      }
+  private parseCreateTableMeta(createTableSql: string): ParsedCreateTableMeta | null {
+    return parseCreateTableMeta(createTableSql);
+  }
 
-      current += ch;
+  private getCreateTableMeta(tableName: string): ParsedCreateTableMeta | null {
+    const activeDb = this.getActiveDb();
+    if (!activeDb) return null;
+
+    const rows = activeDb.exec(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND lower(name) = lower(${this.quoteSqlLiteral(tableName)}) LIMIT 1`,
+    );
+    if (rows.length === 0 || rows[0].values.length === 0) return null;
+
+    const rawSql = String(rows[0].values[0]?.[0] ?? '').trim();
+    if (!rawSql) return null;
+
+    return this.parseCreateTableMeta(rawSql);
+  }
+
+  private buildColumnRenameMap(columns: RebuildColumnSpec[]): Map<string, string> {
+    const replacements = new Map<string, string>();
+    for (const column of columns) {
+      if (!column.sourceName) continue;
+      replacements.set(column.sourceName.toLowerCase(), column.name);
     }
+    return replacements;
+  }
 
-    const tail = current.trim();
-    if (tail) out.push(tail);
-    return out;
+  private extractDroppedColumnNames(tableName: string, columns: RebuildColumnSpec[]): Set<string> {
+    const retainedSourceNames = new Set(
+      columns
+        .map((column) => column.sourceName?.toLowerCase())
+        .filter((name): name is string => Boolean(name)),
+    );
+
+    const existingNames = this.getTableColumnMeta(tableName).map((column) => column.name.toLowerCase());
+    return new Set(existingNames.filter((name) => !retainedSourceNames.has(name)));
+  }
+
+  private rewriteSchemaSqlIdentifiers(sql: string, replacements: ReadonlyMap<string, string>): string {
+    return rewriteSchemaSqlIdentifiers(sql, replacements);
+  }
+
+  private sqlReferencesIdentifier(sql: string, identifier: string): boolean {
+    return sqlReferencesIdentifier(sql, identifier);
+  }
+
+  private captureTableSchemaObjects(tableName: string): SchemaObjectSnapshot[] {
+    const activeDb = this.getActiveDb();
+    if (!activeDb) return [];
+
+    const rows = activeDb.exec(
+      `SELECT type, name, sql FROM sqlite_master WHERE lower(tbl_name) = lower(${this.quoteSqlLiteral(tableName)}) AND type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY type, name`,
+    );
+    if (rows.length === 0 || rows[0].values.length === 0) return [];
+
+    return rows[0].values
+      .map((row): SchemaObjectSnapshot | null => {
+        const type = String(row[0] ?? '').toLowerCase();
+        const name = String(row[1] ?? '').trim();
+        const sql = String(row[2] ?? '').trim();
+        if ((type !== 'index' && type !== 'trigger') || !name || !sql) {
+          return null;
+        }
+        return {
+          type,
+          name,
+          sql,
+        };
+      })
+      .filter((snapshot): snapshot is SchemaObjectSnapshot => snapshot !== null);
   }
 
   private buildColumnDefinitionFromPragma(row: unknown[]): string {
@@ -366,6 +296,11 @@ export class SqlExecutor {
   }
 
   private getTableColumnMeta(tableName: string): TableColumnMeta[] {
+    const parsed = this.getCreateTableMeta(tableName);
+    if (parsed && parsed.columns.length > 0) {
+      return parsed.columns;
+    }
+
     const activeDb = this.getActiveDb();
     if (!activeDb) return [];
 
@@ -413,7 +348,21 @@ export class SqlExecutor {
     const tempTable = `__qc_tmp_${tableName}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const tempTableSql = this.quoteIdentifier(tempTable);
 
-    const definitions = columns.map((column) => column.definition.trim());
+    const createTableMeta = this.getCreateTableMeta(tableName);
+    const renameMap = this.buildColumnRenameMap(columns);
+    const droppedColumnNames = this.extractDroppedColumnNames(tableName, columns);
+    const droppedColumns = Array.from(droppedColumnNames);
+    const schemaObjects = this.captureTableSchemaObjects(tableName);
+
+    const rewrittenConstraints = (createTableMeta?.tableConstraints ?? [])
+      .map((constraint) => this.rewriteSchemaSqlIdentifiers(constraint, renameMap))
+      .filter(
+        (constraint) =>
+          !droppedColumns.some((columnName) => this.sqlReferencesIdentifier(constraint, columnName)),
+      );
+
+    const definitions = [...columns.map((column) => column.definition.trim()), ...rewrittenConstraints];
+    const trailingClause = createTableMeta?.trailingClause ? ` ${createTableMeta.trailingClause}` : '';
     const insertColumns: string[] = [];
     const selectColumns: string[] = [];
     for (const column of columns) {
@@ -424,7 +373,7 @@ export class SqlExecutor {
 
     try {
       activeDb.run('BEGIN');
-      activeDb.run(`CREATE TABLE ${tempTableSql} (${definitions.join(', ')})`);
+      activeDb.run(`CREATE TABLE ${tempTableSql} (${definitions.join(', ')})${trailingClause}`);
       if (insertColumns.length > 0) {
         activeDb.run(
           `INSERT INTO ${tempTableSql} (${insertColumns.join(', ')}) SELECT ${selectColumns.join(', ')} FROM ${oldTableSql}`,
@@ -432,6 +381,22 @@ export class SqlExecutor {
       }
       activeDb.run(`DROP TABLE ${oldTableSql}`);
       activeDb.run(`ALTER TABLE ${tempTableSql} RENAME TO ${oldTableSql}`);
+
+      for (const object of schemaObjects) {
+        if (droppedColumns.some((columnName) => this.sqlReferencesIdentifier(object.sql, columnName))) {
+          continue;
+        }
+
+        const rewrittenObjectSql = this.rewriteSchemaSqlIdentifiers(object.sql, renameMap);
+        if (
+          droppedColumns.some((columnName) => this.sqlReferencesIdentifier(rewrittenObjectSql, columnName))
+        ) {
+          continue;
+        }
+
+        activeDb.run(rewrittenObjectSql);
+      }
+
       activeDb.run('COMMIT');
 
       return {
@@ -455,9 +420,7 @@ export class SqlExecutor {
   }
 
   private replaceLeadingIdentifier(definition: string, nextName: string): string {
-    const parsed = this.parseLeadingIdentifier(definition);
-    if (!parsed) return definition;
-    return `${this.quoteIdentifier(nextName)} ${parsed.rest.trim()}`.trim();
+    return replaceLeadingIdentifier(definition, nextName, (identifier) => this.quoteIdentifier(identifier));
   }
 
   private handleAlterTableCompatibility(rawSql: string, startTime: number): QueryResult | null {
@@ -470,34 +433,11 @@ export class SqlExecutor {
 
 
   private parseProcedureParams(raw: string): ProcedureParam[] {
-    const source = raw.trim();
-    if (!source) return [];
-
-    return this.splitCommaSafe(source)
-      .map((token) => {
-        const normalized = token.trim().replace(/\s+/g, ' ');
-        if (!normalized) return null;
-
-        const match = normalized.match(/^(?:(IN|OUT|INOUT)\s+)?([A-Za-z_][\w$]*)(?:\s+.+)?$/i);
-        if (!match) return null;
-
-        const mode = (match[1]?.toUpperCase() ?? 'IN') as 'IN' | 'OUT' | 'INOUT';
-        const name = match[2];
-        return { name, mode } satisfies ProcedureParam;
-      })
-      .filter((param): param is ProcedureParam => param !== null);
+    return parseProcedureParams(raw);
   }
 
   private toSqlLiteral(value: string): string {
-    const trimmed = value.trim();
-    if (!trimmed) return 'NULL';
-    if (/^null$/i.test(trimmed)) return 'NULL';
-    if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return trimmed;
-    if (/^'.*'$/.test(trimmed)) return trimmed;
-    if (/^".*"$/.test(trimmed)) {
-      return `'${trimmed.slice(1, -1).replace(/'/g, "''")}'`;
-    }
-    return `'${trimmed.replace(/'/g, "''")}'`;
+    return toSqlLiteral(value);
   }
 
   private substituteProcedureParams(
