@@ -1,132 +1,88 @@
-# MySQL Sandbox Re-Audit Report (Post-Fix)
+# MySQL Sandbox Re-Audit Report (Pass 2)
 
 Date: 2026-05-04
-Scope: QueryCraft SQL sandbox engine, parser/translator, privilege model, and sandbox persistence/integration.
+Scope: QueryCraft SQL sandbox engine authorization model, lexer-based table extraction, MySQL compatibility transforms, and regression behavior.
 
 ## Overall Rating
 
-**7.8 / 10**
+**8.4 / 10**
 
-The previous round of hardening closed most of the earlier high-risk issues, and the targeted regression suite is now broadly stable. One critical authorization flaw still remains, with a few medium/low compatibility gaps.
+The latest hardening pass fixed the previous critical verb-classification flaw and closed multiple compatibility gaps. Remaining risk is concentrated in privilege-target modeling for CTE and mixed-verb statements.
 
 ## Verification Snapshot
 
 - Static re-review of:
   - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts)
   - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts)
-  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts)
   - [src/lib/engine/sql-executor/mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts)
+  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts)
   - [src/lib/engine/sql-error-engine.ts](src/lib/engine/sql-error-engine.ts)
-  - [src/hooks/use-sql-engine.ts](src/hooks/use-sql-engine.ts)
-  - [src/app/(dashboard)/sandbox/page.tsx](src/app/%28dashboard%29/sandbox/page.tsx)
 - Regression run:
   - `npm test -- tests/unit/sql-executor*.test.ts tests/unit/sql-splitter.test.ts tests/unit/plsql-runtime.test.ts`
-  - Result: 13 test files, 94 tests passed.
-- Focused privilege probe (ad-hoc, not committed):
-  - A `SELECT`-only user was able to execute `WITH t AS (...) DELETE ...`, confirming a residual privilege bypass path.
+  - Result: 13 test files, 97 tests passed.
+- Focused ad-hoc probes (temporary tests, not committed):
+  - Probe A: non-CTE `DELETE ... (SELECT ... FROM secret)` was denied, while CTE-equivalent `WITH src AS (SELECT ... FROM secret) DELETE ...` was allowed under the same grants.
+  - Probe B: `INSERT INTO sink SELECT ... FROM secret` succeeded with only `INSERT` grants (no `SELECT` grants) when `INSERT` existed on both source and target tables.
 
 ## Findings (Ordered by Criticality)
 
-## 1) Critical: CTE-prefixed DML can bypass privilege verb classification
+## 1) High: CTE source tables are skipped by privilege target extraction
 
 **Evidence**
-- Privilege detection marks any statement matching `WITH ... SELECT` as `SELECT`:
+- CTE parsing computes a post-CTE start index:
+  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L373)
+  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L410)
+- Reference extraction for privilege targets scans from that start index:
+  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L564)
+  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L566)
+- Authorization uses these extracted references directly:
+  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1258)
+  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1290)
+
+**Impact**
+- Tables referenced only inside CTE definitions can evade table-level privilege checks.
+- Equivalent non-CTE forms may be denied while CTE forms are allowed, creating an authorization bypass by query shape.
+
+**Recommendation**
+- Extend table-reference extraction to include CTE body references, while still excluding CTE alias names as physical tables.
+- Add regression tests for CTE-based DELETE/UPDATE/INSERT with unauthorized CTE source tables.
+
+---
+
+## 2) Medium: Single-verb privilege mapping causes mixed-verb authorization drift
+
+**Evidence**
+- Statement privilege is resolved to one verb for the whole SQL statement:
   - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1207)
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1211)
-- Authorization enforcement relies on that classification:
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1277)
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1278)
+- That one privilege is applied to every extracted table target:
+  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1287)
+  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1290)
 
 **Impact**
-- Statements like `WITH cte AS (SELECT ...) DELETE ...`, `WITH ... UPDATE ...`, or `WITH ... INSERT ...` can be evaluated under `SELECT` privilege requirements.
-- This is a direct authorization bypass for non-admin users with limited grants.
+- Mixed-verb statements such as `INSERT ... SELECT` can execute without `SELECT` privilege if write-verb grants align with current checks.
+- This diverges from MySQL privilege semantics and can permit read-side access through write-oriented grants.
 
 **Recommendation**
-- For `WITH` statements, parse through the full CTE list and classify by the first top-level executable verb after the CTE clause.
-- Add explicit regression tests for `WITH ... DELETE/UPDATE/INSERT` under restricted users.
+- Move to clause-aware privilege derivation per table reference:
+  - `INSERT` on target table(s), `SELECT` on source tables.
+  - `UPDATE`/`DELETE` on mutation targets and `SELECT` on read-side subqueries/joins as needed.
 
----
+## Resolved Since Previous Pass
 
-## 2) Medium: Unsupported trigger reasons are reduced to a generic primary error message
-
-**Evidence**
-- Trigger normalization emits specific incompatibility reasons:
-  - [src/lib/engine/sql-executor/mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts#L49)
-  - [src/lib/engine/sql-executor/mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts#L89)
-- Those messages are passed into the SQL error engine:
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L2127)
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L2128)
-- Error classification maps `unsupported/not supported` to a generic user-facing message:
-  - [src/lib/engine/sql-error-engine.ts](src/lib/engine/sql-error-engine.ts#L228)
-  - [src/lib/engine/sql-error-engine.ts](src/lib/engine/sql-error-engine.ts#L230)
-
-**Impact**
-- If callers only display `result.error`, users lose the precise remediation detail (even though `errorDetails.rawMessage` still preserves it).
-
-**Recommendation**
-- Preserve specific unsupported reason in the top-level `error` string, or append the raw reason to the classified message.
-
----
-
-## 3) Medium: CREATE TRIGGER header parsing remains regex-limited for complex identifiers
-
-**Evidence**
-- Trigger header extraction depends on whitespace-delimited capture groups (`[^\s]+`) for trigger/table names:
-  - [src/lib/engine/sql-executor/mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts#L69)
-- Leading identifier parsing is simple-token oriented:
-  - [src/lib/engine/sql-executor/mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts#L18)
-
-**Impact**
-- Valid MySQL-style quoted identifiers with spaces or more complex forms may fail normalization unexpectedly.
-
-**Recommendation**
-- Move CREATE TRIGGER header parsing to token/lexer-based logic consistent with the new SQL lexer utilities.
-
----
-
-## 4) Low: CONCAT rewrite is shallow and skips nested/function arguments
-
-**Evidence**
-- Current rewrite matches only `CONCAT(...)` arguments without nested parentheses:
-  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts#L738)
-
-**Impact**
-- Nested expressions such as `CONCAT(first_name, CONCAT(' ', last_name))` are not consistently rewritten.
-
-**Recommendation**
-- Use an argument parser that tracks parentheses depth instead of a flat regex capture.
-
-## Resolved Since Previous Audit
-
-- Lexer-aware comment handling and safe segment transforms are now in place:
-  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L90)
-  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L126)
-  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts#L712)
-- Type rewrite scope is constrained to CREATE TABLE contexts:
-  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts#L327)
-  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts#L750)
-- Privilege checks now evaluate all referenced tables via lexer extraction:
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1249)
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1257)
+- CTE-prefixed DML verb classification now uses lexer-aware leading-verb extraction:
   - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L535)
-- Routine parameter substitution is syntax-aware and avoids literal/comment mutation:
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L860)
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L882)
-  - [src/lib/engine/sql-executor/sql-lexer.ts](src/lib/engine/sql-executor/sql-lexer.ts#L182)
-- DROP DATABASE now cleans function metadata too:
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L2100)
-- Per-statement effective database context is persisted and replayed:
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L3053)
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L3060)
-  - [src/hooks/use-sql-engine.ts](src/hooks/use-sql-engine.ts#L532)
-  - [src/hooks/use-sql-engine.ts](src/hooks/use-sql-engine.ts#L581)
-  - [src/types/database.ts](src/types/database.ts#L19)
-- Unsupported trigger forms are explicitly rejected rather than semantically rewritten:
-  - [src/lib/engine/sql-executor/mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts#L54)
-  - [src/lib/engine/sql-executor/mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts#L58)
-- UI user-spec SQL escaping is now handled safely for SHOW GRANTS:
-  - [src/app/(dashboard)/sandbox/page.tsx](src/app/%28dashboard%29/sandbox/page.tsx#L464)
+  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts#L1207)
+  - [tests/unit/sql-executor-dcl.test.ts](tests/unit/sql-executor-dcl.test.ts#L88)
+- Unsupported-feature top-level error now includes specific raw reason context:
+  - [src/lib/engine/sql-error-engine.ts](src/lib/engine/sql-error-engine.ts#L250)
+- CREATE TRIGGER header parsing now handles quoted identifiers via structured parsing:
+  - [src/lib/engine/sql-executor/mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts#L134)
+  - [tests/unit/sql-executor-triggers.test.ts](tests/unit/sql-executor-triggers.test.ts#L103)
+- CONCAT compatibility rewrite now supports nested calls:
+  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts#L192)
+  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts#L788)
+  - [tests/unit/sql-executor-compatibility.test.ts](tests/unit/sql-executor-compatibility.test.ts#L57)
 
 ## Final Assessment
 
-The hardening work materially improved robustness and removed most previously reported high-severity defects. The remaining blocker is the CTE privilege-classification bypass, which should be prioritized as the next fix before considering the sandbox authorization model production-safe.
+The engine is materially stronger than the previous pass and currently stable under its regression suite. The highest-priority next step is a second authorization-model refinement focused on CTE source table accounting and mixed-verb privilege semantics.

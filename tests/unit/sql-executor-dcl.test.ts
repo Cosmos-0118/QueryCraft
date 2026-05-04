@@ -111,4 +111,64 @@ describe('SqlExecutor DCL (users and grants)', () => {
     expect(insertDenied.error).toBeDefined();
     expect(insertDenied.error?.toLowerCase()).toContain('access denied');
   });
+
+  it('denies CTE-based DML when CTE source table lacks SELECT privilege', () => {
+    executor.execute('CREATE TABLE docs (id INTEGER PRIMARY KEY, body TEXT)');
+    executor.execute('CREATE TABLE secret_docs (id INTEGER PRIMARY KEY, body TEXT)');
+    executor.execute("INSERT INTO docs VALUES (1, 'visible')");
+    executor.execute("INSERT INTO secret_docs VALUES (1, 'classified')");
+
+    executor.execute("CREATE USER 'cte_guard'@'localhost' IDENTIFIED BY 'x'");
+    executor.execute("GRANT DELETE ON main.docs TO 'cte_guard'@'localhost'");
+    executor.execute("SET USER 'cte_guard'@'localhost'");
+
+    const denied = executor.execute(
+      'WITH src AS (SELECT id FROM secret_docs) DELETE FROM docs WHERE id IN (SELECT id FROM src)',
+    );
+    expect(denied.error).toBeDefined();
+    expect(denied.error?.toLowerCase()).toContain('access denied');
+
+    executor.execute("SET USER 'admin'@'localhost'");
+    executor.execute("GRANT SELECT ON main.secret_docs TO 'cte_guard'@'localhost'");
+    executor.execute("SET USER 'cte_guard'@'localhost'");
+
+    const allowed = executor.execute(
+      'WITH src AS (SELECT id FROM secret_docs) DELETE FROM docs WHERE id IN (SELECT id FROM src)',
+    );
+    expect(allowed.error).toBeUndefined();
+  });
+
+  it('requires SELECT on source tables for INSERT ... SELECT statements', () => {
+    executor.execute('CREATE TABLE sink (id INTEGER PRIMARY KEY, body TEXT)');
+    executor.execute('CREATE TABLE secret_docs (id INTEGER PRIMARY KEY, body TEXT)');
+    executor.execute("INSERT INTO secret_docs VALUES (1, 'classified')");
+
+    executor.execute("CREATE USER 'writer_only'@'localhost' IDENTIFIED BY 'x'");
+    executor.execute("GRANT INSERT ON main.sink TO 'writer_only'@'localhost'");
+    executor.execute("GRANT INSERT ON main.secret_docs TO 'writer_only'@'localhost'");
+    executor.execute("SET USER 'writer_only'@'localhost'");
+
+    const denied = executor.execute('INSERT INTO sink(id, body) SELECT id, body FROM secret_docs');
+    expect(denied.error).toBeDefined();
+    expect(denied.error?.toLowerCase()).toContain('access denied');
+
+    executor.execute("SET USER 'admin'@'localhost'");
+    executor.execute("GRANT SELECT ON main.secret_docs TO 'writer_only'@'localhost'");
+    executor.execute("SET USER 'writer_only'@'localhost'");
+
+    const allowed = executor.execute('INSERT INTO sink(id, body) SELECT id, body FROM secret_docs');
+    expect(allowed.error).toBeUndefined();
+  });
+
+  it('allows DELETE with only DELETE privilege on the target table', () => {
+    executor.execute('CREATE TABLE logs (id INTEGER PRIMARY KEY, body TEXT)');
+    executor.execute("INSERT INTO logs VALUES (1, 'old')");
+
+    executor.execute("CREATE USER 'deleter'@'localhost' IDENTIFIED BY 'x'");
+    executor.execute("GRANT DELETE ON main.logs TO 'deleter'@'localhost'");
+    executor.execute("SET USER 'deleter'@'localhost'");
+
+    const deleted = executor.execute('DELETE FROM logs WHERE id = 1');
+    expect(deleted.error).toBeUndefined();
+  });
 });

@@ -951,18 +951,16 @@ export default function TestDetailPage() {
                     <button
                       type="button"
                       onClick={() => setQuestionSourceMode('import')}
-                      className={`group rounded-xl border p-5 text-left transition ${
-                        questionSourceMode === 'import'
+                      className={`group rounded-xl border p-5 text-left transition ${questionSourceMode === 'import'
                           ? 'border-primary/50 bg-primary/[0.08] shadow-sm shadow-primary/10'
                           : 'border-border/60 bg-background/50 hover:border-primary/30 hover:bg-background/70'
-                      }`}
+                        }`}
                     >
                       <div className="mb-3 flex items-center gap-3">
-                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition ${
-                          questionSourceMode === 'import'
+                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition ${questionSourceMode === 'import'
                             ? 'border-primary/40 bg-primary/15 text-primary'
                             : 'border-border/70 bg-background/60 text-muted-foreground group-hover:border-primary/30 group-hover:text-primary'
-                        }`}>
+                          }`}>
                           <FileJson size={16} />
                         </div>
                         <p className="font-semibold text-foreground">Import from JSON</p>
@@ -973,18 +971,16 @@ export default function TestDetailPage() {
                     <button
                       type="button"
                       onClick={() => setQuestionSourceMode('database')}
-                      className={`group rounded-xl border p-5 text-left transition ${
-                        questionSourceMode === 'database'
+                      className={`group rounded-xl border p-5 text-left transition ${questionSourceMode === 'database'
                           ? 'border-primary/50 bg-primary/[0.08] shadow-sm shadow-primary/10'
                           : 'border-border/60 bg-background/50 hover:border-primary/30 hover:bg-background/70'
-                      }`}
+                        }`}
                     >
                       <div className="mb-3 flex items-center gap-3">
-                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition ${
-                          questionSourceMode === 'database'
+                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition ${questionSourceMode === 'database'
                             ? 'border-primary/40 bg-primary/15 text-primary'
                             : 'border-border/70 bg-background/60 text-muted-foreground group-hover:border-primary/30 group-hover:text-primary'
-                        }`}>
+                          }`}>
                           <Database size={16} />
                         </div>
                         <p className="font-semibold text-foreground">Use Question Bank</p>
@@ -1022,9 +1018,8 @@ export default function TestDetailPage() {
                         />
                         <label
                           htmlFor="import-questions-json"
-                          className={`inline-flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-primary/25 bg-primary/15 px-3 text-xs font-semibold text-primary transition hover:bg-primary/20 ${
-                            parsingImport || importingQuestions ? 'pointer-events-none opacity-60' : ''
-                          }`}
+                          className={`inline-flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-primary/25 bg-primary/15 px-3 text-xs font-semibold text-primary transition hover:bg-primary/20 ${parsingImport || importingQuestions ? 'pointer-events-none opacity-60' : ''
+                            }`}
                         >
                           Choose File
                         </label>
@@ -1254,7 +1249,6 @@ export default function TestDetailPage() {
           )}
           {questions.map((question, index) => {
             const isRemoving = removingQuestionId === question.id;
-            const questionTypeLabel = question.question_type === 'mcq' ? 'MCQ' : 'SQL/TEXT';
             const resolvedAnswer = question.correct_answer?.trim() || 'Not set';
             return (
               <div

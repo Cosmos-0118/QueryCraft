@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRef, useState, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { useAuth } from '@/hooks/use-auth';
-import { useThemeStore, type ThemeMode } from '@/stores/theme-store';
+import { useThemeStore } from '@/stores/theme-store';
 import { useLoadingStore } from '@/stores/loading-store';
 import { THEME_OPTIONS } from '@/lib/theme';
 import {
@@ -13,7 +13,7 @@ import {
 } from '@/lib/test/attempt-navigation-lock';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
-  Settings, Moon, Sun, Palette, Sparkles, FunctionSquare,
+  Settings, Palette, Sparkles, FunctionSquare,
   CircuitBoard, LogOut, ChevronRight, Check,
 } from 'lucide-react';
 
@@ -40,15 +40,6 @@ const NAV_ITEMS: { label: string; href: string; icon: ReactNode; group?: string 
 ];
 
 const NAV_GROUPS = ['Main', 'Labs', 'Theory', 'Account'];
-
-const THEME_ICONS: Record<ThemeMode, ReactNode> = {
-  light: <Sun size={14} />,
-  dark: <Moon size={14} />,
-  signature: <Palette size={14} />,
-  crimson: <Palette size={14} />,
-  aurora: <Palette size={14} />,
-  'electric-night': <Palette size={14} />,
-};
 
 function Breadcrumbs() {
   const pathname = usePathname();
@@ -284,8 +275,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             key={option.value}
                             onClick={() => { setTheme(option.value); setThemeMenuOpen(false); }}
                             className={`group relative flex flex-col items-start gap-2 rounded-xl p-2.5 text-left transition-all duration-150 ${isActive
-                                ? 'bg-primary/10 ring-1 ring-inset ring-primary/40'
-                                : 'hover:bg-muted/70 hover:ring-1 hover:ring-inset hover:ring-border/60'
+                              ? 'bg-primary/10 ring-1 ring-inset ring-primary/40'
+                              : 'hover:bg-muted/70 hover:ring-1 hover:ring-inset hover:ring-border/60'
                               }`}
                           >
                             <span

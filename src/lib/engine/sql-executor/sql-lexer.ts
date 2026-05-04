@@ -3,6 +3,10 @@ export interface SqlTableReference {
   table: string;
 }
 
+export interface SqlPrivilegeTableTarget extends SqlTableReference {
+  privilege: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE';
+}
+
 type SqlTokenType = 'word' | 'quoted' | 'symbol';
 
 interface SqlToken {
@@ -312,44 +316,51 @@ function readQualifiedName(
   return { reference: { database, table }, nextIndex: i };
 }
 
-function skipAlias(tokens: SqlToken[], start: number): number {
+const DISALLOWED_ALIAS_WORDS = new Set([
+  'ON',
+  'USING',
+  'WHERE',
+  'GROUP',
+  'ORDER',
+  'LIMIT',
+  'HAVING',
+  'UNION',
+  'EXCEPT',
+  'INTERSECT',
+  'JOIN',
+  'INNER',
+  'LEFT',
+  'RIGHT',
+  'FULL',
+  'CROSS',
+  'NATURAL',
+  'SET',
+  'VALUES',
+  'RETURNING',
+  'FROM',
+  'INTO',
+  'BY',
+]);
+
+function readAlias(tokens: SqlToken[], start: number): { alias?: string; nextIndex: number } {
   let i = start;
   if (isWordToken(tokens[i], 'AS')) {
     i += 1;
-    if (isIdentifierToken(tokens[i])) i += 1;
-    return i;
-  }
-
-  if (isIdentifierToken(tokens[i])) {
-    const upper = tokens[i].upper;
-    const disallowed = new Set([
-      'ON',
-      'USING',
-      'WHERE',
-      'GROUP',
-      'ORDER',
-      'LIMIT',
-      'HAVING',
-      'UNION',
-      'EXCEPT',
-      'INTERSECT',
-      'JOIN',
-      'INNER',
-      'LEFT',
-      'RIGHT',
-      'FULL',
-      'CROSS',
-      'NATURAL',
-      'SET',
-      'VALUES',
-      'RETURNING',
-    ]);
-    if (!disallowed.has(upper)) {
-      i += 1;
+    if (!isIdentifierToken(tokens[i])) {
+      return { nextIndex: i };
     }
+    return { alias: tokens[i].value, nextIndex: i + 1 };
   }
 
-  return i;
+  if (!isIdentifierToken(tokens[i])) {
+    return { nextIndex: i };
+  }
+
+  if (DISALLOWED_ALIAS_WORDS.has(tokens[i].upper)) {
+    return { nextIndex: i };
+  }
+
+  return { alias: tokens[i].value, nextIndex: i + 1 };
 }
 
 function skipTableHints(tokens: SqlToken[], start: number): number {
@@ -370,10 +381,22 @@ function skipTableHints(tokens: SqlToken[], start: number): number {
   return i;
 }
 
-function collectCteNames(tokens: SqlToken[]): { names: Set<string>; statementStart: number } {
+interface CteBodyRange {
+  start: number;
+  end: number;
+}
+
+interface CteMetadata {
+  names: Set<string>;
+  statementStart: number;
+  bodyRanges: CteBodyRange[];
+}
+
+function collectCteMetadata(tokens: SqlToken[]): CteMetadata {
   const names = new Set<string>();
+  const bodyRanges: CteBodyRange[] = [];
   if (!isWordToken(tokens[0], 'WITH')) {
-    return { names, statementStart: 0 };
+    return { names, statementStart: 0, bodyRanges };
   }
 
   let i = 1;
@@ -397,7 +420,14 @@ function collectCteNames(tokens: SqlToken[]): { names: Set<string>; statementSta
     if (tokens[i]?.type !== 'symbol' || tokens[i]?.value !== '(') {
       break;
     }
-    i = skipParenthesized(tokens, i);
+
+    const bodyStart = i + 1;
+    const afterBody = skipParenthesized(tokens, i);
+    const bodyEnd = afterBody - 1;
+    if (bodyStart <= bodyEnd) {
+      bodyRanges.push({ start: bodyStart, end: bodyEnd });
+    }
+    i = afterBody;
 
     if (tokens[i]?.type === 'symbol' && tokens[i]?.value === ',') {
       i += 1;
@@ -407,18 +437,25 @@ function collectCteNames(tokens: SqlToken[]): { names: Set<string>; statementSta
     break;
   }
 
-  return { names, statementStart: i };
+  return { names, statementStart: i, bodyRanges };
 }
 
-function readTableReferenceAt(
+interface ParsedTableReference {
+  reference: SqlTableReference | null;
+  alias?: string;
+  nextIndex: number;
+}
+
+function readTableReferenceAtDetailed(
   tokens: SqlToken[],
   start: number,
   cteNames: Set<string>,
-): { reference: SqlTableReference | null; nextIndex: number } {
+): ParsedTableReference {
   if (tokens[start]?.type === 'symbol' && tokens[start]?.value === '(') {
     const afterParen = skipParenthesized(tokens, start);
-    const afterAlias = skipAlias(tokens, afterParen);
-    return { reference: null, nextIndex: afterAlias };
+    const aliasRead = readAlias(tokens, afterParen);
+    const nextIndex = skipTableHints(tokens, aliasRead.nextIndex);
+    return { reference: null, alias: aliasRead.alias, nextIndex };
   }
 
   const read = readQualifiedName(tokens, start);
@@ -426,14 +463,23 @@ function readTableReferenceAt(
     return { reference: null, nextIndex: start + 1 };
   }
 
-  let nextIndex = skipAlias(tokens, read.nextIndex);
-  nextIndex = skipTableHints(tokens, nextIndex);
+  const aliasRead = readAlias(tokens, read.nextIndex);
+  const nextIndex = skipTableHints(tokens, aliasRead.nextIndex);
 
   if (!read.reference.database && cteNames.has(read.reference.table.toLowerCase())) {
-    return { reference: null, nextIndex };
+    return { reference: null, alias: aliasRead.alias, nextIndex };
   }
 
-  return { reference: read.reference, nextIndex };
+  return { reference: read.reference, alias: aliasRead.alias, nextIndex };
+}
+
+function readTableReferenceAt(
+  tokens: SqlToken[],
+  start: number,
+  cteNames: Set<string>,
+): { reference: SqlTableReference | null; nextIndex: number } {
+  const parsed = readTableReferenceAtDetailed(tokens, start, cteNames);
+  return { reference: parsed.reference, nextIndex: parsed.nextIndex };
 }
 
 const CLAUSE_BOUNDARIES = new Set([
@@ -454,18 +500,50 @@ const CLAUSE_BOUNDARIES = new Set([
   'VALUES',
   'ON',
   'WHEN',
+  'USING',
 ]);
 
 const JOIN_MARKERS = new Set(['JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'CROSS', 'NATURAL']);
+
+const READ_SOURCE_KEYWORDS = new Set(['FROM', 'JOIN', 'USING']);
+
+interface SqlTableSource {
+  reference: SqlTableReference;
+  alias?: string;
+}
+
+const INSERT_MODIFIERS = new Set(['LOW_PRIORITY', 'DELAYED', 'HIGH_PRIORITY', 'IGNORE']);
+const DELETE_MODIFIERS = new Set(['LOW_PRIORITY', 'QUICK', 'IGNORE']);
+
+function tableRefKey(reference: SqlTableReference): string {
+  return `${reference.database?.toLowerCase() ?? ''}.${reference.table.toLowerCase()}`;
+}
 
 function collectFromClauseTables(
   tokens: SqlToken[],
   start: number,
   cteNames: Set<string>,
   addReference: (reference: SqlTableReference) => void,
+  stopIndex = tokens.length,
+): number {
+  return collectFromClauseSources(
+    tokens,
+    start,
+    cteNames,
+    (source) => addReference(source.reference),
+    stopIndex,
+  );
+}
+
+function collectFromClauseSources(
+  tokens: SqlToken[],
+  start: number,
+  cteNames: Set<string>,
+  addSource: (source: SqlTableSource) => void,
+  stopIndex = tokens.length,
 ): number {
   let i = start;
-  while (i < tokens.length) {
+  while (i < stopIndex) {
     const token = tokens[i];
     if (!token) break;
 
@@ -487,9 +565,9 @@ function collectFromClauseTables(
       continue;
     }
 
-    const parsed = readTableReferenceAt(tokens, i, cteNames);
+    const parsed = readTableReferenceAtDetailed(tokens, i, cteNames);
     if (parsed.reference) {
-      addReference(parsed.reference);
+      addSource({ reference: parsed.reference, alias: parsed.alias });
     }
     i = parsed.nextIndex > i ? parsed.nextIndex : i + 1;
   }
@@ -502,9 +580,10 @@ function collectUpdateTargets(
   start: number,
   cteNames: Set<string>,
   addReference: (reference: SqlTableReference) => void,
+  stopIndex = tokens.length,
 ): number {
   let i = start;
-  while (i < tokens.length) {
+  while (i < stopIndex) {
     const token = tokens[i];
     if (!token) break;
 
@@ -532,11 +611,233 @@ function collectUpdateTargets(
   return i;
 }
 
+function collectReadReferences(
+  tokens: SqlToken[],
+  start: number,
+  stopIndex: number,
+  cteNames: Set<string>,
+  addReference: (reference: SqlTableReference) => void,
+): void {
+  let i = start;
+  while (i < stopIndex) {
+    const token = tokens[i];
+    if (!token || token.type !== 'word') {
+      i += 1;
+      continue;
+    }
+
+    if (READ_SOURCE_KEYWORDS.has(token.upper)) {
+      i = collectFromClauseTables(tokens, i + 1, cteNames, addReference, stopIndex);
+      continue;
+    }
+
+    i += 1;
+  }
+}
+
+function collectCteBodyReadReferences(
+  tokens: SqlToken[],
+  bodyRanges: CteBodyRange[],
+  cteNames: Set<string>,
+  addReference: (reference: SqlTableReference) => void,
+): void {
+  for (const body of bodyRanges) {
+    collectReadReferences(tokens, body.start, body.end + 1, cteNames, addReference);
+  }
+}
+
+function collectInsertTarget(
+  tokens: SqlToken[],
+  statementStart: number,
+  cteNames: Set<string>,
+  addReference: (reference: SqlTableReference) => void,
+): void {
+  let i = statementStart + 1;
+  while (tokens[i]?.type === 'word' && INSERT_MODIFIERS.has(tokens[i].upper)) {
+    i += 1;
+  }
+
+  if (isWordToken(tokens[i], 'INTO')) {
+    i += 1;
+  }
+
+  const parsed = readTableReferenceAt(tokens, i, cteNames);
+  if (parsed.reference) {
+    addReference(parsed.reference);
+  }
+}
+
+function collectIdentifierTargets(tokens: SqlToken[], start: number, end: number): string[] {
+  const targets: string[] = [];
+  let i = start;
+  while (i < end) {
+    const token = tokens[i];
+    if (!token) break;
+
+    if (token.type === 'symbol' && token.value === ',') {
+      i += 1;
+      continue;
+    }
+
+    if (isIdentifierToken(token)) {
+      targets.push(token.value.toLowerCase());
+      i += 1;
+      continue;
+    }
+
+    i += 1;
+  }
+  return targets;
+}
+
+function resolveIdentifierTargets(
+  names: string[],
+  sources: SqlTableSource[],
+  addReference: (reference: SqlTableReference) => void,
+): void {
+  for (const name of names) {
+    const matched = sources.find((source) => {
+      const aliasMatches = source.alias?.toLowerCase() === name;
+      const tableMatches = source.reference.table.toLowerCase() === name;
+      return aliasMatches || tableMatches;
+    });
+
+    if (matched) {
+      addReference(matched.reference);
+    }
+  }
+}
+
+function findWordTokenBeforeBoundaries(
+  tokens: SqlToken[],
+  start: number,
+  word: string,
+  boundaries: Set<string>,
+): number {
+  let i = start;
+  while (i < tokens.length) {
+    const token = tokens[i];
+    if (!token || token.type !== 'word') {
+      i += 1;
+      continue;
+    }
+
+    if (token.upper === word) {
+      return i;
+    }
+
+    if (boundaries.has(token.upper)) {
+      return -1;
+    }
+
+    i += 1;
+  }
+
+  return -1;
+}
+
+function collectDeleteTargets(
+  tokens: SqlToken[],
+  statementStart: number,
+  cteNames: Set<string>,
+  addReference: (reference: SqlTableReference) => void,
+): void {
+  let i = statementStart + 1;
+  while (tokens[i]?.type === 'word' && DELETE_MODIFIERS.has(tokens[i].upper)) {
+    i += 1;
+  }
+
+  if (isWordToken(tokens[i], 'FROM')) {
+    const usingIndex = findWordTokenBeforeBoundaries(
+      tokens,
+      i + 1,
+      'USING',
+      new Set(['WHERE', 'ORDER', 'LIMIT', 'RETURNING']),
+    );
+
+    if (usingIndex > i + 1) {
+      const targetNames = collectIdentifierTargets(tokens, i + 1, usingIndex);
+      if (targetNames.length > 0) {
+        const sources: SqlTableSource[] = [];
+        collectFromClauseSources(tokens, usingIndex + 1, cteNames, (source) => sources.push(source));
+        resolveIdentifierTargets(targetNames, sources, addReference);
+        if (sources.length > 0) {
+          const anyResolved = targetNames.some((name) =>
+            sources.some(
+              (source) =>
+                source.alias?.toLowerCase() === name || source.reference.table.toLowerCase() === name,
+            ),
+          );
+          if (!anyResolved) {
+            addReference(sources[0].reference);
+          }
+        }
+        return;
+      }
+    }
+
+    const parsed = readTableReferenceAt(tokens, i + 1, cteNames);
+    if (parsed.reference) {
+      addReference(parsed.reference);
+    }
+    return;
+  }
+
+  const fromIndex = findWordTokenBeforeBoundaries(
+    tokens,
+    i,
+    'FROM',
+    new Set(['WHERE', 'ORDER', 'LIMIT', 'RETURNING']),
+  );
+  if (fromIndex === -1) {
+    return;
+  }
+
+  const targetNames = collectIdentifierTargets(tokens, i, fromIndex);
+  if (targetNames.length === 0) {
+    return;
+  }
+
+  const sources: SqlTableSource[] = [];
+  collectFromClauseSources(tokens, fromIndex + 1, cteNames, (source) => sources.push(source));
+  resolveIdentifierTargets(targetNames, sources, addReference);
+  if (sources.length > 0) {
+    const anyResolved = targetNames.some((name) =>
+      sources.some(
+        (source) => source.alias?.toLowerCase() === name || source.reference.table.toLowerCase() === name,
+      ),
+    );
+    if (!anyResolved) {
+      addReference(sources[0].reference);
+    }
+  }
+}
+
+function collectTruncateTarget(
+  tokens: SqlToken[],
+  statementStart: number,
+  cteNames: Set<string>,
+  addReference: (reference: SqlTableReference) => void,
+): void {
+  if (isWordToken(tokens[statementStart + 1], 'TABLE')) {
+    const parsed = readTableReferenceAt(tokens, statementStart + 2, cteNames);
+    if (parsed.reference) {
+      addReference(parsed.reference);
+    }
+    return;
+  }
+
+  const parsed = readTableReferenceAt(tokens, statementStart + 1, cteNames);
+  if (parsed.reference) {
+    addReference(parsed.reference);
+  }
+}
+
 export function extractLeadingSqlVerb(sql: string): string | null {
   const tokens = tokenizeSql(sql);
   if (tokens.length === 0) return null;
 
-  const { statementStart } = collectCteNames(tokens);
+  const { statementStart } = collectCteMetadata(tokens);
   for (let i = statementStart; i < tokens.length; i += 1) {
     const token = tokens[i];
     if (token.type === 'word') {
@@ -547,77 +848,113 @@ export function extractLeadingSqlVerb(sql: string): string | null {
   return null;
 }
 
-export function extractReferencedTables(sql: string): SqlTableReference[] {
+export function extractPrivilegeTableTargets(sql: string): SqlPrivilegeTableTarget[] {
   const tokens = tokenizeSql(sql);
   if (tokens.length === 0) return [];
 
+  const targets: SqlPrivilegeTableTarget[] = [];
+  const seen = new Set<string>();
+
+  const addTarget = (reference: SqlTableReference, privilege: SqlPrivilegeTableTarget['privilege']) => {
+    const key = `${privilege}:${tableRefKey(reference)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    targets.push({ ...reference, privilege });
+  };
+
+  const { names: cteNames, statementStart, bodyRanges } = collectCteMetadata(tokens);
+
+  let leadingVerb: string | null = null;
+  for (let i = statementStart; i < tokens.length; i += 1) {
+    if (tokens[i].type === 'word') {
+      leadingVerb = tokens[i].upper;
+      break;
+    }
+  }
+
+  if (!leadingVerb) {
+    return [];
+  }
+
+  if (['SELECT', 'SHOW', 'DESC', 'DESCRIBE', 'EXPLAIN'].includes(leadingVerb)) {
+    collectCteBodyReadReferences(tokens, bodyRanges, cteNames, (reference) => {
+      addTarget(reference, 'SELECT');
+    });
+    collectReadReferences(tokens, statementStart, tokens.length, cteNames, (reference) => {
+      addTarget(reference, 'SELECT');
+    });
+    return targets;
+  }
+
+  if (leadingVerb === 'INSERT' || leadingVerb === 'REPLACE') {
+    collectInsertTarget(tokens, statementStart, cteNames, (reference) => {
+      addTarget(reference, 'INSERT');
+    });
+    collectCteBodyReadReferences(tokens, bodyRanges, cteNames, (reference) => {
+      addTarget(reference, 'SELECT');
+    });
+    collectReadReferences(tokens, statementStart, tokens.length, cteNames, (reference) => {
+      addTarget(reference, 'SELECT');
+    });
+    return targets;
+  }
+
+  if (leadingVerb === 'UPDATE') {
+    collectUpdateTargets(tokens, statementStart + 1, cteNames, (reference) => {
+      addTarget(reference, 'UPDATE');
+    });
+    collectCteBodyReadReferences(tokens, bodyRanges, cteNames, (reference) => {
+      addTarget(reference, 'SELECT');
+    });
+    collectReadReferences(tokens, statementStart, tokens.length, cteNames, (reference) => {
+      addTarget(reference, 'SELECT');
+    });
+    return targets;
+  }
+
+  if (leadingVerb === 'DELETE') {
+    const deleteTargets: SqlTableReference[] = [];
+    const deleteSeen = new Set<string>();
+    collectDeleteTargets(tokens, statementStart, cteNames, (reference) => {
+      const key = tableRefKey(reference);
+      if (deleteSeen.has(key)) return;
+      deleteSeen.add(key);
+      deleteTargets.push(reference);
+      addTarget(reference, 'DELETE');
+    });
+
+    collectCteBodyReadReferences(tokens, bodyRanges, cteNames, (reference) => {
+      addTarget(reference, 'SELECT');
+    });
+
+    const deleteTargetKeys = new Set(deleteTargets.map((reference) => tableRefKey(reference)));
+    collectReadReferences(tokens, statementStart, tokens.length, cteNames, (reference) => {
+      if (deleteTargetKeys.has(tableRefKey(reference))) {
+        return;
+      }
+      addTarget(reference, 'SELECT');
+    });
+    return targets;
+  }
+
+  if (leadingVerb === 'TRUNCATE') {
+    collectTruncateTarget(tokens, statementStart, cteNames, (reference) => {
+      addTarget(reference, 'DELETE');
+    });
+  }
+
+  return targets;
+}
+
+export function extractReferencedTables(sql: string): SqlTableReference[] {
   const references: SqlTableReference[] = [];
   const seen = new Set<string>();
 
-  const addReference = (reference: SqlTableReference) => {
-    const key = `${reference.database?.toLowerCase() ?? ''}.${reference.table.toLowerCase()}`;
-    if (seen.has(key)) return;
+  for (const target of extractPrivilegeTableTargets(sql)) {
+    const key = tableRefKey(target);
+    if (seen.has(key)) continue;
     seen.add(key);
-    references.push(reference);
-  };
-
-  const { names: cteNames, statementStart } = collectCteNames(tokens);
-
-  let i = statementStart;
-  while (i < tokens.length) {
-    const token = tokens[i];
-    if (token.type !== 'word') {
-      i += 1;
-      continue;
-    }
-
-    if (token.upper === 'FROM') {
-      i = collectFromClauseTables(tokens, i + 1, cteNames, addReference);
-      continue;
-    }
-
-    if (token.upper === 'JOIN') {
-      const parsed = readTableReferenceAt(tokens, i + 1, cteNames);
-      if (parsed.reference) {
-        addReference(parsed.reference);
-      }
-      i = parsed.nextIndex;
-      continue;
-    }
-
-    if (token.upper === 'UPDATE') {
-      i = collectUpdateTargets(tokens, i + 1, cteNames, addReference);
-      continue;
-    }
-
-    if (token.upper === 'INTO') {
-      const parsed = readTableReferenceAt(tokens, i + 1, cteNames);
-      if (parsed.reference) {
-        addReference(parsed.reference);
-      }
-      i = parsed.nextIndex;
-      continue;
-    }
-
-    if (token.upper === 'TRUNCATE') {
-      if (isWordToken(tokens[i + 1], 'TABLE')) {
-        const parsed = readTableReferenceAt(tokens, i + 2, cteNames);
-        if (parsed.reference) {
-          addReference(parsed.reference);
-        }
-        i = parsed.nextIndex;
-        continue;
-      }
-
-      const parsed = readTableReferenceAt(tokens, i + 1, cteNames);
-      if (parsed.reference) {
-        addReference(parsed.reference);
-      }
-      i = parsed.nextIndex;
-      continue;
-    }
-
-    i += 1;
+    references.push({ database: target.database, table: target.table });
   }
 
   return references;
