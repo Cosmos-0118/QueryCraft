@@ -40,12 +40,50 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(result.rows[0]?.id).toBe(2);
   });
 
+  it('accepts trailing identifier as table alias (MySQL-compatible)', () => {
+    const result = executor.execute('SELECT * FROM students LIM');
+    expect(result.error).toBeUndefined();
+    expect(result.rowCount).toBe(2);
+  });
+
   it('translates CONCAT() in SELECT projection', () => {
     const result = executor.execute(
       "SELECT CONCAT(name, '-ok') AS label FROM students WHERE id = 1",
     );
     expect(result.error).toBeUndefined();
     expect(result.rows[0]?.label).toBe('Alice-ok');
+  });
+
+  it('translates nested CONCAT() expressions', () => {
+    const result = executor.execute(
+      "SELECT CONCAT(name, CONCAT('-', CAST(id AS TEXT))) AS label FROM students WHERE id = 1",
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.rows[0]?.label).toBe('Alice-1');
+  });
+
+  it('keeps comment-like tokens and type names intact inside string literals', () => {
+    const result = executor.execute("SELECT 'DATE -- /* JSON */ TIME' AS payload");
+    expect(result.error).toBeUndefined();
+    expect(result.rows[0]?.payload).toBe('DATE -- /* JSON */ TIME');
+  });
+
+  it('applies MySQL type compatibility rewrites in CREATE TABLE contexts only', () => {
+    const create = executor.execute(
+      'CREATE TABLE typed_events (event_date DATE, payload JSON, flag TINYINT(1))',
+    );
+    expect(create.error).toBeUndefined();
+
+    const desc = executor.execute('DESCRIBE typed_events');
+    expect(desc.error).toBeUndefined();
+    const byField = new Map(desc.rows.map((row) => [String(row.Field), String(row.Type)]));
+    expect(byField.get('event_date')).toBe('TEXT');
+    expect(byField.get('payload')).toBe('TEXT');
+    expect(byField.get('flag')).toBe('INTEGER');
+
+    const select = executor.execute("SELECT 'DATE' AS token");
+    expect(select.error).toBeUndefined();
+    expect(select.rows[0]?.token).toBe('DATE');
   });
 
   it('supports VAR_POP/VARIANCE/VAR_SAMP compatibility aggregates', () => {
@@ -119,6 +157,54 @@ describe('SqlExecutor MySQL compatibility layer', () => {
 
     const dropIndex = executor.execute('ALTER TABLE employees DROP INDEX idx_emp_name');
     expect(dropIndex.error).toBeUndefined();
+  });
+
+  it('preserves constraints and secondary indexes across ALTER TABLE rebuilds', () => {
+    executor.execute(
+      'CREATE TABLE account_limits (id INTEGER PRIMARY KEY, email TEXT UNIQUE, balance INTEGER CHECK(balance >= 0))',
+    );
+    executor.execute('CREATE INDEX idx_account_limits_balance ON account_limits(balance)');
+    executor.execute("INSERT INTO account_limits VALUES (1, 'a@example.com', 5)");
+
+    const altered = executor.execute(
+      'ALTER TABLE account_limits MODIFY balance INTEGER NOT NULL CHECK(balance >= 0)',
+    );
+    expect(altered.error).toBeUndefined();
+
+    const duplicateEmail = executor.execute(
+      "INSERT INTO account_limits VALUES (2, 'a@example.com', 8)",
+    );
+    expect(duplicateEmail.error).toBeDefined();
+    expect(duplicateEmail.errorDetails?.category).toBe('constraint');
+
+    const invalidBalance = executor.execute(
+      "INSERT INTO account_limits VALUES (3, 'b@example.com', -1)",
+    );
+    expect(invalidBalance.error).toBeDefined();
+    expect(invalidBalance.errorDetails?.category).toBe('constraint');
+
+    const indexes = executor.execute('SHOW INDEX FROM account_limits');
+    expect(indexes.error).toBeUndefined();
+    const indexNames = indexes.rows.map((row) => String(row.name ?? row.Key_name ?? ''));
+    expect(indexNames).toContain('idx_account_limits_balance');
+  });
+
+  it('rewrites preserved indexes when CHANGE renames indexed columns', () => {
+    executor.execute('CREATE TABLE payroll (id INTEGER PRIMARY KEY, salary INTEGER)');
+    executor.execute('CREATE INDEX idx_payroll_salary ON payroll(salary)');
+    executor.execute('INSERT INTO payroll VALUES (1, 1000)');
+
+    const altered = executor.execute('ALTER TABLE payroll CHANGE salary monthly_salary INTEGER');
+    expect(altered.error).toBeUndefined();
+
+    const indexes = executor.execute('SHOW INDEX FROM payroll');
+    expect(indexes.error).toBeUndefined();
+    const indexNames = indexes.rows.map((row) => String(row.name ?? row.Key_name ?? ''));
+    expect(indexNames).toContain('idx_payroll_salary');
+
+    const selected = executor.execute('SELECT monthly_salary FROM payroll WHERE monthly_salary = 1000');
+    expect(selected.error).toBeUndefined();
+    expect(selected.rowCount).toBe(1);
   });
 });
 

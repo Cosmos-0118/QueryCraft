@@ -414,11 +414,11 @@ The module is done when all conditions are met:
 4. Done (2026-04-11): Completed Phase 0 schema and API contract drafting in this file (Sections 14 and 15).
 5. Done (2026-04-11): Completed Phase 1, Step 1 (`TEST_DB_URL` wiring + separate Test DB connection bootstrap) in `src/lib/test-db/config.ts` and `src/lib/test-db/bootstrap.ts`.
 6. Done (2026-04-11): Completed Phase 1, Step 2 (Test DB health-check path and connectivity probe endpoint) in `src/app/api/tests/health/route.ts`, `src/app/api/tests/health/probe/route.ts`, and `src/lib/test-db/probe.ts`.
-7. Done (2026-04-11): Completed Phase 1, Step 3 (migration scaffolding for Test module schema rollout) with `scripts/test-db/migrate.mjs` and `src/lib/test-db/migrations/*`.
-8. Done (2026-04-11): Completed Phase 2, Step 1 (enum domain layer from Section 14.3) in `src/lib/test-db/migrations/0002_create_test_enum_domains.up.sql` and `src/lib/test-db/migrations/0002_create_test_enum_domains.down.sql`.
-9. Done (2026-04-11): Completed Phase 2, Step 2 (core tables from Section 14.4 in migration order) in `src/lib/test-db/migrations/0003_create_test_core_tables.up.sql` and `src/lib/test-db/migrations/0003_create_test_core_tables.down.sql`.
-10. Done (2026-04-11): Completed Phase 2, Step 3 (indexes from Section 14.5) in `src/lib/test-db/migrations/0004_add_test_module_indexes.up.sql` and `src/lib/test-db/migrations/0004_add_test_module_indexes.down.sql`.
-11. Done (2026-04-11): Completed Phase 2, Step 4 (seed baseline topics and sample question bank entries) in `src/lib/test-db/migrations/0005_seed_topics_and_sample_questions.up.sql` and `src/lib/test-db/migrations/0005_seed_topics_and_sample_questions.down.sql`.
+7. Done (2026-04-11): Completed Phase 1, Step 3 (migration scaffolding for Test module schema rollout) with `scripts/test-db/migrate.mjs` and `src/lib/test-db/migrations/<version>_<slug>/{up,down}.sql`.
+8. Done (2026-04-11): Completed Phase 2, Step 1 (enum domain layer from Section 14.3) in `src/lib/test-db/migrations/0002_create_test_enum_domains/`.
+9. Done (2026-04-11): Completed Phase 2, Step 2 (core tables from Section 14.4 in migration order) in `src/lib/test-db/migrations/0003_create_test_core_tables/`.
+10. Done (2026-04-11): Completed Phase 2, Step 3 (indexes from Section 14.5) in `src/lib/test-db/migrations/0004_add_test_module_indexes/`.
+11. Done (2026-04-11): Completed Phase 2, Step 4 (seed baseline topics and sample question bank entries) in `src/lib/test-db/migrations/0005_seed_topics_and_sample_questions/`.
 12. Next build action: Start Phase 3, Step 1 (teacher authoring/publish APIs: `POST /api/tests`, `PATCH /api/tests/:id`, `POST /api/tests/:id/publish`).
 
 ## 14. Consolidated Phase 0 Schema Draft

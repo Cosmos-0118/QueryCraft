@@ -2,6 +2,7 @@ import type { SqlJsDatabase, TranslatedQuery } from './types';
 import type { Row } from '@/types/database';
 import { emptyOkResult, statusResult, stripComments } from './utils';
 import { rewriteSubqueryOperators } from './subquery-rewriter';
+import { transformSqlCodeSegments } from './sql-lexer';
 
 function rewriteFunctionCalls(
   sql: string,
@@ -21,19 +22,40 @@ function rewriteFunctionCalls(
     let i = openParenIndex + 1;
     let inSingle = false;
     let inDouble = false;
+    let inBacktick = false;
 
     for (; i < sql.length; i += 1) {
       const ch = sql[i];
+      const next = i + 1 < sql.length ? sql[i + 1] : '';
 
-      if (ch === "'" && !inDouble) {
+      if (ch === "'" && !inDouble && !inBacktick) {
+        if (inSingle && next === "'") {
+          i += 1;
+          continue;
+        }
         inSingle = !inSingle;
         continue;
       }
-      if (ch === '"' && !inSingle) {
+
+      if (ch === '"' && !inSingle && !inBacktick) {
+        if (inDouble && next === '"') {
+          i += 1;
+          continue;
+        }
         inDouble = !inDouble;
         continue;
       }
-      if (inSingle || inDouble) continue;
+
+      if (ch === '`' && !inSingle && !inDouble) {
+        if (inBacktick && next === '`') {
+          i += 1;
+          continue;
+        }
+        inBacktick = !inBacktick;
+        continue;
+      }
+
+      if (inSingle || inDouble || inBacktick) continue;
 
       if (ch === '(') depth += 1;
       if (ch === ')') {
@@ -99,6 +121,310 @@ function applyAggregateCompatibilityRewrites(sql: string): {
   );
 
   return { sql: rewritten, columnRenames };
+}
+
+function splitTopLevelComma(raw: string): string[] {
+  const out: string[] = [];
+  let current = '';
+  let depth = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let inBacktick = false;
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+    const next = i + 1 < raw.length ? raw[i + 1] : '';
+
+    if (ch === "'" && !inDouble && !inBacktick) {
+      if (inSingle && next === "'") {
+        current += ch;
+        current += next;
+        i += 1;
+        continue;
+      }
+      inSingle = !inSingle;
+      current += ch;
+      continue;
+    }
+
+    if (ch === '"' && !inSingle && !inBacktick) {
+      if (inDouble && next === '"') {
+        current += ch;
+        current += next;
+        i += 1;
+        continue;
+      }
+      inDouble = !inDouble;
+      current += ch;
+      continue;
+    }
+
+    if (ch === '`' && !inSingle && !inDouble) {
+      if (inBacktick && next === '`') {
+        current += ch;
+        current += next;
+        i += 1;
+        continue;
+      }
+      inBacktick = !inBacktick;
+      current += ch;
+      continue;
+    }
+
+    if (!inSingle && !inDouble && !inBacktick) {
+      if (ch === '(') depth += 1;
+      if (ch === ')') depth = Math.max(0, depth - 1);
+      if (ch === ',' && depth === 0) {
+        out.push(current.trim());
+        current = '';
+        continue;
+      }
+    }
+
+    current += ch;
+  }
+
+  const tail = current.trim();
+  if (tail) out.push(tail);
+  return out;
+}
+
+function applyConcatCompatibilityRewrites(sql: string): string {
+  let rewritten = sql;
+
+  while (true) {
+    const next = rewriteFunctionCalls(rewritten, ['CONCAT'], (_fnName, argument) => {
+      const parts = splitTopLevelComma(argument)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+
+      if (parts.length === 0) return "''";
+      if (parts.length === 1) return parts[0];
+      return parts.join(' || ');
+    });
+
+    if (next === rewritten) {
+      return next;
+    }
+
+    rewritten = next;
+  }
+}
+
+function findMatchingParen(sql: string, openIndex: number): number {
+  let depth = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let inBacktick = false;
+
+  for (let i = openIndex; i < sql.length; i += 1) {
+    const ch = sql[i];
+    const next = i + 1 < sql.length ? sql[i + 1] : '';
+
+    if (ch === "'" && !inDouble && !inBacktick) {
+      if (inSingle && next === "'") {
+        i += 1;
+        continue;
+      }
+      inSingle = !inSingle;
+      continue;
+    }
+
+    if (ch === '"' && !inSingle && !inBacktick) {
+      if (inDouble && next === '"') {
+        i += 1;
+        continue;
+      }
+      inDouble = !inDouble;
+      continue;
+    }
+
+    if (ch === '`' && !inSingle && !inDouble) {
+      if (inBacktick && next === '`') {
+        i += 1;
+        continue;
+      }
+      inBacktick = !inBacktick;
+      continue;
+    }
+
+    if (inSingle || inDouble || inBacktick) continue;
+
+    if (ch === '(') depth += 1;
+    if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+
+  return -1;
+}
+
+function mapColumnType(typeName: string): string | null {
+  const upper = typeName.toUpperCase();
+  if (
+    upper === 'VARCHAR' ||
+    upper === 'CHAR' ||
+    upper === 'LONGTEXT' ||
+    upper === 'MEDIUMTEXT' ||
+    upper === 'TINYTEXT' ||
+    upper === 'ENUM' ||
+    upper === 'SET' ||
+    upper === 'DATETIME' ||
+    upper === 'TIMESTAMP' ||
+    upper === 'DATE' ||
+    upper === 'TIME' ||
+    upper === 'JSON'
+  ) {
+    return 'TEXT';
+  }
+
+  if (
+    upper === 'INT' ||
+    upper === 'INTEGER' ||
+    upper === 'TINYINT' ||
+    upper === 'SMALLINT' ||
+    upper === 'MEDIUMINT' ||
+    upper === 'BIGINT' ||
+    upper === 'BOOLEAN' ||
+    upper === 'BOOL'
+  ) {
+    return 'INTEGER';
+  }
+
+  if (
+    upper === 'DECIMAL' ||
+    upper === 'NUMERIC' ||
+    upper === 'FLOAT' ||
+    upper === 'DOUBLE' ||
+    upper === 'DOUBLE PRECISION'
+  ) {
+    return 'REAL';
+  }
+
+  if (
+    upper === 'BLOB' ||
+    upper === 'LONGBLOB' ||
+    upper === 'MEDIUMBLOB' ||
+    upper === 'TINYBLOB'
+  ) {
+    return 'BLOB';
+  }
+
+  return null;
+}
+
+function rewriteColumnDefinitionType(definition: string): string {
+  const trimmed = definition.trim();
+  if (!trimmed) return trimmed;
+
+  if (/^(PRIMARY|UNIQUE|KEY|INDEX|CONSTRAINT|CHECK|FOREIGN)\b/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const identifierMatch =
+    trimmed.match(/^(`[^`]+`|"[^"]+"|'[^']+'|[A-Za-z_][\w$]*)([\s\S]*)$/) ?? null;
+  if (!identifierMatch) return trimmed;
+
+  const identifier = identifierMatch[1];
+  let rest = identifierMatch[2].trimStart();
+  if (!rest) return trimmed;
+
+  const typeWordMatch = rest.match(/^([A-Za-z_][A-Za-z0-9_]*)/);
+  if (!typeWordMatch) return trimmed;
+
+  let typeName = typeWordMatch[1].toUpperCase();
+  let cursor = typeWordMatch[0].length;
+
+  if (typeName === 'DOUBLE') {
+    const precisionMatch = rest.slice(cursor).match(/^\s+PRECISION\b/i);
+    if (precisionMatch) {
+      typeName = 'DOUBLE PRECISION';
+      cursor += precisionMatch[0].length;
+    }
+  }
+
+  const afterType = rest.slice(cursor);
+  const argsMatch = afterType.match(/^\s*\(/);
+  if (argsMatch) {
+    const openOffset = cursor + (argsMatch.index ?? 0) + argsMatch[0].indexOf('(');
+    const closeIndex = findMatchingParen(rest, openOffset);
+    if (closeIndex > openOffset) {
+      cursor = closeIndex + 1;
+    }
+  }
+
+  const originalTypeSpec = rest.slice(0, cursor).trimEnd();
+  rest = rest.slice(cursor);
+  rest = rest.replace(/^\s+UNSIGNED\b/i, '');
+  const suffix = rest.trimStart();
+
+  const mapped = mapColumnType(typeName);
+  if (!mapped) {
+    return `${identifier} ${originalTypeSpec}${suffix ? ` ${suffix}` : ''}`;
+  }
+
+  return `${identifier} ${mapped}${suffix ? ` ${suffix}` : ''}`;
+}
+
+function rewriteCreateTableTypes(sql: string): string {
+  if (!/^CREATE\s+(?:TEMPORARY\s+)?TABLE\b/i.test(sql.trim())) {
+    return sql;
+  }
+
+  let openIndex = -1;
+  let inSingle = false;
+  let inDouble = false;
+  let inBacktick = false;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const ch = sql[i];
+    const next = i + 1 < sql.length ? sql[i + 1] : '';
+
+    if (ch === "'" && !inDouble && !inBacktick) {
+      if (inSingle && next === "'") {
+        i += 1;
+        continue;
+      }
+      inSingle = !inSingle;
+      continue;
+    }
+
+    if (ch === '"' && !inSingle && !inBacktick) {
+      if (inDouble && next === '"') {
+        i += 1;
+        continue;
+      }
+      inDouble = !inDouble;
+      continue;
+    }
+
+    if (ch === '`' && !inSingle && !inDouble) {
+      if (inBacktick && next === '`') {
+        i += 1;
+        continue;
+      }
+      inBacktick = !inBacktick;
+      continue;
+    }
+
+    if (inSingle || inDouble || inBacktick) continue;
+    if (ch === '(') {
+      openIndex = i;
+      break;
+    }
+  }
+
+  if (openIndex < 0) return sql;
+  const closeIndex = findMatchingParen(sql, openIndex);
+  if (closeIndex <= openIndex) return sql;
+
+  const body = sql.slice(openIndex + 1, closeIndex);
+  const parts = splitTopLevelComma(body);
+  if (parts.length === 0) return sql;
+
+  const rewrittenBody = parts.map(rewriteColumnDefinitionType).join(', ');
+  return `${sql.slice(0, openIndex + 1)}${rewrittenBody}${sql.slice(closeIndex)}`;
 }
 
 export function translateMySQL(
@@ -426,65 +752,44 @@ export function translateMySQL(
   // ENGINE=... / DEFAULT CHARSET=... / AUTO_INCREMENT — strip MySQL-specific clauses
   let translated = cleaned;
 
-  // Strip ENGINE=..., DEFAULT CHARSET=..., COLLATE=..., AUTO_INCREMENT=..., COMMENT=...
-  translated = translated.replace(/\s+ENGINE\s*=\s*\S+/gi, '');
-  translated = translated.replace(/\s+DEFAULT\s+CHARSET\s*=\s*\S+/gi, '');
-  translated = translated.replace(/\s+CHARSET\s*=\s*\S+/gi, '');
-  translated = translated.replace(/\s+COLLATE\s*=\s*\S+/gi, '');
-  translated = translated.replace(/\s+AUTO_INCREMENT\s*=\s*\d+/gi, '');
-  translated = translated.replace(/\s+COMMENT\s*=\s*'[^']*'/gi, '');
+  translated = transformSqlCodeSegments(translated, (segment) => {
+    let next = segment;
+    next = next.replace(/\s+ENGINE\s*=\s*\S+/gi, '');
+    next = next.replace(/\s+DEFAULT\s+CHARSET\s*=\s*\S+/gi, '');
+    next = next.replace(/\s+CHARSET\s*=\s*\S+/gi, '');
+    next = next.replace(/\s+COLLATE\s*=\s*\S+/gi, '');
+    next = next.replace(/\s+AUTO_INCREMENT\s*=\s*\d+/gi, '');
+    next = next.replace(/\s+COMMENT\s*=\s*'[^']*'/gi, '');
+    next = next.replace(
+      /\bINT(?:EGER)?\s+AUTO_INCREMENT(?:\s+PRIMARY\s+KEY)?/gi,
+      'INTEGER PRIMARY KEY AUTOINCREMENT',
+    );
+    next = next.replace(/\s+AUTO_INCREMENT/gi, '');
+    next = next.replace(/\s+UNSIGNED/gi, '');
+    next = next.replace(/\bINSERT\s+IGNORE\b/gi, 'INSERT OR IGNORE');
+    next = next.replace(/\bREPLACE\s+INTO\b/gi, 'INSERT OR REPLACE INTO');
+    next = next.replace(/\bON\s+DUPLICATE\s+KEY\s+UPDATE\b/gi, 'ON CONFLICT DO UPDATE SET');
+    next = next.replace(/\bLIMIT\s+(\d+)\s*,\s*(\d+)/gi, 'LIMIT $2 OFFSET $1');
+    next = next.replace(/\bNVL\s*\(/gi, 'IFNULL(');
+    next = next.replace(/\bDEFAULT\s+NOW\s*\(\s*\)/gi, "DEFAULT (datetime('now'))");
+    next = next.replace(/\bDEFAULT\s+CURDATE\s*\(\s*\)/gi, "DEFAULT (date('now'))");
+    next = next.replace(/\bDEFAULT\s+CURTIME\s*\(\s*\)/gi, "DEFAULT (time('now'))");
+    next = next.replace(/\bDEFAULT\s+CURRENT_TIMESTAMP\b/gi, "DEFAULT (datetime('now'))");
+    next = next.replace(/\bNOW\s*\(\s*\)/gi, "datetime('now')");
+    next = next.replace(/\bCURDATE\s*\(\s*\)/gi, "date('now')");
+    next = next.replace(/\bCURTIME\s*\(\s*\)/gi, "time('now')");
+    next = next.replace(/\bISNULL\s*\(([^)]+)\)/gi, '($1 IS NULL)');
+    next = next.replace(/\bDATABASE\s*\(\s*\)/gi, `'${activeDatabase}'`);
+    next = next.replace(/\b(?:CURRENT_USER|USER)\s*\(\s*\)/gi, `'${activeUser}'`);
+    next = next.replace(/\bVERSION\s*\(\s*\)/gi, 'sqlite_version()');
+    return next;
+  });
 
-  // INT AUTO_INCREMENT [PRIMARY KEY] → INTEGER PRIMARY KEY AUTOINCREMENT (SQLite)
-  translated = translated.replace(
-    /\bINT(?:EGER)?\s+AUTO_INCREMENT(?:\s+PRIMARY\s+KEY)?/gi,
-    'INTEGER PRIMARY KEY AUTOINCREMENT',
-  );
-  // standalone AUTO_INCREMENT
-  translated = translated.replace(/\s+AUTO_INCREMENT/gi, '');
+  translated = applyConcatCompatibilityRewrites(translated);
 
-  // MySQL type mappings
-  translated = translated.replace(/\bVARCHAR\s*\(\d+\)/gi, 'TEXT');
-  translated = translated.replace(/\bCHAR\s*\(\d+\)/gi, 'TEXT');
-  translated = translated.replace(/\bLONGTEXT\b/gi, 'TEXT');
-  translated = translated.replace(/\bMEDIUMTEXT\b/gi, 'TEXT');
-  translated = translated.replace(/\bTINYTEXT\b/gi, 'TEXT');
-  translated = translated.replace(/\bENUM\s*\([^)]+\)/gi, 'TEXT');
-  translated = translated.replace(/\bSET\s*\([^)]+\)/gi, 'TEXT');
-  translated = translated.replace(/\bDATETIME\b/gi, 'TEXT');
-  translated = translated.replace(/\bTIMESTAMP\b/gi, 'TEXT');
-  translated = translated.replace(/\bDATE\b/gi, 'TEXT');
-  translated = translated.replace(/\bTIME\b/gi, 'TEXT');
-  translated = translated.replace(/\bTINYINT\s*\(\d+\)/gi, 'INTEGER');
-  translated = translated.replace(/\bSMALLINT\b/gi, 'INTEGER');
-  translated = translated.replace(/\bMEDIUMINT\b/gi, 'INTEGER');
-  translated = translated.replace(/\bBIGINT\b/gi, 'INTEGER');
-  translated = translated.replace(/\bINT\s*\(\d+\)/gi, 'INTEGER');
-  translated = translated.replace(/\bDOUBLE(?:\s+PRECISION)?\b/gi, 'REAL');
-  translated = translated.replace(/\bFLOAT(?:\s*\([^)]*\))?\b/gi, 'REAL');
-  translated = translated.replace(/\bDECIMAL\s*\([^)]+\)/gi, 'REAL');
-  translated = translated.replace(/\bNUMERIC\s*\([^)]+\)/gi, 'REAL');
-  translated = translated.replace(/\bBOOLEAN\b/gi, 'INTEGER');
-  translated = translated.replace(/\bBOOL\b/gi, 'INTEGER');
-  translated = translated.replace(/\bBLOB\b/gi, 'BLOB');
-  translated = translated.replace(/\bLONGBLOB\b/gi, 'BLOB');
-  translated = translated.replace(/\bMEDIUMBLOB\b/gi, 'BLOB');
-  translated = translated.replace(/\bTINYBLOB\b/gi, 'BLOB');
-  translated = translated.replace(/\bJSON\b/gi, 'TEXT');
-
-  // UNSIGNED — strip
-  translated = translated.replace(/\s+UNSIGNED/gi, '');
-
-  // INSERT IGNORE → INSERT OR IGNORE
-  translated = translated.replace(/\bINSERT\s+IGNORE\b/gi, 'INSERT OR IGNORE');
-
-  // REPLACE INTO → INSERT OR REPLACE INTO
-  translated = translated.replace(/\bREPLACE\s+INTO\b/gi, 'INSERT OR REPLACE INTO');
-
-  // ON DUPLICATE KEY UPDATE → ON CONFLICT DO UPDATE SET
-  translated = translated.replace(
-    /\bON\s+DUPLICATE\s+KEY\s+UPDATE\b/gi,
-    'ON CONFLICT DO UPDATE SET',
-  );
+  if (/^CREATE\s+(?:TEMPORARY\s+)?TABLE\b/i.test(upper)) {
+    translated = rewriteCreateTableTypes(translated);
+  }
 
   // ALTER TABLE ... MODIFY COLUMN → not fully supported, but strip MODIFY for simple cases
   // ALTER TABLE ... CHANGE COLUMN old new TYPE → ALTER TABLE ... RENAME COLUMN old TO new
@@ -492,42 +797,6 @@ export function translateMySQL(
 
   // Backtick → double-quote
   translated = translated.replace(/`/g, '"');
-
-  // LIMIT x, y → LIMIT y OFFSET x
-  translated = translated.replace(/\bLIMIT\s+(\d+)\s*,\s*(\d+)/gi, 'LIMIT $2 OFFSET $1');
-
-  // IFNULL already works in SQLite; NVL → IFNULL
-  translated = translated.replace(/\bNVL\s*\(/gi, 'IFNULL(');
-
-  // DEFAULT NOW() / CURDATE() / CURTIME() — SQLite needs parens around function defaults
-  translated = translated.replace(/\bDEFAULT\s+NOW\s*\(\s*\)/gi, "DEFAULT (datetime('now'))");
-  translated = translated.replace(/\bDEFAULT\s+CURDATE\s*\(\s*\)/gi, "DEFAULT (date('now'))");
-  translated = translated.replace(/\bDEFAULT\s+CURTIME\s*\(\s*\)/gi, "DEFAULT (time('now'))");
-  translated = translated.replace(/\bDEFAULT\s+CURRENT_TIMESTAMP\b/gi, "DEFAULT (datetime('now'))");
-
-  // NOW() → datetime('now')  (non-DEFAULT contexts like INSERT values)
-  translated = translated.replace(/\bNOW\s*\(\s*\)/gi, "datetime('now')");
-  // CURDATE() → date('now')
-  translated = translated.replace(/\bCURDATE\s*\(\s*\)/gi, "date('now')");
-  // CURTIME() → time('now')
-  translated = translated.replace(/\bCURTIME\s*\(\s*\)/gi, "time('now')");
-
-  // CONCAT() → || operator (simple two-arg form)
-  // MySQL: CONCAT(a, b, c) — handled via recursive replacement for 2+ args
-  translated = translated.replace(/\bCONCAT\s*\(([^()]+)\)/gi, (_match, args: string) => {
-    const parts = args.split(',').map((s: string) => s.trim());
-    return parts.join(' || ');
-  });
-
-  // ISNULL(x) → x IS NULL (MySQL function form)
-  translated = translated.replace(/\bISNULL\s*\(([^)]+)\)/gi, '($1 IS NULL)');
-
-  // DATABASE() → current active database name
-  translated = translated.replace(/\bDATABASE\s*\(\s*\)/gi, `'${activeDatabase}'`);
-  // USER() / CURRENT_USER() → current session user
-  translated = translated.replace(/\b(?:CURRENT_USER|USER)\s*\(\s*\)/gi, `'${activeUser}'`);
-  // VERSION() → sqlite_version()
-  translated = translated.replace(/\bVERSION\s*\(\s*\)/gi, 'sqlite_version()');
 
   // Rewrite MySQL ANY / SOME / ALL subquery operators → SQLite-compatible
   translated = rewriteSubqueryOperators(translated);

@@ -1,4 +1,5 @@
 import type { QueryResult, Row } from '@/types/database';
+import { stripSqlComments } from './sql-lexer';
 
 export function emptyOkResult(): QueryResult {
   return {
@@ -19,8 +20,5 @@ export function statusResult(rows: Row[]): QueryResult {
 }
 
 export function stripComments(sql: string): string {
-  return sql
-    .replace(/--[^\n]*/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .trim();
+  return stripSqlComments(sql);
 }

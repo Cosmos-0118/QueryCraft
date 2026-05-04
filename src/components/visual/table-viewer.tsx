@@ -9,6 +9,8 @@ interface TableViewerProps {
   highlightColumns?: string[];
   className?: string;
   caption?: string;
+  density?: 'comfortable' | 'compact';
+  scrollMode?: 'container' | 'page';
 }
 
 export function TableViewer({
@@ -18,33 +20,44 @@ export function TableViewer({
   highlightColumns = [],
   className,
   caption,
+  density = 'comfortable',
+  scrollMode = 'container',
 }: TableViewerProps) {
+  const isCompact = density === 'compact';
+  const formatCellValue = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return '—';
+    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+    return String(value);
+  };
+
   return (
-    <div className={cn('qc-sandbox-code-block overflow-auto rounded-lg', className)}>
-      <table className="w-full text-sm">
+    <div
+      className={cn(
+        'qc-sandbox-code-block rounded-lg',
+        scrollMode === 'container' ? 'overflow-auto' : 'overflow-x-auto overflow-y-visible',
+        className,
+      )}
+    >
+      <table className={cn('qc-sandbox-data-grid w-full', isCompact ? 'text-xs' : 'text-sm')}>
         {caption && (
           <caption
-            className="border-b px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-            style={{
-              borderColor: 'var(--sandbox-border-soft)',
-              background: 'color-mix(in oklab, var(--sandbox-surface-soft) 84%, transparent)',
-            }}
+            className={cn(
+              'qc-sandbox-data-grid-caption text-left font-semibold uppercase tracking-wider text-muted-foreground',
+              isCompact ? 'px-3 py-1.5 text-[10px]' : 'px-4 py-2 text-xs',
+            )}
           >
             {caption}
           </caption>
         )}
         <thead>
-          <tr
-            className="border-b"
-            style={{
-              borderColor: 'var(--sandbox-border-soft)',
-              background: 'color-mix(in oklab, var(--sandbox-surface-soft) 80%, transparent)',
-            }}
-          >
+          <tr>
             {columns.map((col) => (
               <th
                 key={col}
-                className="px-4 py-2.5 text-left font-semibold"
+                className={cn(
+                  'qc-sandbox-data-grid-header text-left font-semibold',
+                  isCompact ? 'whitespace-nowrap px-3 py-1.5 text-[11px]' : 'px-4 py-2.5',
+                )}
                 style={
                   highlightColumns.includes(col)
                     ? {
@@ -62,7 +75,13 @@ export function TableViewer({
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-4 py-8 text-center text-muted-foreground">
+              <td
+                colSpan={columns.length}
+                className={cn(
+                  'text-center text-muted-foreground',
+                  isCompact ? 'px-3 py-6 text-xs' : 'px-4 py-8',
+                )}
+              >
                 No data
               </td>
             </tr>
@@ -70,18 +89,24 @@ export function TableViewer({
             rows.map((row, i) => (
               <tr
                 key={i}
-                className={cn('border-b last:border-0 transition-colors', highlightRows.includes(i) && 'animate-[highlight-flash_0.6s_ease-out]')}
-                style={{
-                  borderColor: 'var(--sandbox-border-soft)',
-                  background: highlightRows.includes(i)
-                    ? 'color-mix(in oklab, var(--accent) 12%, transparent)'
-                    : undefined,
-                }}
+                className={cn(
+                  'qc-sandbox-data-row transition-colors',
+                  highlightRows.includes(i)
+                    ? 'qc-sandbox-data-row-highlight animate-[highlight-flash_0.6s_ease-out]'
+                    : i % 2 === 0
+                      ? 'qc-sandbox-data-row-even'
+                      : 'qc-sandbox-data-row-odd',
+                )}
               >
                 {columns.map((col) => (
                   <td
                     key={col}
-                    className={cn('px-4 py-2', highlightColumns.includes(col) && 'font-medium')}
+                    className={cn(
+                      'qc-sandbox-data-grid-cell',
+                      isCompact ? 'whitespace-nowrap px-3 py-1.5 text-[11px]' : 'px-4 py-2',
+                      highlightColumns.includes(col) && 'font-medium',
+                    )}
+                    title={String(row[col] ?? '')}
                     style={
                       highlightColumns.includes(col)
                         ? {
@@ -90,7 +115,7 @@ export function TableViewer({
                         : undefined
                     }
                   >
-                    {String(row[col] ?? '')}
+                    {formatCellValue(row[col])}
                   </td>
                 ))}
               </tr>

@@ -5,15 +5,37 @@ import { stripComments } from './utils';
 import { translateMySQL } from './translation';
 import { splitSqlStatements } from './statement-splitter';
 import { isPlSqlBlock, runPlSqlBlock } from './plsql-runtime';
-import { extractCursorDefinitions, normalizeMySqlTriggerDefinition } from './mysql-compat';
+import { extractCursorDefinitions } from './mysql-compat';
 import { rewriteViewUpdate, rewriteViewDelete, rewriteViewInsert } from './view-manager';
+import { extractLeadingSqlVerb, extractPrivilegeTableTargets, replaceSqlIdentifiers } from './sql-lexer';
+import {
+  escapeRegex,
+  extractRoutineBody as extractRoutineBodyHelper,
+  parseCreateTableMeta,
+  parseLeadingIdentifier,
+  parseProcedureParams,
+  quoteSqlLiteral,
+  replaceLeadingIdentifier,
+  rewriteSchemaSqlIdentifiers,
+  splitCommaSafe,
+  sqlReferencesIdentifier,
+  splitTopLevelComma,
+  toSqlLiteral,
+  type ParsedCreateTableMeta,
+  type ProcedureParam,
+  type RebuildColumnSpec,
+  type TableColumnMeta,
+} from './sql-structure-utils';
 import type { SqlJs, SqlJsDatabase, SupportedPrivilege, DbUser, GrantEntry } from './types';
 import { SUPPORTED_PRIVILEGES } from './types';
-
-interface ProcedureParam {
-  name: string;
-  mode: 'IN' | 'OUT' | 'INOUT';
-}
+import {
+  handleAlterTableCompatibility as handleAlterTableCompatibilityExternal,
+  type AlterTableCompatibilityContext,
+} from './internal/alter-table-compat';
+import {
+  handleDatabaseCommand as handleDatabaseCommandExternal,
+  type DatabaseCommandContext,
+} from './internal/database-commands';
 
 interface StoredProcedure {
   database: string;
@@ -47,15 +69,10 @@ interface StoredFunction {
   definition: string;
 }
 
-interface TableColumnMeta {
+interface SchemaObjectSnapshot {
+  type: 'index' | 'trigger';
   name: string;
-  definition: string;
-}
-
-interface RebuildColumnSpec {
-  name: string;
-  definition: string;
-  sourceName?: string;
+  sql: string;
 }
 
 export class SqlExecutor {
@@ -162,113 +179,11 @@ export class SqlExecutor {
    * and body is the content between the first top-level BEGIN and the matching END.
    */
   private extractRoutineBody(sql: string): { preamble: string; body: string } | null {
-    // Find the first top-level BEGIN
-    const beginRegex = /\bBEGIN\b/gi;
-    let beginMatch: RegExpExecArray | null;
-    let beginIdx = -1;
-
-    while ((beginMatch = beginRegex.exec(sql)) !== null) {
-      // Check it's not inside a string
-      const before = sql.slice(0, beginMatch.index);
-      const singleQuotes = (before.match(/'/g) || []).length;
-      if (singleQuotes % 2 === 0) {
-        beginIdx = beginMatch.index;
-        break;
-      }
-    }
-
-    if (beginIdx === -1) return null;
-
-    const preamble = sql.slice(0, beginIdx).trim();
-    const afterBegin = beginIdx + 5; // length of "BEGIN"
-    let depth = 1;
-    let i = afterBegin;
-    let inSingle = false;
-    let inDouble = false;
-
-    while (i < sql.length && depth > 0) {
-      const ch = sql[i];
-
-      if (ch === "'" && !inDouble) { inSingle = !inSingle; i += 1; continue; }
-      if (ch === '"' && !inSingle) { inDouble = !inDouble; i += 1; continue; }
-      if (inSingle || inDouble) { i += 1; continue; }
-
-      // Check for word boundaries for BEGIN/END
-      if (/[A-Za-z_]/.test(ch)) {
-        let wordEnd = i;
-        while (wordEnd < sql.length && /[A-Za-z0-9_]/.test(sql[wordEnd])) wordEnd += 1;
-        const word = sql.slice(i, wordEnd).toUpperCase();
-
-        if (word === 'BEGIN') {
-          depth += 1;
-        } else if (word === 'END') {
-          // Peek at next word to check for END IF / END LOOP / END CASE
-          let peek = wordEnd;
-          while (peek < sql.length && /\s/.test(sql[peek])) peek += 1;
-          let nextWordEnd = peek;
-          while (nextWordEnd < sql.length && /[A-Za-z0-9_]/.test(sql[nextWordEnd])) nextWordEnd += 1;
-          const nextWord = sql.slice(peek, nextWordEnd).toUpperCase();
-
-          if (nextWord === 'IF' || nextWord === 'LOOP' || nextWord === 'CASE' || nextWord === 'WHILE') {
-            // END IF / END LOOP etc. — don't change depth
-            i = nextWordEnd;
-            continue;
-          }
-
-          depth -= 1;
-          if (depth === 0) {
-            const body = sql.slice(afterBegin, i).trim();
-            return { preamble, body };
-          }
-        }
-        i = wordEnd;
-        continue;
-      }
-
-      i += 1;
-    }
-
-    return null;
+    return extractRoutineBodyHelper(sql);
   }
 
   private splitCommaSafe(raw: string): string[] {
-    const out: string[] = [];
-    let current = '';
-    let depth = 0;
-    let inSingle = false;
-    let inDouble = false;
-
-    for (let i = 0; i < raw.length; i += 1) {
-      const ch = raw[i];
-
-      if (ch === "'" && !inDouble) {
-        inSingle = !inSingle;
-        current += ch;
-        continue;
-      }
-      if (ch === '"' && !inSingle) {
-        inDouble = !inDouble;
-        current += ch;
-        continue;
-      }
-
-      if (!inSingle && !inDouble) {
-        if (ch === '(') depth += 1;
-        if (ch === ')') depth = Math.max(0, depth - 1);
-        if (ch === ',' && depth === 0) {
-          const piece = current.trim();
-          if (piece) out.push(piece);
-          current = '';
-          continue;
-        }
-      }
-
-      current += ch;
-    }
-
-    const tail = current.trim();
-    if (tail) out.push(tail);
-    return out;
+    return splitCommaSafe(raw);
   }
 
   private quoteIdentifier(identifier: string): string {
@@ -276,68 +191,92 @@ export class SqlExecutor {
   }
 
   private parseLeadingIdentifier(raw: string): { identifier: string; rest: string } | null {
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-
-    let match = trimmed.match(/^`([^`]+)`\s*([\s\S]*)$/);
-    if (match) return { identifier: match[1], rest: match[2] ?? '' };
-
-    match = trimmed.match(/^"([^"]+)"\s*([\s\S]*)$/);
-    if (match) return { identifier: match[1], rest: match[2] ?? '' };
-
-    match = trimmed.match(/^'([^']+)'\s*([\s\S]*)$/);
-    if (match) return { identifier: match[1], rest: match[2] ?? '' };
-
-    match = trimmed.match(/^([A-Za-z_][\w$]*)\s*([\s\S]*)$/);
-    if (match) return { identifier: match[1], rest: match[2] ?? '' };
-
-    return null;
+    return parseLeadingIdentifier(raw);
   }
 
   private splitTopLevelComma(raw: string): string[] {
-    const out: string[] = [];
-    let current = '';
-    let depth = 0;
-    let inSingle = false;
-    let inDouble = false;
-    let inBacktick = false;
+    return splitTopLevelComma(raw);
+  }
 
-    for (let i = 0; i < raw.length; i += 1) {
-      const ch = raw[i];
+  private escapeRegex(value: string): string {
+    return escapeRegex(value);
+  }
 
-      if (ch === "'" && !inDouble && !inBacktick) {
-        inSingle = !inSingle;
-        current += ch;
-        continue;
-      }
-      if (ch === '"' && !inSingle && !inBacktick) {
-        inDouble = !inDouble;
-        current += ch;
-        continue;
-      }
-      if (ch === '`' && !inSingle && !inDouble) {
-        inBacktick = !inBacktick;
-        current += ch;
-        continue;
-      }
+  private quoteSqlLiteral(value: string): string {
+    return quoteSqlLiteral(value);
+  }
 
-      if (!inSingle && !inDouble && !inBacktick) {
-        if (ch === '(') depth += 1;
-        if (ch === ')') depth = Math.max(0, depth - 1);
-        if (ch === ',' && depth === 0) {
-          const piece = current.trim();
-          if (piece) out.push(piece);
-          current = '';
-          continue;
-        }
-      }
+  private parseCreateTableMeta(createTableSql: string): ParsedCreateTableMeta | null {
+    return parseCreateTableMeta(createTableSql);
+  }
 
-      current += ch;
+  private getCreateTableMeta(tableName: string): ParsedCreateTableMeta | null {
+    const activeDb = this.getActiveDb();
+    if (!activeDb) return null;
+
+    const rows = activeDb.exec(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND lower(name) = lower(${this.quoteSqlLiteral(tableName)}) LIMIT 1`,
+    );
+    if (rows.length === 0 || rows[0].values.length === 0) return null;
+
+    const rawSql = String(rows[0].values[0]?.[0] ?? '').trim();
+    if (!rawSql) return null;
+
+    return this.parseCreateTableMeta(rawSql);
+  }
+
+  private buildColumnRenameMap(columns: RebuildColumnSpec[]): Map<string, string> {
+    const replacements = new Map<string, string>();
+    for (const column of columns) {
+      if (!column.sourceName) continue;
+      replacements.set(column.sourceName.toLowerCase(), column.name);
     }
+    return replacements;
+  }
 
-    const tail = current.trim();
-    if (tail) out.push(tail);
-    return out;
+  private extractDroppedColumnNames(tableName: string, columns: RebuildColumnSpec[]): Set<string> {
+    const retainedSourceNames = new Set(
+      columns
+        .map((column) => column.sourceName?.toLowerCase())
+        .filter((name): name is string => Boolean(name)),
+    );
+
+    const existingNames = this.getTableColumnMeta(tableName).map((column) => column.name.toLowerCase());
+    return new Set(existingNames.filter((name) => !retainedSourceNames.has(name)));
+  }
+
+  private rewriteSchemaSqlIdentifiers(sql: string, replacements: ReadonlyMap<string, string>): string {
+    return rewriteSchemaSqlIdentifiers(sql, replacements);
+  }
+
+  private sqlReferencesIdentifier(sql: string, identifier: string): boolean {
+    return sqlReferencesIdentifier(sql, identifier);
+  }
+
+  private captureTableSchemaObjects(tableName: string): SchemaObjectSnapshot[] {
+    const activeDb = this.getActiveDb();
+    if (!activeDb) return [];
+
+    const rows = activeDb.exec(
+      `SELECT type, name, sql FROM sqlite_master WHERE lower(tbl_name) = lower(${this.quoteSqlLiteral(tableName)}) AND type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY type, name`,
+    );
+    if (rows.length === 0 || rows[0].values.length === 0) return [];
+
+    return rows[0].values
+      .map((row): SchemaObjectSnapshot | null => {
+        const type = String(row[0] ?? '').toLowerCase();
+        const name = String(row[1] ?? '').trim();
+        const sql = String(row[2] ?? '').trim();
+        if ((type !== 'index' && type !== 'trigger') || !name || !sql) {
+          return null;
+        }
+        return {
+          type,
+          name,
+          sql,
+        };
+      })
+      .filter((snapshot): snapshot is SchemaObjectSnapshot => snapshot !== null);
   }
 
   private buildColumnDefinitionFromPragma(row: unknown[]): string {
@@ -357,6 +296,11 @@ export class SqlExecutor {
   }
 
   private getTableColumnMeta(tableName: string): TableColumnMeta[] {
+    const parsed = this.getCreateTableMeta(tableName);
+    if (parsed && parsed.columns.length > 0) {
+      return parsed.columns;
+    }
+
     const activeDb = this.getActiveDb();
     if (!activeDb) return [];
 
@@ -404,7 +348,21 @@ export class SqlExecutor {
     const tempTable = `__qc_tmp_${tableName}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const tempTableSql = this.quoteIdentifier(tempTable);
 
-    const definitions = columns.map((column) => column.definition.trim());
+    const createTableMeta = this.getCreateTableMeta(tableName);
+    const renameMap = this.buildColumnRenameMap(columns);
+    const droppedColumnNames = this.extractDroppedColumnNames(tableName, columns);
+    const droppedColumns = Array.from(droppedColumnNames);
+    const schemaObjects = this.captureTableSchemaObjects(tableName);
+
+    const rewrittenConstraints = (createTableMeta?.tableConstraints ?? [])
+      .map((constraint) => this.rewriteSchemaSqlIdentifiers(constraint, renameMap))
+      .filter(
+        (constraint) =>
+          !droppedColumns.some((columnName) => this.sqlReferencesIdentifier(constraint, columnName)),
+      );
+
+    const definitions = [...columns.map((column) => column.definition.trim()), ...rewrittenConstraints];
+    const trailingClause = createTableMeta?.trailingClause ? ` ${createTableMeta.trailingClause}` : '';
     const insertColumns: string[] = [];
     const selectColumns: string[] = [];
     for (const column of columns) {
@@ -415,7 +373,7 @@ export class SqlExecutor {
 
     try {
       activeDb.run('BEGIN');
-      activeDb.run(`CREATE TABLE ${tempTableSql} (${definitions.join(', ')})`);
+      activeDb.run(`CREATE TABLE ${tempTableSql} (${definitions.join(', ')})${trailingClause}`);
       if (insertColumns.length > 0) {
         activeDb.run(
           `INSERT INTO ${tempTableSql} (${insertColumns.join(', ')}) SELECT ${selectColumns.join(', ')} FROM ${oldTableSql}`,
@@ -423,6 +381,22 @@ export class SqlExecutor {
       }
       activeDb.run(`DROP TABLE ${oldTableSql}`);
       activeDb.run(`ALTER TABLE ${tempTableSql} RENAME TO ${oldTableSql}`);
+
+      for (const object of schemaObjects) {
+        if (droppedColumns.some((columnName) => this.sqlReferencesIdentifier(object.sql, columnName))) {
+          continue;
+        }
+
+        const rewrittenObjectSql = this.rewriteSchemaSqlIdentifiers(object.sql, renameMap);
+        if (
+          droppedColumns.some((columnName) => this.sqlReferencesIdentifier(rewrittenObjectSql, columnName))
+        ) {
+          continue;
+        }
+
+        activeDb.run(rewrittenObjectSql);
+      }
+
       activeDb.run('COMMIT');
 
       return {
@@ -446,414 +420,24 @@ export class SqlExecutor {
   }
 
   private replaceLeadingIdentifier(definition: string, nextName: string): string {
-    const parsed = this.parseLeadingIdentifier(definition);
-    if (!parsed) return definition;
-    return `${this.quoteIdentifier(nextName)} ${parsed.rest.trim()}`.trim();
+    return replaceLeadingIdentifier(definition, nextName, (identifier) => this.quoteIdentifier(identifier));
   }
 
   private handleAlterTableCompatibility(rawSql: string, startTime: number): QueryResult | null {
-    const cleaned = stripComments(rawSql).trim().replace(/;$/, '').trim();
-    if (!/^ALTER\s+TABLE\b/i.test(cleaned)) return null;
-
-    const afterAlterTable = cleaned.replace(/^ALTER\s+TABLE\s+/i, '');
-    const tableParsed = this.parseLeadingIdentifier(afterAlterTable);
-    if (!tableParsed) return null;
-
-    let tableName = tableParsed.identifier;
-    const operationSegment = tableParsed.rest.trim();
-    const operations = this.splitTopLevelComma(operationSegment);
-    if (operations.length === 0) return null;
-
-    for (const operation of operations) {
-      const columnsMeta = this.getTableColumnMeta(tableName);
-      if (columnsMeta.length === 0) {
-        return sqlErrorEngine.fromMessage(`Table '${tableName}' doesn't exist`, {
-          sql: rawSql,
-          startTime,
-        });
-      }
-
-      const modifyMatch = operation.match(/^MODIFY(?:\s+COLUMN)?\s+([\s\S]+)$/i);
-      if (modifyMatch) {
-        const replacementDefinition = this.normalizeAlterColumnDefinition(modifyMatch[1].trim());
-        const targetParsed = this.parseLeadingIdentifier(replacementDefinition);
-        if (!targetParsed) {
-          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE MODIFY syntax', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const sourceLower = targetParsed.identifier.toLowerCase();
-        if (!columnsMeta.some((column) => column.name.toLowerCase() === sourceLower)) {
-          return sqlErrorEngine.fromMessage(
-            `Unknown column '${targetParsed.identifier}' in '${tableName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const spec: RebuildColumnSpec[] = columnsMeta.map((column) =>
-          column.name.toLowerCase() === sourceLower
-            ? {
-                name: targetParsed.identifier,
-                definition: replacementDefinition,
-                sourceName: column.name,
-              }
-            : { name: column.name, definition: column.definition, sourceName: column.name },
-        );
-
-        const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime);
-        if (result.error) return result;
-        continue;
-      }
-
-      const changeMatch = operation.match(/^CHANGE(?:\s+COLUMN)?\s+([\s\S]+)$/i);
-      if (changeMatch) {
-        const sourceParsed = this.parseLeadingIdentifier(changeMatch[1].trim());
-        if (!sourceParsed) {
-          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE CHANGE syntax', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-        const replacementDefinition = this.normalizeAlterColumnDefinition(sourceParsed.rest.trim());
-        const targetParsed = this.parseLeadingIdentifier(replacementDefinition);
-        if (!targetParsed) {
-          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE CHANGE target definition', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const sourceLower = sourceParsed.identifier.toLowerCase();
-        if (!columnsMeta.some((column) => column.name.toLowerCase() === sourceLower)) {
-          return sqlErrorEngine.fromMessage(
-            `Unknown column '${sourceParsed.identifier}' in '${tableName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const spec: RebuildColumnSpec[] = columnsMeta.map((column) =>
-          column.name.toLowerCase() === sourceLower
-            ? {
-                name: targetParsed.identifier,
-                definition: replacementDefinition,
-                sourceName: column.name,
-              }
-            : { name: column.name, definition: column.definition, sourceName: column.name },
-        );
-
-        const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime);
-        if (result.error) return result;
-        continue;
-      }
-
-      const renameColumnMatch = operation.match(/^RENAME\s+COLUMN\s+(.+)\s+TO\s+(.+)$/i);
-      if (renameColumnMatch) {
-        const sourceParsed = this.parseLeadingIdentifier(renameColumnMatch[1]);
-        const targetParsed = this.parseLeadingIdentifier(renameColumnMatch[2]);
-        if (!sourceParsed || !targetParsed) {
-          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE RENAME COLUMN syntax', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const sourceLower = sourceParsed.identifier.toLowerCase();
-        if (!columnsMeta.some((column) => column.name.toLowerCase() === sourceLower)) {
-          return sqlErrorEngine.fromMessage(
-            `Unknown column '${sourceParsed.identifier}' in '${tableName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const spec: RebuildColumnSpec[] = columnsMeta.map((column) =>
-          column.name.toLowerCase() === sourceLower
-            ? {
-                name: targetParsed.identifier,
-                definition: this.replaceLeadingIdentifier(
-                  column.definition,
-                  targetParsed.identifier,
-                ),
-                sourceName: column.name,
-              }
-            : { name: column.name, definition: column.definition, sourceName: column.name },
-        );
-
-        const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime);
-        if (result.error) return result;
-        continue;
-      }
-
-      const dropColumnMatch = operation.match(/^DROP(?:\s+COLUMN)?\s+(?!INDEX\b)(?!KEY\b)(.+)$/i);
-      if (dropColumnMatch) {
-        const targetParsed = this.parseLeadingIdentifier(dropColumnMatch[1]);
-        if (!targetParsed) {
-          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE DROP COLUMN syntax', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const targetLower = targetParsed.identifier.toLowerCase();
-        const remaining = columnsMeta.filter((column) => column.name.toLowerCase() !== targetLower);
-        if (remaining.length === columnsMeta.length) {
-          return sqlErrorEngine.fromMessage(
-            `Unknown column '${targetParsed.identifier}' in '${tableName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-        if (remaining.length === 0) {
-          return sqlErrorEngine.fromMessage('Cannot drop all columns from a table.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const spec: RebuildColumnSpec[] = remaining.map((column) => ({
-          name: column.name,
-          definition: column.definition,
-          sourceName: column.name,
-        }));
-        const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime);
-        if (result.error) return result;
-        continue;
-      }
-
-      const addColumnMatch = operation.match(
-        /^ADD(?:\s+COLUMN)?\s+(?!UNIQUE\b)(?!INDEX\b)(?!KEY\b)(?!PRIMARY\b)(?!CONSTRAINT\b)([\s\S]+)$/i,
-      );
-      if (addColumnMatch) {
-        let clauseBody = addColumnMatch[1].trim();
-        let position: { first: boolean; after?: string } | null = null;
-
-        const firstMatch = clauseBody.match(/\s+FIRST\s*$/i);
-        if (firstMatch) {
-          position = { first: true };
-          clauseBody = clauseBody.slice(0, firstMatch.index).trim();
-        } else {
-          const afterMatch = clauseBody.match(/\s+AFTER\s+(.+)$/i);
-          if (afterMatch && afterMatch.index !== undefined) {
-            const parsedAfter = this.parseLeadingIdentifier(afterMatch[1]);
-            if (!parsedAfter) {
-              return sqlErrorEngine.fromMessage('Invalid ALTER TABLE ADD COLUMN AFTER syntax', {
-                sql: rawSql,
-                startTime,
-              });
-            }
-            position = { first: false, after: parsedAfter.identifier };
-            clauseBody = clauseBody.slice(0, afterMatch.index).trim();
-          }
-        }
-
-        const normalizedDefinition = this.normalizeAlterColumnDefinition(clauseBody);
-        const newParsed = this.parseLeadingIdentifier(normalizedDefinition);
-        if (!newParsed) {
-          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE ADD COLUMN syntax', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const exists = columnsMeta.some(
-          (column) => column.name.toLowerCase() === newParsed.identifier.toLowerCase(),
-        );
-        if (exists) {
-          return sqlErrorEngine.fromMessage(
-            `Duplicate column name '${newParsed.identifier}' in '${tableName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const spec: RebuildColumnSpec[] = columnsMeta.map((column) => ({
-          name: column.name,
-          definition: column.definition,
-          sourceName: column.name,
-        }));
-
-        const nextColumn: RebuildColumnSpec = {
-          name: newParsed.identifier,
-          definition: normalizedDefinition,
-        };
-
-        if (!position) {
-          spec.push(nextColumn);
-        } else if (position.first) {
-          spec.unshift(nextColumn);
-        } else {
-          const afterIndex = spec.findIndex(
-            (column) => column.name.toLowerCase() === (position.after ?? '').toLowerCase(),
-          );
-          if (afterIndex < 0) {
-            return sqlErrorEngine.fromMessage(
-              `Unknown column '${position.after}' in '${tableName}' for AFTER clause`,
-              {
-                sql: rawSql,
-                startTime,
-              },
-            );
-          }
-          spec.splice(afterIndex + 1, 0, nextColumn);
-        }
-
-        const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime);
-        if (result.error) return result;
-        continue;
-      }
-
-      const renameTableMatch = operation.match(/^RENAME\s+TO\s+(.+)$/i);
-      if (renameTableMatch) {
-        const nextTable = this.parseLeadingIdentifier(renameTableMatch[1]);
-        if (!nextTable) {
-          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE RENAME TO syntax', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const activeDb = this.getActiveDb();
-        if (!activeDb) {
-          return sqlErrorEngine.fromMessage('Database not initialized. Call init() first.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        try {
-          activeDb.run(
-            `ALTER TABLE ${this.quoteIdentifier(tableName)} RENAME TO ${this.quoteIdentifier(nextTable.identifier)}`,
-          );
-        } catch (error) {
-          return sqlErrorEngine.fromUnknownError(error, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        tableName = nextTable.identifier;
-        continue;
-      }
-
-      const addIndexMatch = operation.match(
-        /^ADD\s+(UNIQUE\s+)?(?:INDEX|KEY)\s+(?:([`"']?[A-Za-z_][\w$]*[`"']?)\s*)?\(([^)]+)\)$/i,
-      );
-      if (addIndexMatch) {
-        const isUnique = Boolean(addIndexMatch[1]);
-        const explicitName = addIndexMatch[2]
-          ? this.normalizeIdentifier(addIndexMatch[2])
-          : `${tableName}_${addIndexMatch[3].replace(/[^A-Za-z0-9_]+/g, '_')}_idx`;
-        const columns = this.splitTopLevelComma(addIndexMatch[3]).map((part) => {
-          const parsed = this.parseLeadingIdentifier(part.trim());
-          return parsed ? this.quoteIdentifier(parsed.identifier) : part.trim();
-        });
-        const createIndexSql = `CREATE ${isUnique ? 'UNIQUE ' : ''}INDEX ${this.quoteIdentifier(explicitName)} ON ${this.quoteIdentifier(tableName)} (${columns.join(', ')})`;
-        const activeDb = this.getActiveDb();
-        if (!activeDb) {
-          return sqlErrorEngine.fromMessage('Database not initialized. Call init() first.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-        try {
-          activeDb.run(createIndexSql);
-        } catch (error) {
-          return sqlErrorEngine.fromUnknownError(error, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-        continue;
-      }
-
-      const dropIndexMatch = operation.match(/^DROP\s+INDEX\s+(.+)$/i);
-      if (dropIndexMatch) {
-        const parsed = this.parseLeadingIdentifier(dropIndexMatch[1]);
-        if (!parsed) {
-          return sqlErrorEngine.fromMessage('Invalid ALTER TABLE DROP INDEX syntax', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const activeDb = this.getActiveDb();
-        if (!activeDb) {
-          return sqlErrorEngine.fromMessage('Database not initialized. Call init() first.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-        try {
-          activeDb.run(`DROP INDEX IF EXISTS ${this.quoteIdentifier(parsed.identifier)}`);
-        } catch (error) {
-          return sqlErrorEngine.fromUnknownError(error, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-        continue;
-      }
-
-      return sqlErrorEngine.fromMessage(
-        `Unsupported ALTER TABLE operation segment: '${operation}'.`,
-        {
-          sql: rawSql,
-          startTime,
-        },
-      );
-    }
-
-    return {
-      columns: [],
-      rows: [],
-      rowCount: 0,
-      executionTimeMs: performance.now() - startTime,
-    };
+    return handleAlterTableCompatibilityExternal.call(
+      this as unknown as AlterTableCompatibilityContext,
+      rawSql,
+      startTime,
+    );
   }
 
+
   private parseProcedureParams(raw: string): ProcedureParam[] {
-    const source = raw.trim();
-    if (!source) return [];
-
-    return this.splitCommaSafe(source)
-      .map((token) => {
-        const normalized = token.trim().replace(/\s+/g, ' ');
-        if (!normalized) return null;
-
-        const match = normalized.match(/^(?:(IN|OUT|INOUT)\s+)?([A-Za-z_][\w$]*)(?:\s+.+)?$/i);
-        if (!match) return null;
-
-        const mode = (match[1]?.toUpperCase() ?? 'IN') as 'IN' | 'OUT' | 'INOUT';
-        const name = match[2];
-        return { name, mode } satisfies ProcedureParam;
-      })
-      .filter((param): param is ProcedureParam => param !== null);
+    return parseProcedureParams(raw);
   }
 
   private toSqlLiteral(value: string): string {
-    const trimmed = value.trim();
-    if (!trimmed) return 'NULL';
-    if (/^null$/i.test(trimmed)) return 'NULL';
-    if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return trimmed;
-    if (/^'.*'$/.test(trimmed)) return trimmed;
-    if (/^".*"$/.test(trimmed)) {
-      return `'${trimmed.slice(1, -1).replace(/'/g, "''")}'`;
-    }
-    return `'${trimmed.replace(/'/g, "''")}'`;
+    return toSqlLiteral(value);
   }
 
   private substituteProcedureParams(
@@ -861,7 +445,7 @@ export class SqlExecutor {
     params: ProcedureParam[],
     args: string[],
   ): { sql: string; error?: string } {
-    let rewritten = body;
+    const replacements = new Map<string, string>();
 
     for (let i = 0; i < params.length; i += 1) {
       const param = params[i];
@@ -875,14 +459,10 @@ export class SqlExecutor {
       }
 
       const argSql = this.toSqlLiteral(args[i] ?? 'NULL');
-      const namePattern = new RegExp(
-        `\\b${param.name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`,
-        'gi',
-      );
-      rewritten = rewritten.replace(namePattern, argSql);
+      replacements.set(param.name.toLowerCase(), argSql);
     }
 
-    return { sql: rewritten };
+    return { sql: replaceSqlIdentifiers(body, replacements) };
   }
 
   private executeStoredProcedure(
@@ -1208,18 +788,27 @@ export class SqlExecutor {
   }
 
   private requiredPrivilegeForSql(sql: string): SupportedPrivilege | null {
-    const norm = stripComments(sql).replace(/\s+/g, ' ').trim().toUpperCase();
-    if (!norm) return null;
+    const cleaned = stripComments(sql);
+    if (!cleaned.trim()) return null;
 
-    if (/^(SELECT|SHOW|DESC|DESCRIBE|EXPLAIN|WITH\b.*SELECT\b)/.test(norm)) return 'SELECT';
-    if (/^(INSERT|REPLACE)/.test(norm)) return 'INSERT';
-    if (/^UPDATE/.test(norm)) return 'UPDATE';
-    if (/^(DELETE|TRUNCATE)/.test(norm)) return 'DELETE';
-    if (/^CALL/.test(norm)) return 'EXECUTE';
-    if (/^CREATE\s+INDEX/.test(norm)) return 'INDEX';
-    if (/^CREATE/.test(norm)) return 'CREATE';
-    if (/^ALTER/.test(norm)) return 'ALTER';
-    if (/^(DROP|RENAME)/.test(norm)) return 'DROP';
+    const leadingVerb = extractLeadingSqlVerb(cleaned);
+    if (!leadingVerb) return null;
+
+    if (['SELECT', 'SHOW', 'DESC', 'DESCRIBE', 'EXPLAIN'].includes(leadingVerb)) {
+      return 'SELECT';
+    }
+    if (leadingVerb === 'INSERT' || leadingVerb === 'REPLACE') return 'INSERT';
+    if (leadingVerb === 'UPDATE') return 'UPDATE';
+    if (leadingVerb === 'DELETE' || leadingVerb === 'TRUNCATE') return 'DELETE';
+    if (leadingVerb === 'CALL') return 'EXECUTE';
+    if (leadingVerb === 'ALTER') return 'ALTER';
+    if (leadingVerb === 'DROP' || leadingVerb === 'RENAME') return 'DROP';
+
+    if (leadingVerb === 'CREATE') {
+      const norm = cleaned.replace(/\s+/g, ' ').trim().toUpperCase();
+      if (/^CREATE\s+INDEX\b/.test(norm)) return 'INDEX';
+      return 'CREATE';
+    }
 
     return null;
   }
@@ -1249,29 +838,67 @@ export class SqlExecutor {
     return false;
   }
 
-  private extractTargetTable(sql: string): string | undefined {
-    const norm = sql.replace(/\s+/g, ' ').trim();
-    // SELECT ... FROM table / INSERT INTO table / UPDATE table / DELETE FROM table
-    const m =
-      norm.match(/\bFROM\s+[`"']?(\w+)[`"']?/i) ??
-      norm.match(/\bINTO\s+[`"']?(\w+)[`"']?/i) ??
-      norm.match(/^UPDATE\s+[`"']?(\w+)[`"']?/i);
-    return m ? m[1] : undefined;
+  private extractPrivilegeTargets(
+    sql: string,
+  ): Array<{ privilege: SupportedPrivilege; database: string; table?: string }> {
+    const deduped = new Map<
+      string,
+      { privilege: SupportedPrivilege; database: string; table?: string }
+    >();
+
+    const addTarget = (target: { privilege: SupportedPrivilege; database: string; table?: string }) => {
+      const key = `${target.privilege}:${target.database.toLowerCase()}.${target.table?.toLowerCase() ?? '*'}`;
+      if (deduped.has(key)) return;
+      deduped.set(key, target);
+    };
+
+    const tableTargets = extractPrivilegeTableTargets(sql);
+    for (const tableTarget of tableTargets) {
+      const resolvedDb = tableTarget.database
+        ? (this.resolveDatabaseName(tableTarget.database) ?? tableTarget.database)
+        : this.activeDatabase;
+
+      addTarget({
+        privilege: tableTarget.privilege,
+        database: resolvedDb,
+        table: tableTarget.table,
+      });
+    }
+
+    if (tableTargets.length > 0) {
+      return Array.from(deduped.values());
+    }
+
+    const required = this.requiredPrivilegeForSql(sql);
+    if (!required) {
+      return [];
+    }
+
+    addTarget({ privilege: required, database: this.activeDatabase });
+    return Array.from(deduped.values());
   }
 
   private denyIfNoPrivilege(sql: string, startTime: number): QueryResult | null {
-    const required = this.requiredPrivilegeForSql(sql);
-    if (!required) return null;
-    const targetTable = this.extractTargetTable(sql);
-    if (this.hasPrivilege(required, this.activeDatabase, targetTable)) return null;
+    const targets = this.extractPrivilegeTargets(sql);
+    for (const target of targets) {
+      if (this.hasPrivilege(target.privilege, target.database, target.table)) {
+        continue;
+      }
 
-    return sqlErrorEngine.fromMessage(
-      `Access denied for user '${this.getCurrentUserDisplay()}' to ${required} on database '${this.activeDatabase}'`,
-      {
-        sql,
-        startTime,
-      },
-    );
+      const scope = target.table
+        ? `${target.database}.${target.table}`
+        : `database '${target.database}'`;
+
+      return sqlErrorEngine.fromMessage(
+        `Access denied for user '${this.getCurrentUserDisplay()}' to ${target.privilege} on ${scope}`,
+        {
+          sql,
+          startTime,
+        },
+      );
+    }
+
+    return null;
   }
 
   private getActiveDb(): SqlJsDatabase | null {
@@ -1291,1529 +918,13 @@ export class SqlExecutor {
   }
 
   private handleDatabaseCommand(rawSql: string, startTime: number): QueryResult | null {
-    const cleaned = stripComments(rawSql);
-    if (!cleaned) {
-      return {
-        columns: [],
-        rows: [],
-        rowCount: 0,
-        executionTimeMs: performance.now() - startTime,
-      };
-    }
-
-    const norm = cleaned.replace(/\s+/g, ' ').trim();
-
-    if (/^SHOW\s+USERS\s*;?$/i.test(norm)) {
-      const rows = Array.from(this.users.values())
-        .sort((a, b) => this.displayUser(a).localeCompare(this.displayUser(b)))
-        .map((user) => ({
-          User: this.displayUser(user),
-          Host: user.host,
-          Current: this.userKey(user.username, user.host) === this.currentUserKey ? 'YES' : 'NO',
-        }));
-
-      return {
-        columns: ['User', 'Host', 'Current'],
-        rows,
-        rowCount: rows.length,
-        executionTimeMs: performance.now() - startTime,
-      };
-    }
-
-    {
-      const m = norm.match(/^SHOW\s+GRANTS(?:\s+FOR\s+(.+))?\s*;?$/i);
-      if (m) {
-        const requested = m[1]?.trim();
-        const targetUser = requested ? this.parseUserSpec(requested) : this.getCurrentUser();
-        if (!targetUser) {
-          return sqlErrorEngine.fromMessage('Invalid user in SHOW GRANTS', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const targetKey = this.userKey(targetUser.username, targetUser.host);
-        const isSelf = targetKey === this.currentUserKey;
-        if (!isSelf && !this.isCurrentUserAdmin()) {
-          return sqlErrorEngine.fromMessage(
-            'Access denied. Only admin can inspect grants for other users.',
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const grants = this.getGrantEntries(targetKey);
-        const columnName = `Grants for ${this.formatUser(targetUser)}`;
-        const rows: Row[] = grants.map((grant) => ({
-          [columnName]: `GRANT ${Array.from(grant.privileges).join(', ')} ON ${grant.database}.${grant.table} TO ${this.formatUser(targetUser)}${grant.withGrantOption ? ' WITH GRANT OPTION' : ''}`,
-        }));
-
-        if (rows.length === 0) {
-          rows.push({ [columnName]: `GRANT USAGE ON *.* TO ${this.formatUser(targetUser)}` });
-        }
-
-        return {
-          columns: [columnName],
-          rows,
-          rowCount: rows.length,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^CREATE\s+USER(?:\s+IF\s+NOT\s+EXISTS)?\s+(.+)$/i);
-      if (m) {
-        if (!this.isCurrentUserAdmin()) {
-          return sqlErrorEngine.fromMessage('Access denied. Only admin can create users.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(norm);
-        const userParts = this.splitCommaSeparated(m[1].replace(/;$/, ''));
-
-        for (const userPart of userParts) {
-          const identifiedMatch = userPart.match(/\bIDENTIFIED\s+BY\s+'([^']*)'\s*$/i);
-          const specToken = userPart.replace(/\bIDENTIFIED\s+BY\s+'[^']*'\s*$/i, '').trim();
-          const parsed = this.parseUserSpec(specToken);
-          if (!parsed) {
-            return sqlErrorEngine.fromMessage(`Invalid user specification '${userPart}'`, {
-              sql: rawSql,
-              startTime,
-            });
-          }
-
-          const key = this.userKey(parsed.username, parsed.host);
-          if (this.users.has(key)) {
-            if (hasIfNotExists) continue;
-            return sqlErrorEngine.fromMessage(
-              `Operation CREATE USER failed for ${this.formatUser(parsed)}`,
-              {
-                sql: rawSql,
-                startTime,
-              },
-            );
-          }
-
-          this.users.set(key, {
-            username: parsed.username,
-            host: parsed.host,
-            password: identifiedMatch?.[1],
-          });
-          this.grants.set(key, []);
-        }
-
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^DROP\s+USER(?:\s+IF\s+EXISTS)?\s+(.+)$/i);
-      if (m) {
-        if (!this.isCurrentUserAdmin()) {
-          return sqlErrorEngine.fromMessage('Access denied. Only admin can drop users.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const hasIfExists = /\bIF\s+EXISTS\b/i.test(norm);
-        const userParts = this.splitCommaSeparated(m[1].replace(/;$/, ''));
-
-        for (const userPart of userParts) {
-          const parsed = this.parseUserSpec(userPart);
-          if (!parsed) {
-            return sqlErrorEngine.fromMessage(`Invalid user specification '${userPart}'`, {
-              sql: rawSql,
-              startTime,
-            });
-          }
-
-          const key = this.userKey(parsed.username, parsed.host);
-          if (parsed.username.toLowerCase() === 'admin') {
-            return sqlErrorEngine.fromMessage('Cannot drop default admin user.', {
-              sql: rawSql,
-              startTime,
-            });
-          }
-
-          if (!this.users.has(key)) {
-            if (hasIfExists) continue;
-            return sqlErrorEngine.fromMessage(
-              `Operation DROP USER failed for ${this.formatUser(parsed)}`,
-              {
-                sql: rawSql,
-                startTime,
-              },
-            );
-          }
-
-          this.users.delete(key);
-          this.grants.delete(key);
-          if (this.currentUserKey === key) {
-            this.currentUserKey = this.userKey('admin', 'localhost');
-          }
-        }
-
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^ALTER\s+USER\s+(.+?)\s+IDENTIFIED\s+BY\s+'([^']*)'\s*;?$/i);
-      if (m) {
-        if (!this.isCurrentUserAdmin()) {
-          return sqlErrorEngine.fromMessage('Access denied. Only admin can alter users.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const parsed = this.parseUserSpec(m[1]);
-        if (!parsed) {
-          return sqlErrorEngine.fromMessage('Invalid user specification in ALTER USER', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const key = this.userKey(parsed.username, parsed.host);
-        const user = this.users.get(key);
-        if (!user) {
-          return sqlErrorEngine.fromMessage(`Unknown user ${this.formatUser(parsed)}`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        user.password = m[2];
-        this.users.set(key, user);
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^RENAME\s+USER\s+(.+)$/i);
-      if (m) {
-        if (!this.isCurrentUserAdmin()) {
-          return sqlErrorEngine.fromMessage('Access denied. Only admin can rename users.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const pairs = this.splitCommaSeparated(m[1].replace(/;$/, ''));
-        for (const pair of pairs) {
-          const pairMatch = pair.match(/^(.+?)\s+TO\s+(.+)$/i);
-          if (!pairMatch) {
-            return sqlErrorEngine.fromMessage(`Invalid RENAME USER segment '${pair}'`, {
-              sql: rawSql,
-              startTime,
-            });
-          }
-
-          const fromUser = this.parseUserSpec(pairMatch[1]);
-          const toUser = this.parseUserSpec(pairMatch[2]);
-          if (!fromUser || !toUser) {
-            return sqlErrorEngine.fromMessage(`Invalid RENAME USER segment '${pair}'`, {
-              sql: rawSql,
-              startTime,
-            });
-          }
-
-          const fromKey = this.userKey(fromUser.username, fromUser.host);
-          const toKey = this.userKey(toUser.username, toUser.host);
-          const existing = this.users.get(fromKey);
-          if (!existing) {
-            return sqlErrorEngine.fromMessage(`Unknown user ${this.formatUser(fromUser)}`, {
-              sql: rawSql,
-              startTime,
-            });
-          }
-          if (this.users.has(toKey)) {
-            return sqlErrorEngine.fromMessage(`User ${this.formatUser(toUser)} already exists`, {
-              sql: rawSql,
-              startTime,
-            });
-          }
-
-          this.users.delete(fromKey);
-          this.users.set(toKey, {
-            username: toUser.username,
-            host: toUser.host,
-            password: existing.password,
-          });
-
-          const grantEntries = this.grants.get(fromKey) ?? [];
-          this.grants.delete(fromKey);
-          this.grants.set(toKey, grantEntries);
-
-          if (this.currentUserKey === fromKey) {
-            this.currentUserKey = toKey;
-          }
-        }
-
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^SET\s+PASSWORD\s+FOR\s+(.+?)\s*=\s*'?([^';]+)'?\s*;?$/i);
-      if (m) {
-        if (!this.isCurrentUserAdmin()) {
-          return sqlErrorEngine.fromMessage('Access denied. Only admin can set passwords.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const parsed = this.parseUserSpec(m[1]);
-        if (!parsed) {
-          return sqlErrorEngine.fromMessage('Invalid user specification in SET PASSWORD', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const key = this.userKey(parsed.username, parsed.host);
-        const user = this.users.get(key);
-        if (!user) {
-          return sqlErrorEngine.fromMessage(`Unknown user ${this.formatUser(parsed)}`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        user.password = m[2];
-        this.users.set(key, user);
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(
-        /^GRANT\s+(.+?)\s+ON\s+(.+?)\s+TO\s+(.+?)(?:\s+WITH\s+GRANT\s+OPTION)?\s*;?$/i,
-      );
-      if (m) {
-        if (!this.isCurrentUserAdmin()) {
-          return sqlErrorEngine.fromMessage('Access denied. Only admin can grant privileges.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const privileges = this.splitCommaSeparated(m[1])
-          .map((token) => this.normalizePrivilegeToken(token))
-          .filter((token): token is SupportedPrivilege => token !== null);
-
-        if (privileges.length === 0) {
-          return sqlErrorEngine.fromMessage('No supported privileges specified in GRANT', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const scope = this.parseGrantScope(m[2]);
-        if (!scope) {
-          return sqlErrorEngine.fromMessage(
-            'Invalid privilege scope in GRANT. Use db.table form.',
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const usersRaw = this.splitCommaSeparated(m[3]);
-        const withGrantOption = /\bWITH\s+GRANT\s+OPTION\b/i.test(norm);
-        for (const userRaw of usersRaw) {
-          const parsed = this.parseUserSpec(userRaw);
-          if (!parsed) {
-            return sqlErrorEngine.fromMessage(`Invalid user specification '${userRaw}'`, {
-              sql: rawSql,
-              startTime,
-            });
-          }
-
-          const key = this.userKey(parsed.username, parsed.host);
-          if (!this.users.has(key)) {
-            return sqlErrorEngine.fromMessage(`Unknown user ${this.formatUser(parsed)}`, {
-              sql: rawSql,
-              startTime,
-            });
-          }
-
-          this.upsertGrant(key, scope, privileges, withGrantOption);
-        }
-
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^REVOKE\s+(.+?)\s+ON\s+(.+?)\s+FROM\s+(.+)\s*;?$/i);
-      if (m) {
-        if (!this.isCurrentUserAdmin()) {
-          return sqlErrorEngine.fromMessage('Access denied. Only admin can revoke privileges.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const privileges = this.splitCommaSeparated(m[1])
-          .map((token) => this.normalizePrivilegeToken(token))
-          .filter((token): token is SupportedPrivilege => token !== null);
-
-        if (privileges.length === 0) {
-          return sqlErrorEngine.fromMessage('No supported privileges specified in REVOKE', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const scope = this.parseGrantScope(m[2]);
-        if (!scope) {
-          return sqlErrorEngine.fromMessage(
-            'Invalid privilege scope in REVOKE. Use db.table form.',
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const usersRaw = this.splitCommaSeparated(m[3]);
-        for (const userRaw of usersRaw) {
-          const parsed = this.parseUserSpec(userRaw);
-          if (!parsed) {
-            return sqlErrorEngine.fromMessage(`Invalid user specification '${userRaw}'`, {
-              sql: rawSql,
-              startTime,
-            });
-          }
-
-          const key = this.userKey(parsed.username, parsed.host);
-          if (!this.users.has(key)) {
-            return sqlErrorEngine.fromMessage(`Unknown user ${this.formatUser(parsed)}`, {
-              sql: rawSql,
-              startTime,
-            });
-          }
-
-          this.revokeGrant(key, scope, privileges);
-        }
-
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^(?:SET\s+(?:SESSION\s+)?USER(?:\s*=)?|CHANGE\s+USER)\s+(.+)\s*;?$/i);
-      if (m) {
-        const target = this.parseUserSpec(m[1]);
-        if (!target) {
-          return sqlErrorEngine.fromMessage('Invalid user specification in SET USER/CHANGE USER', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const key = this.userKey(target.username, target.host);
-        if (!this.users.has(key)) {
-          return sqlErrorEngine.fromMessage(`Unknown user ${this.formatUser(target)}`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        this.currentUserKey = key;
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    if (/^FLUSH\s+PRIVILEGES\s*;?$/i.test(norm)) {
-      if (!this.isCurrentUserAdmin()) {
-        return sqlErrorEngine.fromMessage('Access denied. Only admin can flush privileges.', {
-          sql: rawSql,
-          startTime,
-        });
-      }
-
-      return {
-        columns: [],
-        rows: [],
-        rowCount: 0,
-        executionTimeMs: performance.now() - startTime,
-      };
-    }
-
-    if (/^SHOW\s+DATABASES\s*;?$/i.test(norm)) {
-      const rows = this.listDatabases()
-        .filter((name) => this.hasPrivilege('SELECT', name))
-        .map((name) => ({ Database: name }));
-      return {
-        columns: ['Database'],
-        rows,
-        rowCount: rows.length,
-        executionTimeMs: performance.now() - startTime,
-      };
-    }
-
-    {
-      const m = norm.match(/^SHOW\s+CREATE\s+DATABASE\s+[`"']?(\w+)[`"']?\s*;?$/i);
-      if (m) {
-        if (!this.isCurrentUserAdmin()) {
-          return sqlErrorEngine.fromMessage('Access denied. Only admin can create databases.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const requestedName = m[1];
-        const dbName = this.resolveDatabaseName(requestedName);
-        if (!dbName) {
-          return sqlErrorEngine.fromMessage(`Unknown database '${requestedName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-        return {
-          columns: ['Database', 'Create Database'],
-          rows: [{ Database: dbName, 'Create Database': `CREATE DATABASE \"${dbName}\"` }],
-          rowCount: 1,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^SHOW\s+(?:FULL\s+)?TABLES\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?\s*;?$/i);
-      if (m) {
-        if (!this.isCurrentUserAdmin()) {
-          return sqlErrorEngine.fromMessage('Access denied. Only admin can drop databases.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const requestedName = m[1];
-        const dbName = this.resolveDatabaseName(requestedName);
-        if (!dbName) {
-          return sqlErrorEngine.fromMessage(`Unknown database '${requestedName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-        const db = this.databases.get(dbName);
-        if (!db) return null;
-        const result = db.exec(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-        );
-        const key = `Tables_in_${dbName}`;
-        const rows: Row[] =
-          result.length > 0
-            ? result[0].values.map(([tableName]) => ({ [key]: String(tableName) }))
-            : [];
-        return {
-          columns: [key],
-          rows,
-          rowCount: rows.length,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^SHOW\s+TRIGGERS(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?\s*;?$/i);
-      if (m) {
-        const requestedName = m[1];
-        const dbName = requestedName
-          ? this.resolveDatabaseName(requestedName)
-          : this.activeDatabase;
-        if (!dbName) {
-          return sqlErrorEngine.fromMessage(`Unknown database '${requestedName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        if (!this.hasPrivilege('SELECT', dbName)) {
-          return sqlErrorEngine.fromMessage(
-            `Access denied for user '${this.getCurrentUserDisplay()}' to SHOW TRIGGERS on database '${dbName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const db = this.databases.get(dbName);
-        if (!db) {
-          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const result = db.exec(
-          `SELECT name, tbl_name, sql
-             FROM sqlite_master
-            WHERE type='trigger'
-            ORDER BY name`,
-        );
-        const rowsByTrigger = new Map<string, Row>();
-
-        if (result.length > 0) {
-          result[0].values.forEach(([name, table, statement]) => {
-            const triggerName = String(name);
-            rowsByTrigger.set(triggerName.toLowerCase(), {
-              Trigger: triggerName,
-              Table: String(table),
-              Statement: String(statement ?? ''),
-            });
-          });
-        }
-
-        Array.from(this.triggers.values())
-          .filter((trigger) => trigger.database === dbName)
-          .forEach((trigger) => {
-            rowsByTrigger.set(trigger.name.toLowerCase(), {
-              Trigger: trigger.name,
-              Table: trigger.table,
-              Statement: trigger.definition,
-            });
-          });
-
-        const rows = Array.from(rowsByTrigger.values()).sort((a, b) =>
-          String(a.Trigger).localeCompare(String(b.Trigger)),
-        );
-
-        return {
-          columns: ['Trigger', 'Table', 'Statement'],
-          rows,
-          rowCount: rows.length,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^SHOW\s+CREATE\s+TRIGGER\s+(.+)\s*;?$/i);
-      if (m) {
-        const parsed = this.parseQualifiedName(m[1]);
-        if (!parsed) {
-          return sqlErrorEngine.fromMessage('Invalid trigger name in SHOW CREATE TRIGGER', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = parsed.database
-          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
-          : this.activeDatabase;
-        const db = this.databases.get(dbName);
-        if (!db) {
-          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const storedTrigger = this.triggers.get(this.triggerKey(dbName, parsed.name));
-        const escapedName = parsed.name.replace(/'/g, "''");
-        const result = db.exec(
-          `SELECT sql FROM sqlite_master WHERE type='trigger' AND LOWER(name)=LOWER('${escapedName}')`,
-        );
-        if (!storedTrigger && (result.length === 0 || result[0].values.length === 0)) {
-          return sqlErrorEngine.fromMessage(`Unknown trigger '${parsed.name}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const statement = storedTrigger
-          ? storedTrigger.definition
-          : String(result[0].values[0][0] ?? '');
-        return {
-          columns: ['Trigger', 'Create Trigger'],
-          rows: [{ Trigger: parsed.name, 'Create Trigger': statement }],
-          rowCount: 1,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(
-        /^CREATE\s+(?:DATABASE|SCHEMA)(?:\s+IF\s+NOT\s+EXISTS)?\s+[`"']?(\w+)[`"']?\s*;?$/i,
-      );
-      if (m) {
-        const requestedName = m[1];
-        const dbName = this.resolveDatabaseName(requestedName) ?? requestedName;
-        const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(norm);
-
-        if (this.databases.has(dbName)) {
-          if (hasIfNotExists) {
-            return {
-              columns: [],
-              rows: [],
-              rowCount: 0,
-              executionTimeMs: performance.now() - startTime,
-            };
-          }
-          return sqlErrorEngine.fromMessage(`Database '${dbName}' already exists`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        if (!this.sqlModule) {
-          return sqlErrorEngine.fromMessage('Database engine is not initialized.', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const newDb = new this.sqlModule.Database();
-        newDb.run('PRAGMA foreign_keys = ON;');
-        this.databases.set(dbName, newDb);
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(
-        /^DROP\s+(?:DATABASE|SCHEMA)(?:\s+IF\s+EXISTS)?\s+[`"']?(\w+)[`"']?\s*;?$/i,
-      );
-      if (m) {
-        const requestedName = m[1];
-        const dbName = this.resolveDatabaseName(requestedName) ?? requestedName;
-        const hasIfExists = /\bIF\s+EXISTS\b/i.test(norm);
-
-        if (dbName.toLowerCase() === 'main') {
-          return sqlErrorEngine.fromMessage("Cannot drop default database 'main'", {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const db = this.databases.get(dbName);
-        if (!db) {
-          if (hasIfExists) {
-            return {
-              columns: [],
-              rows: [],
-              rowCount: 0,
-              executionTimeMs: performance.now() - startTime,
-            };
-          }
-          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        db.close();
-        this.databases.delete(dbName);
-        for (const key of Array.from(this.procedures.keys())) {
-          if (key.startsWith(`${dbName.toLowerCase()}.`)) {
-            this.procedures.delete(key);
-          }
-        }
-        for (const key of Array.from(this.triggers.keys())) {
-          if (key.startsWith(`${dbName.toLowerCase()}.`)) {
-            this.triggers.delete(key);
-          }
-        }
-        for (const key of Array.from(this.cursors.keys())) {
-          if (key.startsWith(`${dbName.toLowerCase()}.`)) {
-            this.cursors.delete(key);
-          }
-        }
-        if (this.activeDatabase === dbName) {
-          this.activeDatabase = 'main';
-        }
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const normalizedTrigger = normalizeMySqlTriggerDefinition(rawSql);
-      if (normalizedTrigger) {
-        const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
-        const parsedName = this.parseQualifiedName(normalizedTrigger.name);
-        if (!parsedName) {
-          return sqlErrorEngine.fromMessage('Invalid trigger name in CREATE TRIGGER', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = parsedName.database
-          ? (this.resolveDatabaseName(parsedName.database) ?? parsedName.database)
-          : this.activeDatabase;
-        const db = this.databases.get(dbName);
-        if (!db) {
-          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        if (!this.hasPrivilege('CREATE', dbName)) {
-          return sqlErrorEngine.fromMessage(
-            `Access denied for user '${this.getCurrentUserDisplay()}' to CREATE trigger in database '${dbName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const triggerKey = this.triggerKey(dbName, parsedName.name);
-        if (this.triggers.has(triggerKey)) {
-          if (hasIfNotExists) {
-            return {
-              columns: [],
-              rows: [],
-              rowCount: 0,
-              executionTimeMs: performance.now() - startTime,
-            };
-          }
-
-          return sqlErrorEngine.fromMessage(`Trigger '${parsedName.name}' already exists`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        try {
-          db.run(normalizedTrigger.sqliteSql);
-        } catch (error) {
-          return sqlErrorEngine.fromUnknownError(error, {
-            sql: rawSql,
-            translatedSql: normalizedTrigger.sqliteSql,
-            startTime,
-          });
-        }
-
-        this.triggers.set(triggerKey, {
-          database: dbName,
-          name: parsedName.name,
-          table: normalizedTrigger.table,
-          definition: normalizedTrigger.definition,
-          sqliteDefinition: normalizedTrigger.sqliteSql,
-        });
-
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const procHeader = rawSql
-        .trim()
-        .match(
-          /^CREATE\s+PROCEDURE(?:\s+IF\s+NOT\s+EXISTS)?\s+([^\s(]+)\s*\(([\s\S]*)\)\s*BEGIN\b/i,
-        );
-      if (procHeader) {
-        const extracted = this.extractRoutineBody(rawSql.trim());
-        if (extracted) {
-        const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
-        const name = this.parseQualifiedName(procHeader[1]);
-        if (!name) {
-          return sqlErrorEngine.fromMessage('Invalid procedure name in CREATE PROCEDURE', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = name.database
-          ? (this.resolveDatabaseName(name.database) ?? name.database)
-          : this.activeDatabase;
-        if (!this.databases.has(dbName)) {
-          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        if (!this.hasPrivilege('CREATE', dbName)) {
-          return sqlErrorEngine.fromMessage(
-            `Access denied for user '${this.getCurrentUserDisplay()}' to CREATE procedure in database '${dbName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const procName = name.name;
-        const procKey = this.procedureKey(dbName, procName);
-        if (this.procedures.has(procKey)) {
-          if (hasIfNotExists) {
-            return {
-              columns: [],
-              rows: [],
-              rowCount: 0,
-              executionTimeMs: performance.now() - startTime,
-            };
-          }
-          return sqlErrorEngine.fromMessage(`Procedure '${procName}' already exists`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        this.procedures.set(procKey, {
-          database: dbName,
-          name: procName,
-          params: this.parseProcedureParams(procHeader[2] ?? ''),
-          body: extracted.body,
-          definition: rawSql.trim().replace(/;$/, ''),
-        });
-
-        for (const cursor of extractCursorDefinitions(extracted.body)) {
-          this.cursors.set(this.cursorKey(dbName, procName, cursor.name), {
-            database: dbName,
-            procedureName: procName,
-            name: cursor.name,
-            query: cursor.query,
-            definition: cursor.definition,
-          });
-        }
-
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-        }
-      }
-    }
-
-    // CREATE FUNCTION
-    {
-      const funcHeader = rawSql
-        .trim()
-        .match(
-          /^CREATE\s+FUNCTION(?:\s+IF\s+NOT\s+EXISTS)?\s+([^\s(]+)\s*\(([\s\S]*?)\)\s*RETURNS\s+[\s\S]+?\s+(?:DETERMINISTIC\s+)?BEGIN\b/i,
-        );
-      if (funcHeader) {
-        const extracted = this.extractRoutineBody(rawSql.trim());
-        if (extracted) {
-        const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
-        const name = this.parseQualifiedName(funcHeader[1]);
-        if (!name) {
-          return sqlErrorEngine.fromMessage('Invalid function name in CREATE FUNCTION', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = name.database
-          ? (this.resolveDatabaseName(name.database) ?? name.database)
-          : this.activeDatabase;
-        if (!this.databases.has(dbName)) {
-          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        if (!this.hasPrivilege('CREATE', dbName)) {
-          return sqlErrorEngine.fromMessage(
-            `Access denied for user '${this.getCurrentUserDisplay()}' to CREATE function in database '${dbName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const funcName = name.name;
-        const funcKey = this.functionKey(dbName, funcName);
-        if (this.functions.has(funcKey)) {
-          if (hasIfNotExists) {
-            return {
-              columns: [],
-              rows: [],
-              rowCount: 0,
-              executionTimeMs: performance.now() - startTime,
-            };
-          }
-          return sqlErrorEngine.fromMessage(`Function '${funcName}' already exists`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        this.functions.set(funcKey, {
-          database: dbName,
-          name: funcName,
-          params: this.parseProcedureParams(funcHeader[2] ?? ''),
-          body: extracted.body,
-          definition: rawSql.trim().replace(/;$/, ''),
-        });
-
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-        }
-      }
-    }
-
-    // CREATE FUNCTION
-    {
-      const createFunc = rawSql
-        .trim()
-        .match(
-          /^CREATE\s+FUNCTION(?:\s+IF\s+NOT\s+EXISTS)?\s+([^\s(]+)\s*\(([\s\S]*?)\)\s*RETURNS\s+[\s\S]+?\s+(?:DETERMINISTIC\s+)?BEGIN\s+([\s\S]*?)\s*END\s*;?$/i,
-        );
-      if (createFunc) {
-        const hasIfNotExists = /\bIF\s+NOT\s+EXISTS\b/i.test(rawSql);
-        const name = this.parseQualifiedName(createFunc[1]);
-        if (!name) {
-          return sqlErrorEngine.fromMessage('Invalid function name in CREATE FUNCTION', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = name.database
-          ? (this.resolveDatabaseName(name.database) ?? name.database)
-          : this.activeDatabase;
-        if (!this.databases.has(dbName)) {
-          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        if (!this.hasPrivilege('CREATE', dbName)) {
-          return sqlErrorEngine.fromMessage(
-            `Access denied for user '${this.getCurrentUserDisplay()}' to CREATE function in database '${dbName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const funcName = name.name;
-        const funcKey = this.functionKey(dbName, funcName);
-        if (this.functions.has(funcKey)) {
-          if (hasIfNotExists) {
-            return {
-              columns: [],
-              rows: [],
-              rowCount: 0,
-              executionTimeMs: performance.now() - startTime,
-            };
-          }
-          return sqlErrorEngine.fromMessage(`Function '${funcName}' already exists`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        this.functions.set(funcKey, {
-          database: dbName,
-          name: funcName,
-          params: this.parseProcedureParams(createFunc[2] ?? ''),
-          body: createFunc[3].trim(),
-          definition: rawSql.trim().replace(/;$/, ''),
-        });
-
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^DROP\s+TRIGGER(?:\s+IF\s+EXISTS)?\s+(.+)\s*;?$/i);
-      if (m) {
-        const hasIfExists = /\bIF\s+EXISTS\b/i.test(norm);
-        const parsed = this.parseQualifiedName(m[1]);
-        if (!parsed) {
-          return sqlErrorEngine.fromMessage('Invalid trigger name in DROP TRIGGER', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = parsed.database
-          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
-          : this.activeDatabase;
-        if (!this.hasPrivilege('DROP', dbName)) {
-          return sqlErrorEngine.fromMessage(
-            `Access denied for user '${this.getCurrentUserDisplay()}' to DROP trigger in database '${dbName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const db = this.databases.get(dbName);
-        if (!db) {
-          if (hasIfExists) {
-            return {
-              columns: [],
-              rows: [],
-              rowCount: 0,
-              executionTimeMs: performance.now() - startTime,
-            };
-          }
-
-          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        try {
-          db.run(`DROP TRIGGER IF EXISTS ${this.quoteIdentifier(parsed.name)}`);
-        } catch (error) {
-          return sqlErrorEngine.fromUnknownError(error, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        this.triggers.delete(this.triggerKey(dbName, parsed.name));
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^DROP\s+PROCEDURE(?:\s+IF\s+EXISTS)?\s+(.+)\s*;?$/i);
-      if (m) {
-        const hasIfExists = /\bIF\s+EXISTS\b/i.test(norm);
-        const parsed = this.parseQualifiedName(m[1]);
-        if (!parsed) {
-          return sqlErrorEngine.fromMessage('Invalid procedure name in DROP PROCEDURE', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = parsed.database
-          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
-          : this.activeDatabase;
-        if (!this.hasPrivilege('DROP', dbName)) {
-          return sqlErrorEngine.fromMessage(
-            `Access denied for user '${this.getCurrentUserDisplay()}' to DROP procedure in database '${dbName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const procKey = this.procedureKey(dbName, parsed.name);
-        if (!this.procedures.has(procKey)) {
-          if (hasIfExists) {
-            return {
-              columns: [],
-              rows: [],
-              rowCount: 0,
-              executionTimeMs: performance.now() - startTime,
-            };
-          }
-          return sqlErrorEngine.fromMessage(`Unknown procedure '${parsed.name}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        this.clearProcedureMetadata(dbName, parsed.name);
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^SHOW\s+PROCEDURE\s+STATUS(?:\s+LIKE\s+'([^']+)')?\s*;?$/i);
-      if (m) {
-        const likePattern = m[1]?.toLowerCase();
-        const rows = Array.from(this.procedures.values())
-          .filter((proc) => this.hasPrivilege('SELECT', proc.database))
-          .filter((proc) => !likePattern || proc.name.toLowerCase().includes(likePattern))
-          .sort((a, b) => `${a.database}.${a.name}`.localeCompare(`${b.database}.${b.name}`))
-          .map((proc) => ({
-            Db: proc.database,
-            Name: proc.name,
-            Type: 'PROCEDURE',
-          }));
-
-        return {
-          columns: ['Db', 'Name', 'Type'],
-          rows,
-          rowCount: rows.length,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(
-        /^SHOW\s+CURSORS(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?(?:\s+LIKE\s+'([^']+)')?\s*;?$/i,
-      );
-      if (m) {
-        const requestedName = m[1];
-        const dbName = requestedName
-          ? (this.resolveDatabaseName(requestedName) ?? requestedName)
-          : this.activeDatabase;
-        const likePattern = m[2]?.toLowerCase();
-
-        const rows = Array.from(this.cursors.values())
-          .filter((cursor) => cursor.database === dbName)
-          .filter((cursor) => !likePattern || cursor.name.toLowerCase().includes(likePattern))
-          .sort((a, b) =>
-            `${a.procedureName}.${a.name}`.localeCompare(`${b.procedureName}.${b.name}`),
-          )
-          .map((cursor) => ({
-            Db: cursor.database,
-            Procedure: cursor.procedureName,
-            Cursor: cursor.name,
-            Query: cursor.query,
-          }));
-
-        return {
-          columns: ['Db', 'Procedure', 'Cursor', 'Query'],
-          rows,
-          rowCount: rows.length,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^SHOW\s+CREATE\s+CURSOR\s+(.+)\s*;?$/i);
-      if (m) {
-        const parsed = this.parseCursorReference(m[1]);
-        if (!parsed) {
-          return sqlErrorEngine.fromMessage('Invalid cursor name in SHOW CREATE CURSOR', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const matches = Array.from(this.cursors.values()).filter((cursor) => {
-          const dbMatches = parsed.database ? cursor.database === parsed.database : true;
-          const procedureMatches = parsed.procedureName
-            ? cursor.procedureName === parsed.procedureName
-            : true;
-          return (
-            dbMatches &&
-            procedureMatches &&
-            cursor.name.toLowerCase() === parsed.name.toLowerCase()
-          );
-        });
-
-        if (matches.length === 0) {
-          return sqlErrorEngine.fromMessage(`Unknown cursor '${parsed.name}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const cursor = matches[0];
-        return {
-          columns: ['Cursor', 'Create Cursor'],
-          rows: [
-            {
-              Cursor: `${cursor.procedureName}.${cursor.name}`,
-              'Create Cursor': cursor.definition,
-            },
-          ],
-          rowCount: 1,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^SHOW\s+CREATE\s+PROCEDURE\s+(.+)\s*;?$/i);
-      if (m) {
-        const parsed = this.parseQualifiedName(m[1]);
-        if (!parsed) {
-          return sqlErrorEngine.fromMessage('Invalid procedure name in SHOW CREATE PROCEDURE', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = parsed.database
-          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
-          : this.activeDatabase;
-        const procedure = this.procedures.get(this.procedureKey(dbName, parsed.name));
-        if (!procedure) {
-          return sqlErrorEngine.fromMessage(`Unknown procedure '${parsed.name}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        return {
-          columns: ['Procedure', 'Create Procedure'],
-          rows: [
-            {
-              Procedure: `${procedure.database}.${procedure.name}`,
-              'Create Procedure': procedure.definition,
-            },
-          ],
-          rowCount: 1,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^DROP\s+FUNCTION(?:\s+IF\s+EXISTS)?\s+(.+)\s*;?$/i);
-      if (m) {
-        const hasIfExists = /\bIF\s+EXISTS\b/i.test(norm);
-        const parsed = this.parseQualifiedName(m[1]);
-        if (!parsed) {
-          return sqlErrorEngine.fromMessage('Invalid function name in DROP FUNCTION', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = parsed.database
-          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
-          : this.activeDatabase;
-        if (!this.hasPrivilege('DROP', dbName)) {
-          return sqlErrorEngine.fromMessage(
-            `Access denied for user '${this.getCurrentUserDisplay()}' to DROP function in database '${dbName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        const fnKey = this.functionKey(dbName, parsed.name);
-        if (!this.functions.has(fnKey)) {
-          if (hasIfExists) {
-            return {
-              columns: [],
-              rows: [],
-              rowCount: 0,
-              executionTimeMs: performance.now() - startTime,
-            };
-          }
-          return sqlErrorEngine.fromMessage(`Unknown function '${parsed.name}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        this.functions.delete(fnKey);
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^SHOW\s+FUNCTION\s+STATUS(?:\s+LIKE\s+'([^']+)')?\s*;?$/i);
-      if (m) {
-        const likePattern = m[1]?.toLowerCase();
-        const rows = Array.from(this.functions.values())
-          .filter((fn) => this.hasPrivilege('SELECT', fn.database))
-          .filter((fn) => !likePattern || fn.name.toLowerCase().includes(likePattern))
-          .sort((a, b) => `${a.database}.${a.name}`.localeCompare(`${b.database}.${b.name}`))
-          .map((fn) => ({
-            Db: fn.database,
-            Name: fn.name,
-            Type: 'FUNCTION',
-          }));
-
-        return {
-          columns: ['Db', 'Name', 'Type'],
-          rows,
-          rowCount: rows.length,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const m = norm.match(/^SHOW\s+CREATE\s+FUNCTION\s+(.+)\s*;?$/i);
-      if (m) {
-        const parsed = this.parseQualifiedName(m[1]);
-        if (!parsed) {
-          return sqlErrorEngine.fromMessage('Invalid function name in SHOW CREATE FUNCTION', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = parsed.database
-          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
-          : this.activeDatabase;
-        const fn = this.functions.get(this.functionKey(dbName, parsed.name));
-        if (!fn) {
-          return sqlErrorEngine.fromMessage(`Unknown function '${parsed.name}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        return {
-          columns: ['Function', 'Create Function'],
-          rows: [
-            {
-              Function: `${fn.database}.${fn.name}`,
-              'Create Function': fn.definition,
-            },
-          ],
-          rowCount: 1,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    {
-      const callMatch = rawSql.trim().match(/^CALL\s+([^\s(]+)\s*\((.*)\)\s*;?$/i);
-      if (callMatch) {
-        const parsed = this.parseQualifiedName(callMatch[1]);
-        if (!parsed) {
-          return sqlErrorEngine.fromMessage('Invalid procedure name in CALL', {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        const dbName = parsed.database
-          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
-          : this.activeDatabase;
-        const procedure = this.procedures.get(this.procedureKey(dbName, parsed.name));
-        if (!procedure) {
-          return sqlErrorEngine.fromMessage(`Unknown procedure '${parsed.name}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-
-        return this.executeStoredProcedure(procedure, callMatch[2] ?? '', startTime, rawSql);
-      }
-    }
-
-    {
-      const m = norm.match(/^USE\s+[`"']?(\w+)[`"']?\s*;?$/i);
-      if (m) {
-        const requestedName = m[1];
-        const dbName = this.resolveDatabaseName(requestedName);
-        if (!dbName) {
-          return sqlErrorEngine.fromMessage(`Unknown database '${requestedName}'`, {
-            sql: rawSql,
-            startTime,
-          });
-        }
-        if (!this.hasPrivilege('SELECT', dbName)) {
-          return sqlErrorEngine.fromMessage(
-            `Access denied for user '${this.getCurrentUserDisplay()}' to USE database '${dbName}'`,
-            {
-              sql: rawSql,
-              startTime,
-            },
-          );
-        }
-
-        this.activeDatabase = dbName;
-        return {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - startTime,
-        };
-      }
-    }
-
-    return null;
+    return handleDatabaseCommandExternal.call(
+      this as unknown as DatabaseCommandContext,
+      rawSql,
+      startTime,
+    );
   }
+
 
   async init(): Promise<void> {
     const SQL = await loadSqlJs();
@@ -3081,6 +1192,7 @@ export class SqlExecutor {
       finalResult = result;
       statementResults.push({
         statement,
+        database: this.activeDatabase,
         columns: result.columns,
         rows: result.rows,
         rowCount: result.rowCount,

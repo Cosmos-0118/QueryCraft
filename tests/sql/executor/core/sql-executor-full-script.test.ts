@@ -91,9 +91,9 @@ CREATE TRIGGER before_insert_employee
 BEFORE INSERT ON employees
 FOR EACH ROW
 BEGIN
-    IF NEW.salary < 10000 THEN
-        SET NEW.salary = 10000;
-    END IF;
+  SELECT CASE
+    WHEN NEW.salary IS NULL THEN RAISE(ABORT, 'salary must not be null')
+  END;
 END$$
 
 CREATE TRIGGER after_update_employee
@@ -185,11 +185,12 @@ SELECT ROW_COUNT() AS affected_rows;
     expect(odd.rows[0]?.result).toBe('Odd');
   });
 
-  it('BEFORE INSERT trigger enforces minimum salary', () => {
+  it('rejects unsupported SET NEW trigger forms', () => {
     executor.execute(`
       CREATE TABLE emp (id INTEGER PRIMARY KEY, name TEXT, salary REAL);
     `);
-    executor.execute(`
+
+    const create = executor.execute(`
       CREATE TRIGGER min_salary_check
       BEFORE INSERT ON emp
       FOR EACH ROW
@@ -199,16 +200,8 @@ SELECT ROW_COUNT() AS affected_rows;
         END IF;
       END;
     `);
-
-    executor.execute("INSERT INTO emp (name, salary) VALUES ('Low', 5000);");
-    const check = executor.execute("SELECT salary FROM emp WHERE name = 'Low';");
-    expect(check.error).toBeUndefined();
-    expect(Number(check.rows[0]?.salary)).toBe(10000);
-
-    executor.execute("INSERT INTO emp (name, salary) VALUES ('High', 50000);");
-    const check2 = executor.execute("SELECT salary FROM emp WHERE name = 'High';");
-    expect(check2.error).toBeUndefined();
-    expect(Number(check2.rows[0]?.salary)).toBe(50000);
+    expect(create.error).toBeDefined();
+    expect(create.error?.toLowerCase()).toContain('not supported');
   });
 
   it('AFTER UPDATE trigger logs to audit_log', () => {

@@ -18,6 +18,8 @@ export type Row = Record<string, unknown>;
 
 export interface StatementQueryResult {
   statement: string;
+  /** Effective database after executing this statement */
+  database?: string;
   columns: string[];
   rows: Row[];
   rowCount: number;

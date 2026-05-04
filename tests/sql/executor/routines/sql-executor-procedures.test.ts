@@ -137,4 +137,19 @@ describe('SqlExecutor procedures', () => {
     expect(call.rowCount).toBe(1);
     expect(Object.values(call.rows[0] ?? {})).toContain('Hello Delim');
   });
+
+  it('does not substitute parameter names inside string literals', () => {
+    const create = executor.execute(`
+      CREATE PROCEDURE literal_guard(IN p_name TEXT)
+      BEGIN
+        SELECT 'p_name' AS label, p_name AS value;
+      END;
+    `);
+    expect(create.error).toBeUndefined();
+
+    const call = executor.execute("CALL literal_guard('Alice');");
+    expect(call.error).toBeUndefined();
+    expect(call.rows[0]?.label).toBe('p_name');
+    expect(call.rows[0]?.value).toBe('Alice');
+  });
 });

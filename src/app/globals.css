@@ -577,6 +577,66 @@ body {
   background: color-mix(in oklab, var(--sandbox-surface-strong) 88%, transparent);
 }
 
+.qc-sandbox-data-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: max-content;
+}
+
+.qc-sandbox-data-grid-caption {
+  border-bottom: 1px solid var(--sandbox-border-soft);
+  background: color-mix(in oklab, var(--sandbox-surface-soft) 84%, transparent);
+}
+
+.qc-sandbox-data-grid-header {
+  border-bottom: 1px solid var(--sandbox-border-soft);
+  border-right: 1px solid color-mix(in oklab, var(--sandbox-border-soft) 72%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--sandbox-surface-soft) 94%, transparent),
+    color-mix(in oklab, var(--sandbox-surface-strong) 86%, transparent)
+  );
+  color: color-mix(in oklab, var(--foreground) 92%, var(--sandbox-button-fg));
+}
+
+.qc-sandbox-data-grid-header:last-child {
+  border-right: 0;
+}
+
+.qc-sandbox-data-row {
+  border-bottom: 1px solid var(--sandbox-border-soft);
+}
+
+.qc-sandbox-data-row-even {
+  background: color-mix(in oklab, var(--sandbox-surface-strong) 92%, transparent);
+}
+
+.qc-sandbox-data-row-odd {
+  background: color-mix(in oklab, var(--sandbox-surface-soft) 88%, transparent);
+}
+
+.qc-sandbox-data-row-highlight {
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+}
+
+.qc-sandbox-data-row:hover {
+  background: color-mix(in oklab, var(--sandbox-tone-sky) 10%, var(--sandbox-surface-soft));
+}
+
+.qc-sandbox-data-row-highlight:hover {
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+}
+
+.qc-sandbox-data-grid-cell {
+  border-right: 1px solid color-mix(in oklab, var(--sandbox-border-soft) 58%, transparent);
+  color: color-mix(in oklab, var(--foreground) 90%, var(--sandbox-button-fg));
+  line-height: 1.45;
+}
+
+.qc-sandbox-data-grid-cell:last-child {
+  border-right: 0;
+}
+
 .qc-sandbox-empty-state {
   border: 1px dashed color-mix(in oklab, var(--sandbox-border-soft) 84%, transparent);
   background: color-mix(in oklab, var(--sandbox-surface-soft) 84%, transparent);

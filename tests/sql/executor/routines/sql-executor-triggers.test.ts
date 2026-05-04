@@ -79,7 +79,7 @@ describe('SqlExecutor triggers', () => {
     expect(String(create.rows[0]?.['Create Trigger'] ?? '')).toContain('CREATE TRIGGER');
   });
 
-  it('supports MySQL trigger delimiters and FOR EACH ROW syntax', () => {
+  it('rejects unsupported SET NEW trigger rewrites with a clear error', () => {
     const setup = executor.loadSQL(`
       CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT);
       DELIMITER $$
@@ -91,18 +91,38 @@ describe('SqlExecutor triggers', () => {
       DELIMITER ;
     `);
 
-    expect(setup.error).toBeUndefined();
-
-    const insert = executor.execute("INSERT INTO students VALUES (1, 'Alice')");
-    expect(insert.error).toBeUndefined();
-
-    const rows = executor.execute('SELECT name FROM students WHERE id = 1;');
-    expect(rows.error).toBeUndefined();
-    expect(rows.rows[0]?.name).toBe('ALICE');
+    expect(setup.error).toBeDefined();
+    expect(setup.error?.toLowerCase()).toContain('not supported');
+    expect(setup.error?.toLowerCase()).toContain('set new');
+    expect(setup.errorDetails?.rawMessage.toLowerCase()).toContain('set new');
 
     const showCreate = executor.execute('SHOW CREATE TRIGGER trg_students_bi;');
+    expect(showCreate.error).toBeDefined();
+  });
+
+  it('supports CREATE TRIGGER headers with quoted identifiers', () => {
+    executor.execute('CREATE TABLE "order items" (id INTEGER PRIMARY KEY, v TEXT)');
+    executor.execute('CREATE TABLE item_log (id INTEGER PRIMARY KEY, message TEXT)');
+
+    const create = executor.execute(`
+      CREATE TRIGGER \`trg order items ai\`
+      AFTER INSERT ON "order items"
+      BEGIN
+        INSERT INTO item_log(message) VALUES (NEW.v);
+      END;
+    `);
+    expect(create.error).toBeUndefined();
+
+    const insert = executor.execute("INSERT INTO \"order items\" VALUES (1, 'note')");
+    expect(insert.error).toBeUndefined();
+
+    const logRows = executor.execute('SELECT message FROM item_log');
+    expect(logRows.error).toBeUndefined();
+    expect(logRows.rowCount).toBe(1);
+    expect(logRows.rows[0]?.message).toBe('note');
+
+    const showCreate = executor.execute('SHOW CREATE TRIGGER `trg order items ai`;');
     expect(showCreate.error).toBeUndefined();
-    expect(String(showCreate.rows[0]?.['Create Trigger'] ?? '')).toContain('FOR EACH ROW');
-    expect(String(showCreate.rows[0]?.['Create Trigger'] ?? '')).toContain('BEFORE INSERT');
+    expect(showCreate.rowCount).toBe(1);
   });
 });
