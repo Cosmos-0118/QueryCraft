@@ -766,6 +766,14 @@ export function translateMySQL(
     );
     next = next.replace(/\s+AUTO_INCREMENT/gi, '');
     next = next.replace(/\s+UNSIGNED/gi, '');
+    next = next.replace(/\bSQL_CALC_FOUND_ROWS\b/gi, '');
+    next = next.replace(/\bSQL_NO_CACHE\b/gi, '');
+    next = next.replace(/\bSQL_SMALL_RESULT\b/gi, '');
+    next = next.replace(/\bSQL_BIG_RESULT\b/gi, '');
+    next = next.replace(/\bSQL_BUFFER_RESULT\b/gi, '');
+    next = next.replace(/\bSTRAIGHT_JOIN\b/gi, 'JOIN');
+    next = next.replace(/\s+FOR\s+UPDATE\b/gi, '');
+    next = next.replace(/\s+LOCK\s+IN\s+SHARE\s+MODE\b/gi, '');
     next = next.replace(/\bINSERT\s+IGNORE\b/gi, 'INSERT OR IGNORE');
     next = next.replace(/\bREPLACE\s+INTO\b/gi, 'INSERT OR REPLACE INTO');
     next = next.replace(/\bON\s+DUPLICATE\s+KEY\s+UPDATE\b/gi, 'ON CONFLICT DO UPDATE SET');

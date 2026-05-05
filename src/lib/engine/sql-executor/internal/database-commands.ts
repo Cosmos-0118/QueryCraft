@@ -41,6 +41,52 @@ interface StoredFunction {
   definition: string;
 }
 
+function escapeRegexFragment(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildSqlLikeMatcher(pattern?: string): (value: string) => boolean {
+  if (!pattern) {
+    return () => true;
+  }
+
+  let regex = '^';
+  let escaping = false;
+
+  for (const ch of pattern) {
+    if (escaping) {
+      regex += escapeRegexFragment(ch);
+      escaping = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      escaping = true;
+      continue;
+    }
+
+    if (ch === '%') {
+      regex += '.*';
+      continue;
+    }
+
+    if (ch === '_') {
+      regex += '.';
+      continue;
+    }
+
+    regex += escapeRegexFragment(ch);
+  }
+
+  if (escaping) {
+    regex += '\\\\';
+  }
+
+  regex += '$';
+  const compiled = new RegExp(regex, 'i');
+  return (value: string) => compiled.test(value);
+}
+
 export interface DatabaseCommandContext {
   sqlModule: SqlJs | null;
   databases: Map<string, SqlJsDatabase>;
@@ -643,11 +689,18 @@ export function handleDatabaseCommand(
   }
 
   {
-    const m = norm.match(/^SHOW\s+(FULL\s+)?TABLES\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?\s*;?$/i);
+    const m = norm.match(
+      /^SHOW\s+(FULL\s+)?TABLES(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i,
+    );
     if (m) {
       const isFull = Boolean(m[1]);
       const requestedName = m[2];
-      const dbName = this.resolveDatabaseName(requestedName);
+      const likePattern = m[3]?.replace(/''/g, "'");
+      const likeMatcher = buildSqlLikeMatcher(likePattern);
+
+      const dbName = requestedName
+        ? this.resolveDatabaseName(requestedName)
+        : this.activeDatabase;
       if (!dbName) {
         return sqlErrorEngine.fromMessage(`Unknown database '${requestedName}'`, {
           sql: rawSql,
@@ -669,20 +722,379 @@ export function handleDatabaseCommand(
       if (!db) return null;
 
       const result = db.exec(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        "SELECT name, type FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
       );
       const key = `Tables_in_${dbName}`;
       const rows: Row[] =
         result.length > 0
-          ? result[0].values.map(([tableName]) =>
-              isFull
-                ? { [key]: String(tableName), Table_type: 'BASE TABLE' }
-                : { [key]: String(tableName) },
-            )
+          ? result[0].values
+              .filter(([tableName]) => likeMatcher(String(tableName)))
+              .map(([tableName, tableType]) =>
+                isFull
+                  ? {
+                      [key]: String(tableName),
+                      Table_type: String(tableType).toLowerCase() === 'view' ? 'VIEW' : 'BASE TABLE',
+                    }
+                  : { [key]: String(tableName) },
+              )
           : [];
 
       return {
         columns: isFull ? [key, 'Table_type'] : [key],
+        rows,
+        rowCount: rows.length,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  {
+    const m = norm.match(
+      /^SHOW\s+OPEN\s+TABLES(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i,
+    );
+    if (m) {
+      const requestedName = m[1];
+      const likePattern = m[2]?.replace(/''/g, "'");
+      const likeMatcher = buildSqlLikeMatcher(likePattern);
+      const dbName = requestedName
+        ? this.resolveDatabaseName(requestedName)
+        : this.activeDatabase;
+
+      if (!dbName) {
+        return sqlErrorEngine.fromMessage(`Unknown database '${requestedName}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      if (!this.hasPrivilege('SELECT', dbName)) {
+        return sqlErrorEngine.fromMessage(
+          `Access denied for user '${this.getCurrentUserDisplay()}' to SHOW OPEN TABLES on database '${dbName}'`,
+          {
+            sql: rawSql,
+            startTime,
+          },
+        );
+      }
+
+      const db = this.databases.get(dbName);
+      if (!db) return null;
+
+      const result = db.exec(
+        "SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
+      );
+      const rows: Row[] =
+        result.length > 0
+          ? result[0].values
+              .map(([tableName]) => String(tableName))
+              .filter((tableName) => likeMatcher(tableName))
+              .map((tableName) => ({
+                Database: dbName,
+                Table: tableName,
+                In_use: 0,
+                Name_locked: 0,
+              }))
+          : [];
+
+      return {
+        columns: ['Database', 'Table', 'In_use', 'Name_locked'],
+        rows,
+        rowCount: rows.length,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  {
+    const m = norm.match(
+      /^SHOW\s+TABLE\s+STATUS(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i,
+    );
+    if (m) {
+      const requestedName = m[1];
+      const likePattern = m[2]?.replace(/''/g, "'");
+      const likeMatcher = buildSqlLikeMatcher(likePattern);
+      const dbName = requestedName
+        ? this.resolveDatabaseName(requestedName)
+        : this.activeDatabase;
+
+      if (!dbName) {
+        return sqlErrorEngine.fromMessage(`Unknown database '${requestedName}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      if (!this.hasPrivilege('SELECT', dbName)) {
+        return sqlErrorEngine.fromMessage(
+          `Access denied for user '${this.getCurrentUserDisplay()}' to SHOW TABLE STATUS on database '${dbName}'`,
+          {
+            sql: rawSql,
+            startTime,
+          },
+        );
+      }
+
+      const db = this.databases.get(dbName);
+      if (!db) return null;
+
+      const result = db.exec(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+      );
+
+      const rows: Row[] =
+        result.length > 0
+          ? result[0].values
+              .map(([tableName]) => String(tableName))
+              .filter((tableName) => likeMatcher(tableName))
+              .map((tableName) => {
+                let rowCount = 0;
+                try {
+                  const countResult = db.exec(`SELECT COUNT(*) FROM \"${tableName}\"`);
+                  if (countResult.length > 0) {
+                    rowCount = Number(countResult[0].values[0]?.[0] ?? 0);
+                  }
+                } catch {
+                  // Keep metadata listing resilient even when row count probing fails.
+                }
+
+                return {
+                  Name: tableName,
+                  Engine: 'SQLite',
+                  Rows: rowCount,
+                };
+              })
+          : [];
+
+      return {
+        columns: ['Name', 'Engine', 'Rows'],
+        rows,
+        rowCount: rows.length,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  {
+    const m = norm.match(
+      /^SHOW\s+(?:CHARACTER\s+SET|CHARSET)(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i,
+    );
+    if (m) {
+      const likePattern = m[1]?.replace(/''/g, "'");
+      const likeMatcher = buildSqlLikeMatcher(likePattern);
+      const rows: Row[] = [
+        {
+          Charset: 'utf8mb4',
+          Description: 'UTF-8 Unicode',
+          'Default collation': 'utf8mb4_general_ci',
+          Maxlen: 4,
+        },
+        {
+          Charset: 'utf8',
+          Description: 'UTF-8 Unicode',
+          'Default collation': 'utf8_general_ci',
+          Maxlen: 3,
+        },
+        {
+          Charset: 'latin1',
+          Description: 'cp1252 West European',
+          'Default collation': 'latin1_swedish_ci',
+          Maxlen: 1,
+        },
+      ].filter((row) => likeMatcher(String(row.Charset)));
+
+      return {
+        columns: ['Charset', 'Description', 'Default collation', 'Maxlen'],
+        rows,
+        rowCount: rows.length,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  {
+    const m = norm.match(/^SHOW\s+COLLATION(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i);
+    if (m) {
+      const likePattern = m[1]?.replace(/''/g, "'");
+      const likeMatcher = buildSqlLikeMatcher(likePattern);
+      const rows: Row[] = [
+        {
+          Collation: 'utf8mb4_general_ci',
+          Charset: 'utf8mb4',
+          Id: 45,
+          Default: 'Yes',
+          Compiled: 'Yes',
+          Sortlen: 1,
+        },
+        {
+          Collation: 'utf8_general_ci',
+          Charset: 'utf8',
+          Id: 33,
+          Default: 'Yes',
+          Compiled: 'Yes',
+          Sortlen: 1,
+        },
+        {
+          Collation: 'latin1_swedish_ci',
+          Charset: 'latin1',
+          Id: 8,
+          Default: 'Yes',
+          Compiled: 'Yes',
+          Sortlen: 1,
+        },
+      ].filter((row) => likeMatcher(String(row.Collation)));
+
+      return {
+        columns: ['Collation', 'Charset', 'Id', 'Default', 'Compiled', 'Sortlen'],
+        rows,
+        rowCount: rows.length,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  {
+    const m = norm.match(/^SHOW\s+CREATE\s+TABLE\s+(.+)\s*;?$/i);
+    if (m) {
+      const parsed = this.parseQualifiedName(m[1]);
+      if (!parsed) {
+        return sqlErrorEngine.fromMessage('Invalid table name in SHOW CREATE TABLE', {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      const dbName = parsed.database
+        ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
+        : this.activeDatabase;
+      const db = this.databases.get(dbName);
+      if (!db) {
+        return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      if (!this.hasPrivilege('SELECT', dbName)) {
+        return sqlErrorEngine.fromMessage(
+          `Access denied for user '${this.getCurrentUserDisplay()}' to SHOW CREATE TABLE on database '${dbName}'`,
+          {
+            sql: rawSql,
+            startTime,
+          },
+        );
+      }
+
+      const escapedName = parsed.name.replace(/'/g, "''");
+      const result = db.exec(
+        `SELECT sql FROM sqlite_master WHERE type='table' AND lower(name)=lower('${escapedName}') LIMIT 1`,
+      );
+      if (result.length === 0 || result[0].values.length === 0) {
+        return sqlErrorEngine.fromMessage(`Unknown table '${parsed.name}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      return {
+        columns: ['Table', 'Create Table'],
+        rows: [
+          {
+            Table: parsed.name,
+            'Create Table': String(result[0].values[0]?.[0] ?? ''),
+          },
+        ],
+        rowCount: 1,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  {
+    const m = norm.match(
+      /^SHOW\s+(?:INDEX|INDEXES|KEYS)\s+(?:FROM|IN)\s+(.+?)(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?\s*;?$/i,
+    );
+    if (m) {
+      const parsed = this.parseQualifiedName(m[1]);
+      if (!parsed) {
+        return sqlErrorEngine.fromMessage('Invalid table name in SHOW INDEX', {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      const explicitDb = m[2];
+      const dbName = explicitDb
+        ? (this.resolveDatabaseName(explicitDb) ?? explicitDb)
+        : parsed.database
+          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
+          : this.activeDatabase;
+
+      const db = this.databases.get(dbName);
+      if (!db) {
+        return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      if (!this.hasPrivilege('SELECT', dbName)) {
+        return sqlErrorEngine.fromMessage(
+          `Access denied for user '${this.getCurrentUserDisplay()}' to SHOW INDEX on database '${dbName}'`,
+          {
+            sql: rawSql,
+            startTime,
+          },
+        );
+      }
+
+      const tableName = parsed.name;
+      const escapedTableName = tableName.replace(/'/g, "''");
+      const exists = db.exec(
+        `SELECT name FROM sqlite_master WHERE type='table' AND lower(name)=lower('${escapedTableName}') LIMIT 1`,
+      );
+      if (exists.length === 0 || exists[0].values.length === 0) {
+        return sqlErrorEngine.fromMessage(`Unknown table '${tableName}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      const indexList = db.exec(`PRAGMA index_list(\"${tableName}\")`);
+      const rows: Row[] = [];
+      if (indexList.length > 0) {
+        for (const row of indexList[0].values) {
+          const indexName = String(row[1] ?? '');
+          if (!indexName) continue;
+
+          const nonUnique = Number(row[2] ?? 0) === 1 ? 0 : 1;
+          const indexInfo = db.exec(`PRAGMA index_info(\"${indexName}\")`);
+          if (indexInfo.length === 0 || indexInfo[0].values.length === 0) {
+            rows.push({
+              Table: tableName,
+              Non_unique: nonUnique,
+              Key_name: indexName,
+              Seq_in_index: 1,
+              Column_name: null,
+              Index_type: 'BTREE',
+            });
+            continue;
+          }
+
+          for (const infoRow of indexInfo[0].values) {
+            rows.push({
+              Table: tableName,
+              Non_unique: nonUnique,
+              Key_name: indexName,
+              Seq_in_index: Number(infoRow[0] ?? 0) + 1,
+              Column_name: String(infoRow[2] ?? ''),
+              Index_type: 'BTREE',
+            });
+          }
+        }
+      }
+
+      return {
+        columns: ['Table', 'Non_unique', 'Key_name', 'Seq_in_index', 'Column_name', 'Index_type'],
         rows,
         rowCount: rows.length,
         executionTimeMs: performance.now() - startTime,
@@ -1341,10 +1753,11 @@ export function handleDatabaseCommand(
   {
     const m = norm.match(/^SHOW\s+PROCEDURE\s+STATUS(?:\s+LIKE\s+'([^']+)')?\s*;?$/i);
     if (m) {
-      const likePattern = m[1]?.toLowerCase();
+      const likePattern = m[1]?.replace(/''/g, "'");
+      const likeMatcher = buildSqlLikeMatcher(likePattern);
       const rows = Array.from(this.procedures.values())
         .filter((proc) => this.hasPrivilege('SELECT', proc.database))
-        .filter((proc) => !likePattern || proc.name.toLowerCase().includes(likePattern))
+        .filter((proc) => likeMatcher(proc.name))
         .sort((a, b) => `${a.database}.${a.name}`.localeCompare(`${b.database}.${b.name}`))
         .map((proc) => ({
           Db: proc.database,
@@ -1370,11 +1783,12 @@ export function handleDatabaseCommand(
       const dbName = requestedName
         ? (this.resolveDatabaseName(requestedName) ?? requestedName)
         : this.activeDatabase;
-      const likePattern = m[2]?.toLowerCase();
+      const likePattern = m[2]?.replace(/''/g, "'");
+      const likeMatcher = buildSqlLikeMatcher(likePattern);
 
       const rows = Array.from(this.cursors.values())
         .filter((cursor) => cursor.database === dbName)
-        .filter((cursor) => !likePattern || cursor.name.toLowerCase().includes(likePattern))
+        .filter((cursor) => likeMatcher(cursor.name))
         .sort((a, b) =>
           `${a.procedureName}.${a.name}`.localeCompare(`${b.procedureName}.${b.name}`),
         )
@@ -1529,10 +1943,11 @@ export function handleDatabaseCommand(
   {
     const m = norm.match(/^SHOW\s+FUNCTION\s+STATUS(?:\s+LIKE\s+'([^']+)')?\s*;?$/i);
     if (m) {
-      const likePattern = m[1]?.toLowerCase();
+      const likePattern = m[1]?.replace(/''/g, "'");
+      const likeMatcher = buildSqlLikeMatcher(likePattern);
       const rows = Array.from(this.functions.values())
         .filter((fn) => this.hasPrivilege('SELECT', fn.database))
-        .filter((fn) => !likePattern || fn.name.toLowerCase().includes(likePattern))
+        .filter((fn) => likeMatcher(fn.name))
         .sort((a, b) => `${a.database}.${a.name}`.localeCompare(`${b.database}.${b.name}`))
         .map((fn) => ({
           Db: fn.database,

@@ -172,6 +172,30 @@ const UNSUPPORTED_MYSQL_PATTERNS: UnsupportedMySqlPattern[] = [
     pattern: /^CLONE\b/i,
     reason: 'CLONE requires MySQL server-side clone plugin support.',
   },
+  {
+    pattern: /^(?:CREATE|ALTER)\s+TABLE\b[\s\S]*\bPARTITION\s+BY\b/i,
+    reason: 'MySQL table partition clauses are not supported by the SQLite sandbox backend.',
+  },
+  {
+    pattern: /^(?:CREATE|ALTER)\s+TABLE\b[\s\S]*\bTABLESPACE\b/i,
+    reason: 'MySQL tablespace clauses require server-managed storage engines.',
+  },
+  {
+    pattern: /\b(?:FULLTEXT|SPATIAL)\s+(?:INDEX|KEY)\b/i,
+    reason: 'FULLTEXT and SPATIAL index features are not available in the SQLite backend.',
+  },
+  {
+    pattern: /\bMATCH\s*\([^)]*\)\s*AGAINST\s*\(/i,
+    reason: 'MySQL full-text MATCH ... AGAINST expressions are not supported in this sandbox runtime.',
+  },
+  {
+    pattern: /\bWITH\s+ROLLUP\b/i,
+    reason: 'MySQL WITH ROLLUP aggregation is not supported by SQLite query execution.',
+  },
+  {
+    pattern: /\bJSON_TABLE\s*\(/i,
+    reason: 'JSON_TABLE is a MySQL-specific table function not available in SQLite.',
+  },
 ];
 
 export class SqlExecutor {
@@ -1053,6 +1077,77 @@ export class SqlExecutor {
     return null;
   }
 
+  private detectMySqlCompatibilityFallback(
+    rawSql: string,
+    translatedSql: string,
+    error: unknown,
+  ): string | null {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const lower = rawMessage.toLowerCase();
+
+    const looksLikeParserFailure =
+      lower.includes('syntax error') ||
+      lower.includes('incomplete input') ||
+      lower.includes('unrecognized token') ||
+      lower.includes('no such function') ||
+      lower.includes('near "') ||
+      lower.includes("near '");
+
+    if (!looksLikeParserFailure) {
+      return null;
+    }
+
+    const cleaned = stripComments(rawSql);
+    const normalized = cleaned.replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+      return null;
+    }
+
+    const fallbackHints: UnsupportedMySqlPattern[] = [
+      {
+        pattern: /\bON\s+DUPLICATE\s+KEY\s+UPDATE\b/i,
+        reason:
+          'ON DUPLICATE KEY UPDATE has limited emulation in sandbox mode and can fail for complex clauses. Prefer INSERT OR REPLACE or explicit UPSERT logic.',
+      },
+      {
+        pattern: /\bMATCH\s*\([^)]*\)\s*AGAINST\s*\(/i,
+        reason: 'MySQL full-text MATCH ... AGAINST expressions are unsupported in the SQLite backend.',
+      },
+      {
+        pattern: /\bREGEXP\b|\bRLIKE\b/i,
+        reason: 'REGEXP/RLIKE operators require extensions and are not available in the default SQLite engine.',
+      },
+      {
+        pattern: /\bPARTITION\s+BY\b/i,
+        reason: 'MySQL partitioned table DDL is not supported by SQLite-backed emulation.',
+      },
+      {
+        pattern: /\bTABLESPACE\b/i,
+        reason: 'MySQL tablespace clauses are server-storage features and not available here.',
+      },
+      {
+        pattern: /\bWITH\s+ROLLUP\b/i,
+        reason: 'WITH ROLLUP is a MySQL extension and is not currently emulated in this sandbox.',
+      },
+      {
+        pattern: /\bJSON_TABLE\s*\(/i,
+        reason: 'JSON_TABLE is not available in the SQLite runtime.',
+      },
+    ];
+
+    for (const hint of fallbackHints) {
+      if (hint.pattern.test(normalized)) {
+        return `${hint.reason} Unsupported in the SQLite-backed sandbox runtime.`;
+      }
+    }
+
+    if (/^SHOW\b/i.test(normalized) && /^\s*SHOW\b/i.test(translatedSql.trim())) {
+      return `Unsupported SHOW command variant: '${normalized}'. This sandbox supports many SHOW commands, but not this variant yet.`;
+    }
+
+    return null;
+  }
+
   private getGrantEntries(userKey: string): GrantEntry[] {
     return this.grants.get(userKey) ?? [];
   }
@@ -1507,6 +1602,19 @@ export class SqlExecutor {
         executionTimeMs: elapsed,
       };
     } catch (e) {
+      const compatibilityFallback = this.detectMySqlCompatibilityFallback(
+        normalizedSql,
+        finalSql,
+        e,
+      );
+      if (compatibilityFallback) {
+        return sqlErrorEngine.fromMessage(compatibilityFallback, {
+          sql,
+          translatedSql: finalSql,
+          startTime: start,
+        });
+      }
+
       return sqlErrorEngine.fromUnknownError(e, {
         sql,
         translatedSql: finalSql,

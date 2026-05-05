@@ -19,6 +19,41 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(result.rowCount).toBeGreaterThan(0);
   });
 
+  it('supports SHOW TABLES LIKE filters', () => {
+    const result = executor.execute("SHOW TABLES LIKE 'stud%'");
+    expect(result.error).toBeUndefined();
+    expect(result.rowCount).toBe(1);
+    expect(String(result.rows[0]?.Tables_in_main)).toBe('students');
+  });
+
+  it('supports SHOW FULL TABLES and marks views correctly', () => {
+    executor.execute('CREATE VIEW student_view AS SELECT id, name FROM students');
+
+    const result = executor.execute('SHOW FULL TABLES');
+    expect(result.error).toBeUndefined();
+    expect(result.columns).toEqual(['Tables_in_main', 'Table_type']);
+
+    const byName = new Map(
+      result.rows.map((row) => [String(row.Tables_in_main), String(row.Table_type)]),
+    );
+    expect(byName.get('students')).toBe('BASE TABLE');
+    expect(byName.get('student_view')).toBe('VIEW');
+  });
+
+  it('supports SHOW OPEN TABLES', () => {
+    const result = executor.execute('SHOW OPEN TABLES');
+    expect(result.error).toBeUndefined();
+    expect(result.columns).toEqual(['Database', 'Table', 'In_use', 'Name_locked']);
+    expect(result.rowCount).toBeGreaterThan(0);
+  });
+
+  it('supports SHOW TABLE STATUS with database and LIKE filters', () => {
+    const result = executor.execute("SHOW TABLE STATUS FROM main LIKE 'stud%'");
+    expect(result.error).toBeUndefined();
+    expect(result.rowCount).toBe(1);
+    expect(String(result.rows[0]?.Name)).toBe('students');
+  });
+
   it('supports DESCRIBE table', () => {
     const result = executor.execute('DESCRIBE students');
     expect(result.error).toBeUndefined();
@@ -33,6 +68,13 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(String(result.rows[0]?.['Create Table']).toUpperCase()).toContain('CREATE TABLE');
   });
 
+  it('supports SHOW CREATE TABLE with qualified names', () => {
+    const result = executor.execute('SHOW CREATE TABLE main.students');
+    expect(result.error).toBeUndefined();
+    expect(result.columns).toEqual(['Table', 'Create Table']);
+    expect(String(result.rows[0]?.Table)).toBe('students');
+  });
+
   it('supports SHOW CREATE VIEW', () => {
     executor.execute('CREATE VIEW v_students AS SELECT id, name FROM students');
 
@@ -40,6 +82,32 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(result.error).toBeUndefined();
     expect(result.columns).toEqual(['View', 'Create View']);
     expect(String(result.rows[0]?.['Create View']).toUpperCase()).toContain('CREATE VIEW');
+  });
+
+  it('supports SHOW INDEX with qualified table names', () => {
+    executor.execute('CREATE INDEX idx_students_name ON students(name)');
+    const result = executor.execute('SHOW INDEX FROM main.students');
+
+    expect(result.error).toBeUndefined();
+    expect(result.rowCount).toBeGreaterThan(0);
+    expect(result.columns).toEqual([
+      'Table',
+      'Non_unique',
+      'Key_name',
+      'Seq_in_index',
+      'Column_name',
+      'Index_type',
+    ]);
+  });
+
+  it('supports SHOW CHARACTER SET and SHOW COLLATION stubs', () => {
+    const charsets = executor.execute("SHOW CHARACTER SET LIKE 'utf8%'");
+    expect(charsets.error).toBeUndefined();
+    expect(charsets.rowCount).toBeGreaterThan(0);
+
+    const collations = executor.execute("SHOW COLLATION LIKE 'utf8%'");
+    expect(collations.error).toBeUndefined();
+    expect(collations.rowCount).toBeGreaterThan(0);
   });
 
   it('translates LIMIT offset,count syntax', () => {
@@ -90,7 +158,7 @@ describe('SqlExecutor MySQL compatibility layer', () => {
   });
 
   it('returns explicit unsupported errors for unimplemented SHOW variants', () => {
-    const result = executor.execute('SHOW OPEN TABLES');
+    const result = executor.execute('SHOW MASTER STATUS');
     expect(result.error).toBeDefined();
     expect(result.errorDetails?.category).toBe('unsupported');
     expect(result.error?.toLowerCase()).toContain('unsupported show');
@@ -101,6 +169,30 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(result.error).toBeDefined();
     expect(result.errorDetails?.category).toBe('unsupported');
     expect(result.error?.toLowerCase()).toContain('unsupported');
+  });
+
+  it('returns explicit unsupported errors for partition DDL', () => {
+    const result = executor.execute(
+      'CREATE TABLE partitioned_students (id INT) PARTITION BY HASH(id) PARTITIONS 4',
+    );
+    expect(result.error).toBeDefined();
+    expect(result.errorDetails?.category).toBe('unsupported');
+  });
+
+  it('returns compatibility-aware unsupported errors for REGEXP operator use', () => {
+    const result = executor.execute("SELECT * FROM students WHERE name REGEXP '^A'");
+    expect(result.error).toBeDefined();
+    expect(result.errorDetails?.category).toBe('unsupported');
+  });
+
+  it('accepts FOR UPDATE and LOCK IN SHARE MODE select suffixes', () => {
+    const forUpdate = executor.execute('SELECT * FROM students FOR UPDATE');
+    expect(forUpdate.error).toBeUndefined();
+    expect(forUpdate.rowCount).toBe(2);
+
+    const lockShare = executor.execute('SELECT * FROM students LOCK IN SHARE MODE');
+    expect(lockShare.error).toBeUndefined();
+    expect(lockShare.rowCount).toBe(2);
   });
 
   it('keeps comment-like tokens and type names intact inside string literals', () => {
