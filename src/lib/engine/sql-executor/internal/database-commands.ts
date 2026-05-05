@@ -649,16 +649,22 @@ export function handleDatabaseCommand(
     };
   }
 
-  if (/^SHOW\s+DATABASES\s*;?$/i.test(norm)) {
-    const rows = this.listDatabases()
-      .filter((name) => this.hasPrivilege('SELECT', name))
-      .map((name) => ({ Database: name }));
-    return {
-      columns: ['Database'],
-      rows,
-      rowCount: rows.length,
-      executionTimeMs: performance.now() - startTime,
-    };
+  {
+    const m = norm.match(/^SHOW\s+DATABASES(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i);
+    if (m) {
+      const likePattern = m[1]?.replace(/''/g, "'");
+      const likeMatcher = buildSqlLikeMatcher(likePattern);
+      const rows = this.listDatabases()
+        .filter((name) => this.hasPrivilege('SELECT', name))
+        .filter((name) => likeMatcher(name))
+        .map((name) => ({ Database: name }));
+      return {
+        columns: ['Database'],
+        rows,
+        rowCount: rows.length,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
   }
 
   {
@@ -805,6 +811,15 @@ export function handleDatabaseCommand(
     }
   }
 
+  if (/^SHOW\s+TABLE\s+TYPES\s*;?$/i.test(norm)) {
+    return {
+      columns: ['Table_type'],
+      rows: [{ Table_type: 'BASE TABLE' }, { Table_type: 'VIEW' }],
+      rowCount: 2,
+      executionTimeMs: performance.now() - startTime,
+    };
+  }
+
   {
     const m = norm.match(
       /^SHOW\s+TABLE\s+STATUS(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i,
@@ -947,6 +962,62 @@ export function handleDatabaseCommand(
         columns: ['Collation', 'Charset', 'Id', 'Default', 'Compiled', 'Sortlen'],
         rows,
         rowCount: rows.length,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  {
+    const m = norm.match(/^SHOW\s+PLUGINS\s*;?$/i);
+    if (m) {
+      return {
+        columns: ['Name', 'Status', 'Type', 'Library', 'License'],
+        rows: [
+          {
+            Name: 'querycraft_emulator',
+            Status: 'ACTIVE',
+            Type: 'EMULATOR',
+            Library: null,
+            License: 'MIT',
+          },
+        ],
+        rowCount: 1,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  {
+    const m = norm.match(
+      /^SHOW\s+EVENTS(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i,
+    );
+    if (m) {
+      const requestedName = m[1];
+      const dbName = requestedName
+        ? (this.resolveDatabaseName(requestedName) ?? requestedName)
+        : this.activeDatabase;
+
+      if (!this.databases.has(dbName)) {
+        return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
+      if (!this.hasPrivilege('SELECT', dbName)) {
+        return sqlErrorEngine.fromMessage(
+          `Access denied for user '${this.getCurrentUserDisplay()}' to SHOW EVENTS on database '${dbName}'`,
+          {
+            sql: rawSql,
+            startTime,
+          },
+        );
+      }
+
+      return {
+        columns: ['Db', 'Name', 'Definer', 'Type', 'Status'],
+        rows: [],
+        rowCount: 0,
         executionTimeMs: performance.now() - startTime,
       };
     }
@@ -1160,9 +1231,13 @@ export function handleDatabaseCommand(
   }
 
   {
-    const m = norm.match(/^SHOW\s+TRIGGERS(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?\s*;?$/i);
+    const m = norm.match(
+      /^SHOW\s+TRIGGERS(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i,
+    );
     if (m) {
       const requestedName = m[1];
+      const likePattern = m[2]?.replace(/''/g, "'");
+      const likeMatcher = buildSqlLikeMatcher(likePattern);
       const dbName = requestedName
         ? this.resolveDatabaseName(requestedName)
         : this.activeDatabase;
@@ -1220,9 +1295,9 @@ export function handleDatabaseCommand(
           });
         });
 
-      const rows = Array.from(rowsByTrigger.values()).sort((a, b) =>
-        String(a.Trigger).localeCompare(String(b.Trigger)),
-      );
+      const rows = Array.from(rowsByTrigger.values())
+        .filter((row) => likeMatcher(String(row.Trigger)))
+        .sort((a, b) => String(a.Trigger).localeCompare(String(b.Trigger)));
 
       return {
         columns: ['Trigger', 'Table', 'Statement'],
@@ -1751,11 +1826,26 @@ export function handleDatabaseCommand(
   }
 
   {
-    const m = norm.match(/^SHOW\s+PROCEDURE\s+STATUS(?:\s+LIKE\s+'([^']+)')?\s*;?$/i);
+    const m = norm.match(
+      /^SHOW\s+PROCEDURE\s+STATUS(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i,
+    );
     if (m) {
-      const likePattern = m[1]?.replace(/''/g, "'");
+      const requestedDb = m[1];
+      const likePattern = m[2]?.replace(/''/g, "'");
       const likeMatcher = buildSqlLikeMatcher(likePattern);
+      const filteredDb = requestedDb
+        ? (this.resolveDatabaseName(requestedDb) ?? requestedDb)
+        : null;
+
+      if (filteredDb && !this.databases.has(filteredDb)) {
+        return sqlErrorEngine.fromMessage(`Unknown database '${filteredDb}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
       const rows = Array.from(this.procedures.values())
+        .filter((proc) => !filteredDb || proc.database === filteredDb)
         .filter((proc) => this.hasPrivilege('SELECT', proc.database))
         .filter((proc) => likeMatcher(proc.name))
         .sort((a, b) => `${a.database}.${a.name}`.localeCompare(`${b.database}.${b.name}`))
@@ -1941,11 +2031,26 @@ export function handleDatabaseCommand(
   }
 
   {
-    const m = norm.match(/^SHOW\s+FUNCTION\s+STATUS(?:\s+LIKE\s+'([^']+)')?\s*;?$/i);
+    const m = norm.match(
+      /^SHOW\s+FUNCTION\s+STATUS(?:\s+(?:FROM|IN)\s+[`"']?(\w+)[`"']?)?(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i,
+    );
     if (m) {
-      const likePattern = m[1]?.replace(/''/g, "'");
+      const requestedDb = m[1];
+      const likePattern = m[2]?.replace(/''/g, "'");
       const likeMatcher = buildSqlLikeMatcher(likePattern);
+      const filteredDb = requestedDb
+        ? (this.resolveDatabaseName(requestedDb) ?? requestedDb)
+        : null;
+
+      if (filteredDb && !this.databases.has(filteredDb)) {
+        return sqlErrorEngine.fromMessage(`Unknown database '${filteredDb}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+
       const rows = Array.from(this.functions.values())
+        .filter((fn) => !filteredDb || fn.database === filteredDb)
         .filter((fn) => this.hasPrivilege('SELECT', fn.database))
         .filter((fn) => likeMatcher(fn.name))
         .sort((a, b) => `${a.database}.${a.name}`.localeCompare(`${b.database}.${b.name}`))

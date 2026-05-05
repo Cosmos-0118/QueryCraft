@@ -19,6 +19,13 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(result.rowCount).toBeGreaterThan(0);
   });
 
+  it('supports SHOW DATABASES LIKE filters', () => {
+    const result = executor.execute("SHOW DATABASES LIKE 'ma%'");
+    expect(result.error).toBeUndefined();
+    expect(result.rowCount).toBe(1);
+    expect(String(result.rows[0]?.Database)).toBe('main');
+  });
+
   it('supports SHOW TABLES LIKE filters', () => {
     const result = executor.execute("SHOW TABLES LIKE 'stud%'");
     expect(result.error).toBeUndefined();
@@ -45,6 +52,13 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(result.error).toBeUndefined();
     expect(result.columns).toEqual(['Database', 'Table', 'In_use', 'Name_locked']);
     expect(result.rowCount).toBeGreaterThan(0);
+  });
+
+  it('supports SHOW TABLE TYPES', () => {
+    const result = executor.execute('SHOW TABLE TYPES');
+    expect(result.error).toBeUndefined();
+    expect(result.columns).toEqual(['Table_type']);
+    expect(result.rowCount).toBe(2);
   });
 
   it('supports SHOW TABLE STATUS with database and LIKE filters', () => {
@@ -84,6 +98,24 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     expect(String(result.rows[0]?.['Create View']).toUpperCase()).toContain('CREATE VIEW');
   });
 
+  it('supports SHOW TRIGGERS LIKE filters', () => {
+    executor.execute('CREATE TABLE audit_students (id INTEGER PRIMARY KEY, name TEXT)');
+    const created = executor.execute(`
+      CREATE TRIGGER trg_audit_students_insert
+      AFTER INSERT ON audit_students
+      FOR EACH ROW
+      BEGIN
+        SELECT 1;
+      END
+    `);
+    expect(created.error).toBeUndefined();
+
+    const result = executor.execute("SHOW TRIGGERS LIKE 'trg_audit%'");
+    expect(result.error).toBeUndefined();
+    expect(result.rowCount).toBe(1);
+    expect(String(result.rows[0]?.Trigger)).toBe('trg_audit_students_insert');
+  });
+
   it('supports SHOW INDEX with qualified table names', () => {
     executor.execute('CREATE INDEX idx_students_name ON students(name)');
     const result = executor.execute('SHOW INDEX FROM main.students');
@@ -108,6 +140,16 @@ describe('SqlExecutor MySQL compatibility layer', () => {
     const collations = executor.execute("SHOW COLLATION LIKE 'utf8%'");
     expect(collations.error).toBeUndefined();
     expect(collations.rowCount).toBeGreaterThan(0);
+  });
+
+  it('supports SHOW PLUGINS and SHOW EVENTS stubs', () => {
+    const plugins = executor.execute('SHOW PLUGINS');
+    expect(plugins.error).toBeUndefined();
+    expect(plugins.rowCount).toBeGreaterThan(0);
+
+    const events = executor.execute('SHOW EVENTS');
+    expect(events.error).toBeUndefined();
+    expect(events.columns).toEqual(['Db', 'Name', 'Definer', 'Type', 'Status']);
   });
 
   it('translates LIMIT offset,count syntax', () => {
@@ -155,6 +197,28 @@ describe('SqlExecutor MySQL compatibility layer', () => {
 
     const deallocate = executor.execute('DEALLOCATE PREPARE fetch_student');
     expect(deallocate.error).toBeUndefined();
+  });
+
+  it('rewrites ON DUPLICATE KEY UPDATE using inferred unique conflict targets', () => {
+    executor.execute(
+      'CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT UNIQUE, display_name TEXT)',
+    );
+    executor.execute(
+      "INSERT INTO accounts (id, email, display_name) VALUES (1, 'alice@example.com', 'Alice')",
+    );
+
+    const upsert = executor.execute(
+      "INSERT INTO accounts (id, email, display_name) VALUES (2, 'alice@example.com', 'Alice v2') ON DUPLICATE KEY UPDATE id = VALUES(id), display_name = VALUES(display_name)",
+    );
+    expect(upsert.error).toBeUndefined();
+
+    const selected = executor.execute(
+      "SELECT id, display_name FROM accounts WHERE email = 'alice@example.com'",
+    );
+    expect(selected.error).toBeUndefined();
+    expect(selected.rowCount).toBe(1);
+    expect(selected.rows[0]?.id).toBe(2);
+    expect(selected.rows[0]?.display_name).toBe('Alice v2');
   });
 
   it('returns explicit unsupported errors for unimplemented SHOW variants', () => {

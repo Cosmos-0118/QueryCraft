@@ -106,4 +106,39 @@ describe('SqlExecutor multi-database behavior', () => {
       'main',
     ]);
   });
+
+  it('supports SHOW FUNCTION/PROCEDURE STATUS scoped to a specific database', () => {
+    executor.execute('CREATE DATABASE analytics');
+    executor.useDatabase('analytics');
+
+    const createFunction = executor.execute(`
+      CREATE FUNCTION analytics_bonus(x INT)
+      RETURNS INT
+      DETERMINISTIC
+      BEGIN
+        RETURN x + 10;
+      END;
+    `);
+    expect(createFunction.error).toBeUndefined();
+
+    const createProcedure = executor.execute(`
+      CREATE PROCEDURE analytics_ping()
+      BEGIN
+        SELECT 'ok' AS status;
+      END;
+    `);
+    expect(createProcedure.error).toBeUndefined();
+
+    executor.useDatabase('main');
+
+    const functionStatus = executor.execute("SHOW FUNCTION STATUS FROM analytics LIKE 'analytics_%';");
+    expect(functionStatus.error).toBeUndefined();
+    expect(functionStatus.rowCount).toBe(1);
+
+    const procedureStatus = executor.execute(
+      "SHOW PROCEDURE STATUS FROM analytics LIKE 'analytics_%';",
+    );
+    expect(procedureStatus.error).toBeUndefined();
+    expect(procedureStatus.rowCount).toBe(1);
+  });
 });

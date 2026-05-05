@@ -1,164 +1,148 @@
-# SQL Sandbox Audit — MySQL Command Coverage (Emulator Pass 3)
+# SQL Sandbox Audit — MySQL Emulator (Pass 4, Deep Review)
 
-Date: 2026-05-07  
+Date: 2026-05-08  
 
-## Evaluation scope
-
-QueryCraft intentionally runs **SQLite (sql.js)** in-process: it is the **practical free option** for a browser-friendly SQL sandbox. This audit does **not** treat that as a defect.
-
-Instead we measure progress toward **supporting almost all MySQL commands that can be meaningfully emulated** here: translation + virtual handlers + stubs + clear rejection for **true server-only** operations (replication, plugins, binary logs, `LOAD DATA` against server files, etc.).
-
-**Goal:** maximize coverage of MySQL **syntax and introspection** users hit in tutorials, coursework, and scripts—not parity with a networked mysqld process.
+**Method:** End-to-end read of the `SqlExecutor` pipeline, `translateMySQL`, virtual `database-commands`, `alter-table-compat`, tokenizer/privilege code, post-exec error fallback, and the `tests/sql` suite. **Scope** matches Pass 3: **SQLite/sql.js is the intended free backend**; the product goal is to **emulate as much MySQL command surface as is reasonable**, not to host mysqld.
 
 ---
 
 ## Overall rating
 
-**7.3 / 10**
+**7.5 / 10** *(Pass 3: 7.3 / 10)*
 
-Solid core path (`translateMySQL`, `database-commands`, prepared statements, unsupported-pattern detection, regression tests). The remaining gap is mostly **breadth**: many `SHOW …` / metadata / DDL variants still fall through to SQLite or generic errors. Closing those systematically is the highest leverage work toward “almost all commands.”
+**Rubric (explicit):**
+
+- **9–10:** Near-complete coverage of emulatable `SHOW` / DDL / DCL plus few opaque SQLite errors.
+- **7–8:** Strong pipeline; gaps mostly in long-tail syntax and metadata. **← current band (7.5).**
+- **5–6:** Core DML only; little introspection or admin simulation.
+
+This pass **raises** the score slightly versus Pass 3 after verifying **secondary systems** that are easy to miss in a shallow review: `detectMySqlCompatibilityFallback` (post–SQLite error hints for `ON DUPLICATE`, full-text, `REGEXP`, partitions, `WITH ROLLUP`, `JSON_TABLE`, etc.), a **substantial** `handleAlterTableCompatibility` (MODIFY/CHANGE/ADD/DROP column, RENAME, ADD/DROP index with limits), growing **compatibility tests** (119 total), and layered **unsupported** detection (`UNSUPPORTED_MYSQL_PATTERNS` + verb allowlist + SHOW-specific messages).
+
+Remaining work is still **dominated** by unimplemented `SHOW` variants and MySQL-only expressions—not by lack of structure.
+
+---
+
+## Architecture snapshot (execution order)
+
+For a single statement, the effective order is:
+
+1. **PL/SQL block** path if applicable ([`isPlSqlBlock` / `runPlSqlBlock`](src/lib/engine/sql-executor/index.ts)).
+2. **[`handleDatabaseCommand`](src/lib/engine/sql-executor/internal/database-commands.ts)** — users, grants, `CALL`, `USE`, `SHOW USERS` / `SHOW GRANTS`, MySQL-style `FLUSH PRIVILEGES`, multi-DB `ATTACH` / listing, and other virtual commands.
+3. **[`handlePreparedStatementCommand`](src/lib/engine/sql-executor/index.ts)** — `SET @` session variables, `PREPARE` / `EXECUTE` / `DEALLOCATE` (in-memory; `EXECUTE` re-enters `execute()`).
+4. **[`denyIfNoPrivilege`](src/lib/engine/sql-executor/index.ts)** — table targets from [`extractPrivilegeTableTargets`](src/lib/engine/sql-lexer.ts) or `requiredPrivilegeForSql`; default deny for non-admin when no mapping exists (with `PRIVILEGE_EXEMPT_VERBS` for TCL / `SET` / `USE` / `START`).
+5. **[`handleAlterTableCompatibility`](src/lib/engine/sql-executor/internal/alter-table-compat.ts)** — emulated `ALTER` before raw SQLite.
+6. **View rewrites** for simple single-table view DML ([`view-manager`](src/lib/engine/sql-executor/view-manager.ts)).
+7. **[`translateMySQL`](src/lib/engine/sql-executor/translation.ts)** — SHOW stubs, TCL, SET no-ops / `FOREIGN_KEY_CHECKS`, strip/replace MySQL idioms, type rewrites, `ANY`/`SOME`/`ALL` via [`rewriteSubqueryOperators`](src/lib/engine/sql-executor/subquery-rewriter.ts), statistical aggregates.
+8. **[`detectUnsupportedMySqlCommand`](src/lib/engine/sql-executor/index.ts)** — explicit server-only patterns, SQLite verb allowlist, SHOW variant messaging.
+9. **`activeDb.exec`** — on failure, **[`detectMySqlCompatibilityFallback`](src/lib/engine/sql-executor/index.ts)** maps common SQLite syntax errors to MySQL-oriented explanations when regexes match.
+
+This layering is **above average** for a WASM SQL tutor; the rating reflects **coverage breadth**, not absence of layers.
 
 ---
 
 ## Verification snapshot
 
-- Reviewed execution pipeline and compatibility surfaces:
-  - [src/lib/engine/sql-executor/index.ts](src/lib/engine/sql-executor/index.ts) (`execute`, prepared statements, `detectUnsupportedMySqlCommand`, `UNSUPPORTED_MYSQL_PATTERNS`, privilege defaults)
-  - [src/lib/engine/sql-executor/translation.ts](src/lib/engine/sql-executor/translation.ts)
-  - [src/lib/engine/sql-executor/internal/database-commands.ts](src/lib/engine/sql-executor/internal/database-commands.ts)
-  - [src/lib/engine/sql-executor/mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts)
-  - [src/lib/engine/sql-executor/internal/alter-table-compat.ts](src/lib/engine/sql-executor/internal/alter-table-compat.ts)
-- Tests: `npm test -- tests/sql` → **13 files, 109 tests passed.**
+- **Tests:** `npm test -- tests/sql` → **13 files, 119 tests passed** (suite grew vs Pass 3).
+- **Files deeply reviewed:**  
+  [`index.ts`](src/lib/engine/sql-executor/index.ts) · [`translation.ts`](src/lib/engine/sql-executor/translation.ts) · [`database-commands.ts`](src/lib/engine/sql-executor/internal/database-commands.ts) · [`alter-table-compat.ts`](src/lib/engine/sql-executor/internal/alter-table-compat.ts) · [`sql-lexer.ts`](src/lib/engine/sql-executor/sql-lexer.ts) · [`mysql-compat.ts`](src/lib/engine/sql-executor/mysql-compat.ts) · [`subquery-rewriter.ts`](src/lib/engine/sql-executor/subquery-rewriter.ts)
 
 ---
 
 ## Issues (ordered by criticality)
 
-Issues below are **compatibility gaps** relative to the “almost all MySQL commands” goal on the SQLite backend—not complaints about using SQLite.
+### 1) Critical — `SHOW` / catalog parity
 
-### 1) Critical — `SHOW` / introspection long tail
+**Implemented in [`translateMySQL`](src/lib/engine/sql-executor/translation.ts) (non-exhaustive):**  
+`SHOW DATABASES`, `SHOW TABLES` / `SHOW FULL TABLES`, `SHOW COLUMNS`/`FIELDS FROM`, `DESC`/`DESCRIBE`/`EXPLAIN` table form, `SHOW CREATE TABLE`, `SHOW INDEX`/`INDEXES`/`KEYS FROM`, `SHOW TABLE STATUS`, `SHOW WARNINGS`/`ERRORS`, `SHOW ENGINES`, `SHOW CREATE DATABASE`, `SHOW PROCESSLIST`, `SHOW VARIABLES`/`STATUS` (stubs), plus `SHOW` handling augmented in [`database-commands`](src/lib/engine/sql-executor/internal/database-commands.ts) (e.g. `SHOW USERS`, `SHOW GRANTS`).
 
-**What’s wrong**
+**Still high-impact gaps** (typical in dumps, tooling, and tutorials):  
+`SHOW CREATE VIEW`, `SHOW TRIGGERS`, `SHOW PROCEDURE STATUS`, `SHOW FUNCTION STATUS`, `SHOW CREATE PROCEDURE` / `FUNCTION`, `SHOW OPEN TABLES`, `SHOW TABLE TYPES`, charset/collation listings, and qualified `db.table` / `IN db` forms that current single-line regexes do not accept.
 
-- `translateMySQL` implements a **fixed set** of `SHOW` branches ([translation.ts](src/lib/engine/sql-executor/translation.ts)): e.g. `SHOW DATABASES`, `SHOW TABLES`, `SHOW COLUMNS`/`DESC`, `SHOW CREATE TABLE`, index listings, `SHOW TABLE STATUS`, engines, processlist, variables/status stubs, etc.
-- Many common MySQL introspection commands are **not** explicitly handled (examples users still hit): `SHOW CREATE VIEW`, `SHOW TRIGGERS`, `SHOW PROCEDURE STATUS`, `SHOW FUNCTION STATUS`, `SHOW CREATE PROCEDURE` / `FUNCTION`, charset/collation listings, and qualified forms (`db.table`) beyond what regexes accept.
+**Impact:** Introspection-driven scripts **break early** even when the objects exist in `sqlite_master` or executor metadata.
 
-**Impact**
-
-- Scripts and dumps that rely on metadata discovery **fail or degrade** even when the underlying objects exist in SQLite form.
-
-**Direction**
-
-- Add translators that map each high-traffic `SHOW` to `sqlite_master` / `PRAGMA` / executor metadata (procedures, functions, triggers already tracked in executor state).
+**Mitigation direction:** Implement each as a small **virtual result** (query `sqlite_master`, `PRAGMA`, and stored procedure/function/trigger maps).
 
 ---
 
-### 2) High — DDL / DML edge syntax vs SQLite
+### 2) High — MySQL-only SQL features (rewrite + error quality)
 
-**What’s wrong**
+**Prevention:** [`UNSUPPORTED_MYSQL_PATTERNS`](src/lib/engine/sql-executor/index.ts) blocks some server-only statements before execution.
 
-- MySQL-specific DDL (partitioning clauses, some full-text / spatial assumptions, engine/tablespace idioms) is only partially stripped or rewritten; anything unrecognized may reach SQLite and fail opaquely.
-- `ALTER TABLE` complex migrations often go through emulation paths ([alter-table-compat.ts](src/lib/engine/sql-executor/internal/alter-table-compat.ts)); edge cases can diverge from MySQL.
+**After SQLite failure:** [`detectMySqlCompatibilityFallback`](src/lib/engine/sql-executor/index.ts) explains several patterns: `ON DUPLICATE KEY UPDATE` limitations, `MATCH ... AGAINST`, `REGEXP`/`RLIKE`, `PARTITION`, `TABLESPACE`, `WITH ROLLUP`, `JSON_TABLE`.
 
-**Impact**
+**Gaps:** Anything **not** in those lists still surfaces as a raw SQLite error. Long tail includes additional functions, advanced JSON operators, spatial types, generated-column edge cases, etc.
 
-- Schema migrations from real MySQL dumps **break at first unsupported clause** unless extended incrementally.
-
-**Direction**
-
-- Expand rewrite coverage with **targeted tests per clause**; prefer friendly parser-level errors listing the unsupported fragment.
+**Impact:** “Paste from Stack Overflow” workloads remain **fragile** until either rewritten or caught by fallback hints.
 
 ---
 
-### 3) High — Fallthrough to SQLite before user-understandable messaging
+### 3) High — `ON DUPLICATE KEY UPDATE` → SQLite upsert semantics
 
-**What’s wrong**
+Translation rewrites to `ON CONFLICT DO UPDATE` ([`translation.ts`](src/lib/engine/sql-executor/translation.ts)). SQLite requires a **conflict target** compatible with the schema; MySQL’s duplicate-key rule can differ. Fallback messaging admits **limited emulation** ([`detectMySqlCompatibilityFallback`](src/lib/engine/sql-executor/index.ts)).
 
-- After translation, many statements still execute as SQLite SQL; failures surface as **SQLite syntax errors** unless caught earlier by `detectUnsupportedMySqlCommand` ([index.ts](src/lib/engine/sql-executor/index.ts)).
-
-**Impact**
-
-- Users cannot tell whether the problem is “not implemented in emulator” vs “invalid SQL.”
-
-**Direction**
-
-- Expand detection for known-bad categories; optionally wrap SQLite errors with a short hint when input matched MySQL-shaped patterns.
+**Impact:** Valid MySQL upserts can **fail** on SQLite even after rewrite.
 
 ---
 
-### 4) Medium — Stored programs and triggers (subset support)
+### 4) High — Lexer-driven privileges vs exotic SQL
 
-**What’s wrong**
+[`extractPrivilegeTableTargets`](src/lib/engine/sql-lexer.ts) covers core read/DML + `TRUNCATE` in depth; `requiredPrivilegeForSql` extends coverage ([`index.ts`](src/lib/engine/sql-executor/index.ts)). Unusual syntactic shapes can still produce **conservative privilege mistakes** (false deny or over-broad allow in edge cases).
 
-- Trigger normalization rejects several valid MySQL trigger body shapes ([mysql-compat.ts](src/lib/engine/sql-executor/mysql-compat.ts)).
-- Procedures/functions may hit mode limitations (`IN`/`OUT` / body features) depending on path.
-
-**Impact**
-
-- **Routine-heavy** dumps are more likely to fail than OLTP-style CRUD.
-
-**Direction**
-
-- Incremental compatibility: one pattern at a time with regression tests under `tests/sql/executor/routines/`.
+**Impact:** Matters most for **non-admin** sandboxes; default deny on unmapped verbs reduces silent bypass risk.
 
 ---
 
-### 5) Medium — Prepared statements and session semantics
+### 5) Medium — `ALTER TABLE` emulation scope
 
-**What’s wrong**
+[`handleAlterTableCompatibility`](src/lib/engine/sql-executor/internal/alter-table-compat.ts) supports a **bounded** set: MODIFY/CHANGE column (rebuild), ADD COLUMN (with FIRST/AFTER), DROP COLUMN, RENAME TO, ADD/DROP INDEX-style operations; unknown segments return **`Unsupported ALTER TABLE operation segment`**.
 
-- Client-side `PREPARE` / `EXECUTE` / `DEALLOCATE` and `@variable` handling ([index.ts](src/lib/engine/sql-executor/index.ts)) cover common lab scenarios but are not full MySQL server semantics.
-
-**Impact**
-
-- Rare edge cases (optimizer behavior, every binding rule) differ; acceptable for most education use if documented.
+**Impact:** MySQL migrations that mix unsupported alter clauses still stop with an explicit message—good— but **coverage** is not “all MySQL ALTER.”
 
 ---
 
-### 6) Low — Maintenance of explicit “server-only” rejects
+### 6) Medium — Virtual multi-database vs MySQL catalogs
 
-**What’s wrong**
+`SHOW DATABASES` returns the **active** DB name; `CREATE DATABASE`/`DROP DATABASE` are largely **virtual** ([`translation.ts`](src/lib/engine/sql-executor/translation.ts)). [`database-commands`](src/lib/engine/sql-executor/internal/database-commands.ts) adds `ATTACH`-based multi-db behavior for some flows.
 
-- `UNSUPPORTED_MYSQL_PATTERNS` ([index.ts](src/lib/engine/sql-executor/index.ts)) must grow when new server-only syntax appears.
-
-**Impact**
-
-- Occasional generic failures until patterns are added.
-
-**Note:** Rejecting replication/plugins/`LOAD DATA` file IO as **unsupported in sandbox** is correct; optionally return **consistent stub responses** where a no-op is safer than failure.
+**Impact:** Tools expecting a **large information_schema-style catalog** will not see full fidelity.
 
 ---
 
-### 7) Low — Privilege model vs exotic verbs (non-admin)
+### 7) Medium — Triggers and stored routines
 
-**What’s wrong**
+[`normalizeMySqlTriggerDefinition`](src/lib/engine/sql-executor/mysql-compat.ts) rejects several MySQL trigger body idioms. Procedures/functions work for supported subsets; parameter modes and bodies remain **partially** supported.
 
-- Non-admin users hit **default deny** when privileges cannot be derived; exempt verbs include TCL/`SET`/`USE` ([`PRIVILEGE_EXEMPT_VERBS`](src/lib/engine/sql-executor/index.ts)).
-
-**Impact**
-
-- Mostly orthogonal to “command coverage” for the default admin sandbox; matters for multi-user / restricted demos.
+**Impact:** Routine-heavy dumps fail **more often** than OLTP CRUD.
 
 ---
 
-## Out of scope for “almost all commands” (acceptable stubs / rejects)
+### 8) Low — `RESET` / `FLUSH` / admin no-ops
 
-These require a **real MySQL server** or OS-level resources; emulating them beyond **clear errors or harmless stubs** is optional:
-
-- Replication control, binary log administration, `INSTALL PLUGIN`, `SHUTDOWN`, `CLONE`, `XA`, `HANDLER`, server-side `LOAD DATA` / `LOAD XML`.
-
-Treat these as **documented limitations**, not failures of the SQLite strategy.
+[`translateMySQL`](src/lib/engine/sql-executor/translation.ts) treats some admin prefixes as **empty OK** results. That matches a sandbox with no server process but can **mask** MySQL subcommands users expected to do something observable.
 
 ---
 
-## Strengths
+### 9) Low — Prepared statements are session-local and simplified
 
-- Broad virtual layer for users, grants, many `SHOW` stubs, TCL, `SET` session no-ops, admin-command simulation ([database-commands.ts](src/lib/engine/sql-executor/internal/database-commands.ts), [translation.ts](src/lib/engine/sql-executor/translation.ts)).
-- Explicit **unsupported** classification for several server-only patterns ([index.ts](src/lib/engine/sql-executor/index.ts)).
-- **109** SQL tests passing — good safety net for incremental expansion.
+In-memory `PREPARE`/`EXECUTE` does not replicate **full** MySQL wire/server semantics; adequate for most labs if documented.
+
+---
+
+## Strengths (confirmed in this pass)
+
+- **Triple-line defense:** pre-check unsupported patterns, post-translate verb/show detection, **post-sqlite** compatibility fallback.
+- **Real ALTER emulation** beyond naive passthrough, with explicit **unsupported segment** errors.
+- **DML compatibility:** `INSERT IGNORE`, `REPLACE`, MySQL `LIMIT` offset form, `FOR UPDATE` strip, aggregate variance/stddev expansion, `ANY`/`SOME`/`ALL` rewrites, concat rules.
+- **119** SQL-layer tests exercising executor, compatibility, routines, transactions, multidb, PL/SQL integration.
+
+---
+
+## Out of scope (honest stubs / rejects)
+
+Replication admin, binary logs, `INSTALL PLUGIN`, server `LOAD DATA`/`LOAD XML`, `XA`, `HANDLER`, `SHUTDOWN`, `CLONE`, etc.—appropriate to reject or stub; **not** counted against the 7.5 for “wrong backend.”
 
 ---
 
 ## Final assessment
 
-Using **SQLite as the only free, embeddable backend** is the right foundation. The roadmap to “almost all” MySQL commands is **not** swapping engines—it is **systematically shrinking** the unsupported surface: prioritize **`SHOW` / metadata parity**, then **DDL edge rewrites**, then **routines/triggers**. The **7.3** rating reflects strong infrastructure and clear remaining breadth work, not regret over SQLite.
+Pass 4 confirms the emulator is **engineered in depth** (not a thin regex wrapper). The score moves to **7.5** because those mechanisms were **fully credited** in the rubric. The **next leap** toward “almost all commands” is **quantitative:** implement the missing **SHOW** and catalog paths, then expand **rewrite/fallback** pairs for the highest-frequency MySQL-only constructs still hitting raw SQLite errors.

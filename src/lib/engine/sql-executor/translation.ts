@@ -427,6 +427,181 @@ function rewriteCreateTableTypes(sql: string): string {
   return `${sql.slice(0, openIndex + 1)}${rewrittenBody}${sql.slice(closeIndex)}`;
 }
 
+function normalizeIdentifierToken(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+
+  if (
+    (trimmed.startsWith('`') && trimmed.endsWith('`')) ||
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
+}
+
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
+
+function parseInsertTarget(sqlBeforeDuplicate: string): { table: string; insertColumns: string[] | null } | null {
+  const match = sqlBeforeDuplicate.match(
+    /^\s*INSERT(?:\s+OR\s+\w+)?\s+INTO\s+((?:`[^`]+`|"[^"]+"|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:`[^`]+`|"[^"]+"|[A-Za-z_][\w$]*))?)\s*([\s\S]*)$/i,
+  );
+  if (!match) return null;
+
+  const rawTable = match[1];
+  const tableSegments = rawTable
+    .split('.')
+    .map((segment) => normalizeIdentifierToken(segment))
+    .filter(Boolean);
+  const table = tableSegments[tableSegments.length - 1];
+  if (!table) return null;
+
+  const rest = match[2] ?? '';
+  const nonSpaceIndex = rest.search(/\S/);
+  if (nonSpaceIndex < 0 || rest[nonSpaceIndex] !== '(') {
+    return { table, insertColumns: null };
+  }
+
+  const closeIndex = findMatchingParen(rest, nonSpaceIndex);
+  if (closeIndex <= nonSpaceIndex) {
+    return { table, insertColumns: null };
+  }
+
+  const rawColumns = rest.slice(nonSpaceIndex + 1, closeIndex);
+  const insertColumns = splitTopLevelComma(rawColumns)
+    .map((column) => normalizeIdentifierToken(column))
+    .map((column) => {
+      const parts = column.split('.').map((part) => normalizeIdentifierToken(part)).filter(Boolean);
+      return parts[parts.length - 1] ?? column;
+    })
+    .filter((column) => column.length > 0);
+
+  return { table, insertColumns: insertColumns.length > 0 ? insertColumns : null };
+}
+
+function resolveUniqueConstraintCandidates(table: string, db: SqlJsDatabase): string[][] {
+  const candidates: string[][] = [];
+  const dedupe = new Set<string>();
+
+  const addCandidate = (columns: string[]) => {
+    const normalized = columns.map((column) => column.trim()).filter((column) => column.length > 0);
+    if (normalized.length === 0) return;
+
+    const key = normalized.map((column) => column.toLowerCase()).join('|');
+    if (dedupe.has(key)) return;
+    dedupe.add(key);
+    candidates.push(normalized);
+  };
+
+  try {
+    const indexList = db.exec(`PRAGMA index_list(${quoteIdentifier(table)})`);
+    if (indexList.length > 0) {
+      for (const row of indexList[0].values) {
+        const isUnique = Number(row[2] ?? 0) === 1;
+        if (!isUnique) continue;
+
+        const indexName = String(row[1] ?? '').trim();
+        if (!indexName) continue;
+
+        const indexInfo = db.exec(`PRAGMA index_info(${quoteIdentifier(indexName)})`);
+        if (indexInfo.length === 0) continue;
+
+        const ordered = [...indexInfo[0].values].sort(
+          (a, b) => Number(a[0] ?? 0) - Number(b[0] ?? 0),
+        );
+        const columns = ordered
+          .map((infoRow) => String(infoRow[2] ?? '').trim())
+          .filter((column) => column.length > 0);
+
+        addCandidate(columns);
+      }
+    }
+  } catch {
+    // ignore index-list lookup errors; fallback candidates may still exist via PK
+  }
+
+  try {
+    const tableInfo = db.exec(`PRAGMA table_info(${quoteIdentifier(table)})`);
+    if (tableInfo.length > 0) {
+      const primaryKeyColumns = [...tableInfo[0].values]
+        .filter((row) => Number(row[5] ?? 0) > 0)
+        .sort((a, b) => Number(a[5] ?? 0) - Number(b[5] ?? 0))
+        .map((row) => String(row[1] ?? '').trim())
+        .filter((column) => column.length > 0);
+
+      addCandidate(primaryKeyColumns);
+    }
+  } catch {
+    // ignore table-info lookup errors
+  }
+
+  return candidates;
+}
+
+function chooseConflictTarget(
+  candidates: string[][],
+  insertColumns: string[] | null,
+): string[] | null {
+  if (candidates.length === 0) return null;
+
+  if (insertColumns && insertColumns.length > 0) {
+    const insertSet = new Set(insertColumns.map((column) => column.toLowerCase()));
+    const compatible = candidates.filter((candidate) =>
+      candidate.every((column) => insertSet.has(column.toLowerCase())),
+    );
+
+    if (compatible.length > 0) {
+      compatible.sort((a, b) => a.length - b.length);
+      return compatible[0];
+    }
+  }
+
+  return candidates[0];
+}
+
+function rewriteOnDuplicateKeyUpdate(sql: string, db: SqlJsDatabase): string {
+  const duplicateMatch = /\bON\s+DUPLICATE\s+KEY\s+UPDATE\b/i.exec(sql);
+  if (!duplicateMatch) {
+    return sql;
+  }
+
+  const insertPart = sql.slice(0, duplicateMatch.index).trimEnd();
+  const updatePartRaw = sql.slice(duplicateMatch.index + duplicateMatch[0].length);
+  const updatePart = updatePartRaw.replace(/;\s*$/, '').trim();
+  if (!updatePart) {
+    return sql;
+  }
+
+  const parsedTarget = parseInsertTarget(insertPart);
+  if (!parsedTarget) {
+    return sql;
+  }
+
+  const candidates = resolveUniqueConstraintCandidates(parsedTarget.table, db);
+  const chosenTarget = chooseConflictTarget(candidates, parsedTarget.insertColumns);
+  if (!chosenTarget) {
+    return sql;
+  }
+
+  const rewrittenUpdatePart = transformSqlCodeSegments(updatePart, (segment) =>
+    segment.replace(
+      /\bVALUES\s*\(\s*(`[^`]+`|"[^"]+"|[A-Za-z_][\w$]*)\s*\)/gi,
+      (_match, rawColumn: string) => {
+        const normalizedColumn = normalizeIdentifierToken(rawColumn);
+        return `excluded.${quoteIdentifier(normalizedColumn)}`;
+      },
+    ),
+  );
+
+  const trailingSemicolon = /;\s*$/.test(updatePartRaw) ? ';' : '';
+  const conflictTarget = chosenTarget.map((column) => quoteIdentifier(column)).join(', ');
+  return `${insertPart} ON CONFLICT (${conflictTarget}) DO UPDATE SET ${rewrittenUpdatePart}${trailingSemicolon}`;
+}
+
 export function translateMySQL(
   raw: string,
   db: SqlJsDatabase,
@@ -776,7 +951,6 @@ export function translateMySQL(
     next = next.replace(/\s+LOCK\s+IN\s+SHARE\s+MODE\b/gi, '');
     next = next.replace(/\bINSERT\s+IGNORE\b/gi, 'INSERT OR IGNORE');
     next = next.replace(/\bREPLACE\s+INTO\b/gi, 'INSERT OR REPLACE INTO');
-    next = next.replace(/\bON\s+DUPLICATE\s+KEY\s+UPDATE\b/gi, 'ON CONFLICT DO UPDATE SET');
     next = next.replace(/\bLIMIT\s+(\d+)\s*,\s*(\d+)/gi, 'LIMIT $2 OFFSET $1');
     next = next.replace(/\bNVL\s*\(/gi, 'IFNULL(');
     next = next.replace(/\bDEFAULT\s+NOW\s*\(\s*\)/gi, "DEFAULT (datetime('now'))");
@@ -794,6 +968,7 @@ export function translateMySQL(
   });
 
   translated = applyConcatCompatibilityRewrites(translated);
+  translated = rewriteOnDuplicateKeyUpdate(translated, db);
 
   if (/^CREATE\s+(?:TEMPORARY\s+)?TABLE\b/i.test(upper)) {
     translated = rewriteCreateTableTypes(translated);
