@@ -1,0 +1,256 @@
+'use client';
+
+import Link from 'next/link';
+import { motion, useScroll, useTransform } from 'framer-motion';
+import {
+  ArrowLeft,
+  CircuitBoard,
+  GraduationCap,
+  Github,
+  Linkedin,
+  Sparkles,
+  UserRound,
+  UsersRound,
+} from 'lucide-react';
+import TileWaveCanvas from '@/components/visual/TileWaveCanvas';
+import { useThemeStore } from '@/stores/theme-store';
+
+type TeamMember = {
+  name: string;
+  role: string;
+  tag: string;
+  github?: string;
+  linkedin?: string;
+};
+
+const mentors: TeamMember[] = [
+  { name: 'Mentor Name', role: 'Faculty Mentor', tag: 'Guidance' },
+  { name: 'Mentor Name', role: 'Faculty Mentor', tag: 'Strategy' },
+  { name: 'Mentor Name', role: 'Faculty Mentor', tag: 'Review' },
+];
+
+const developers: TeamMember[] = [
+  { name: 'Developer Name', role: 'Developer', tag: 'Frontend', github: '#', linkedin: '#' },
+  { name: 'Developer Name', role: 'Developer', tag: 'Backend', github: '#', linkedin: '#' },
+  { name: 'Developer Name', role: 'Developer', tag: 'Database', github: '#', linkedin: '#' },
+  { name: 'Developer Name', role: 'Developer', tag: 'Design', github: '#', linkedin: '#' },
+  { name: 'Developer Name', role: 'Developer', tag: 'Testing', github: '#', linkedin: '#' },
+];
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 28 },
+  show: { opacity: 1, y: 0 },
+};
+
+function SectionBadge({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mx-auto mb-3 flex w-fit items-center gap-3">
+      <span className="h-px w-16 bg-gradient-to-r from-transparent to-primary/30" />
+      <span className="rounded-full border border-primary/20 bg-primary/10 px-4 py-1 text-[10px] font-bold uppercase tracking-[0.28em] text-primary shadow-[0_0_30px_-16px_var(--primary)]">
+        {children}
+      </span>
+      <span className="h-px w-16 bg-gradient-to-l from-transparent to-primary/30" />
+    </div>
+  );
+}
+
+function TeamCard({ member, index, variant }: { member: TeamMember; index: number; variant: 'mentor' | 'developer' }) {
+  const isMentor = variant === 'mentor';
+
+  return (
+    <motion.article
+      variants={fadeUp}
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, amount: 0.35 }}
+      transition={{ duration: 0.5, delay: index * 0.06, ease: 'easeOut' }}
+      whileHover={{ y: -8, rotateX: 2, rotateY: index % 2 === 0 ? -2 : 2 }}
+      className={`group relative overflow-hidden rounded-[1.65rem] border border-border/55 bg-card/70 shadow-[0_24px_70px_-48px_var(--shadow-color)] backdrop-blur-md ${
+        isMentor ? 'h-[310px]' : 'h-[280px]'
+      }`}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_12%,color-mix(in_oklab,var(--primary)_20%,transparent),transparent_32%),linear-gradient(180deg,color-mix(in_oklab,var(--surface-elevated)_72%,transparent),color-mix(in_oklab,var(--background)_88%,transparent))]" />
+      <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-background via-background/72 to-transparent" />
+      <div className="absolute inset-0 opacity-0 transition duration-300 group-hover:opacity-100">
+        <div className="absolute -right-14 -top-14 h-36 w-36 rounded-full bg-primary/20 blur-3xl" />
+        <div className="absolute -bottom-16 left-4 h-36 w-36 rounded-full bg-accent/20 blur-3xl" />
+      </div>
+
+      <div className="relative flex h-full flex-col justify-between p-4">
+        <div className="flex items-center justify-between">
+          <span className="rounded-full border border-border/50 bg-background/45 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            {member.tag}
+          </span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-primary">
+            {isMentor ? <GraduationCap size={15} suppressHydrationWarning /> : <UserRound size={15} suppressHydrationWarning />}
+          </span>
+        </div>
+
+        <div className="group/photo relative mx-auto mt-4 flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border border-border/60 bg-muted/35 text-muted-foreground transition group-hover:border-primary/40 group-hover:text-primary sm:h-32 sm:w-32">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,color-mix(in_oklab,var(--foreground)_16%,transparent),transparent_42%),linear-gradient(180deg,color-mix(in_oklab,var(--surface-elevated)_88%,transparent),color-mix(in_oklab,var(--background)_92%,transparent))]" />
+          <UserRound size={42} className="relative" strokeWidth={1.4} suppressHydrationWarning />
+          {variant === 'developer' && (
+            <div className="absolute inset-0 flex items-end justify-between bg-gradient-to-t from-background/90 via-background/25 to-transparent p-3 opacity-0 transition duration-300 group-hover/photo:opacity-100 group-hover:opacity-100">
+              <a
+                href={member.github ?? '#'}
+                aria-label={`${member.name} GitHub profile`}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/75 text-white shadow-lg backdrop-blur-md transition hover:scale-105 hover:bg-black"
+              >
+                <Github size={16} suppressHydrationWarning />
+              </a>
+              <a
+                href={member.linkedin ?? '#'}
+                aria-label={`${member.name} LinkedIn profile`}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-300/20 bg-sky-600 text-white shadow-lg backdrop-blur-md transition hover:scale-105 hover:bg-sky-500"
+              >
+                <Linkedin size={15} suppressHydrationWarning />
+              </a>
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <div className="absolute -inset-x-4 -top-10 h-20 bg-gradient-to-t from-background/95 to-transparent" />
+          <div className="relative">
+            <h3 className="text-lg font-black tracking-tight text-foreground">{member.name}</h3>
+            <p className="mt-1 text-xs font-semibold text-muted-foreground">{member.role}</p>
+          </div>
+        </div>
+      </div>
+    </motion.article>
+  );
+}
+
+export default function OurTeamPage() {
+  const { theme } = useThemeStore();
+  const { scrollYProgress } = useScroll();
+  const heroY = useTransform(scrollYProgress, [0, 1], [0, -120]);
+  const glowScale = useTransform(scrollYProgress, [0, 0.7], [1, 1.35]);
+
+  return (
+    <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
+      <TileWaveCanvas theme={theme} />
+
+      <div className="pointer-events-none fixed inset-0 z-[1]">
+        <motion.div
+          style={{ y: heroY, scale: glowScale }}
+          className="absolute left-1/2 top-20 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/15 blur-3xl"
+        />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,transparent_0%,color-mix(in_oklab,var(--background)_18%,transparent)_32%,var(--background)_94%)]" />
+      </div>
+
+      <div className="pointer-events-none fixed inset-0 z-[2] overflow-hidden">
+        {Array.from({ length: 34 }, (_, index) => (
+          <motion.span
+            key={index}
+            className="absolute h-1 w-1 rounded-full bg-primary/45"
+            style={{
+              left: `${(index * 23) % 100}%`,
+              top: `${(index * 37) % 100}%`,
+            }}
+            animate={{
+              opacity: [0.16, 0.72, 0.16],
+              y: [0, -18, 0],
+              scale: [0.75, 1.25, 0.75],
+            }}
+            transition={{
+              duration: 3.4 + (index % 6) * 0.45,
+              repeat: Infinity,
+              delay: index * 0.12,
+              ease: 'easeInOut',
+            }}
+          />
+        ))}
+      </div>
+
+      <header className="sticky top-0 z-30 border-b border-border/25 bg-background/62 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center justify-between px-6">
+          <Link href="/" className="flex items-center gap-2">
+            <span className="qc-brand-mark flex h-7 w-7 items-center justify-center rounded-lg">
+              <CircuitBoard size={13} suppressHydrationWarning />
+            </span>
+            <span className="text-sm font-bold tracking-tight text-foreground">
+              Query<span className="text-primary">Craft</span>
+            </span>
+          </Link>
+
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-card/70 px-3 py-1.5 text-xs font-semibold text-foreground transition hover:border-primary/40 hover:text-primary"
+          >
+            <ArrowLeft size={12} suppressHydrationWarning />
+            Home
+          </Link>
+        </div>
+      </header>
+
+      <main className="relative z-10">
+        <section className="mx-auto flex min-h-[72svh] w-full max-w-[1200px] flex-col items-center justify-center px-6 py-20 text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, ease: 'easeOut' }}
+            className="relative"
+          >
+            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary shadow-[0_0_50px_-24px_var(--primary)]">
+              <UsersRound size={24} suppressHydrationWarning />
+            </div>
+            <p className="text-xs font-bold uppercase tracking-[0.28em] text-primary">Our Team</p>
+            <h1 className="mt-4 max-w-3xl text-5xl font-black leading-[1.02] tracking-[-0.05em] text-foreground sm:text-6xl lg:text-7xl">
+              The people behind <span className="text-primary">QueryCraft</span>
+            </h1>
+            <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
+              A clean team space for mentors and student builders. Add real images and member details later without changing the layout.
+            </p>
+          </motion.div>
+
+          <motion.div
+            className="mt-12 flex items-center gap-2 rounded-full border border-border/50 bg-card/55 px-4 py-2 text-xs font-semibold text-muted-foreground backdrop-blur-md"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.18 }}
+          >
+            <Sparkles size={13} className="text-primary" suppressHydrationWarning />
+            Scroll to meet the team
+          </motion.div>
+        </section>
+
+        <section className="mx-auto w-full max-w-[980px] px-6 pb-24">
+          <SectionBadge>Mentors</SectionBadge>
+          <motion.p
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.4 }}
+            className="mx-auto mb-10 max-w-xl text-center text-sm text-muted-foreground"
+          >
+            Faculty guidance and strategic direction for the project.
+          </motion.p>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {mentors.map((member, index) => (
+              <TeamCard key={`${member.role}-${index}`} member={member} index={index} variant="mentor" />
+            ))}
+          </div>
+        </section>
+
+        <section className="mx-auto w-full max-w-[1180px] px-6 pb-28">
+          <SectionBadge>Developers</SectionBadge>
+          <motion.p
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.4 }}
+            className="mx-auto mb-10 max-w-xl text-center text-sm text-muted-foreground"
+          >
+            The student builders who brought the learning studio to life.
+          </motion.p>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+            {developers.map((member, index) => (
+              <TeamCard key={`${member.role}-${index}`} member={member} index={index} variant="developer" />
+            ))}
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
