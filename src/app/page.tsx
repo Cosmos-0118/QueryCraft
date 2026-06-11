@@ -11,10 +11,12 @@ import {
   BookOpen,
   Check,
   CircuitBoard,
+  FileText,
   FunctionSquare,
   Palette,
   PenTool,
   RefreshCw,
+  ShieldCheck,
   Sigma,
   Sparkles,
   Terminal,
@@ -477,9 +479,27 @@ export default function Home() {
 
         {/* Footer */}
         <footer className="relative z-10 border-t border-border/20 px-6 py-6">
-          <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between lg:px-4">
-            <span className="text-xs font-bold text-muted-foreground/60">Query<span className="text-primary">Craft</span></span>
-            <p className="text-xs text-muted-foreground/60">© 2026 QueryCraft</p>
+          <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 lg:px-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <span className="text-xs font-bold text-muted-foreground/60">Query<span className="text-primary">Craft</span></span>
+              <p className="mt-1 text-xs text-muted-foreground/50">© 2026 QueryCraft</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/privacy"
+                className="group inline-flex items-center gap-2 rounded-full border border-border/45 bg-card/60 px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+              >
+                <ShieldCheck size={14} className="transition group-hover:scale-105" suppressHydrationWarning />
+                Privacy Policy
+              </Link>
+              <Link
+                href="/terms"
+                className="group inline-flex items-center gap-2 rounded-full border border-border/45 bg-card/60 px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+              >
+                <FileText size={14} className="transition group-hover:scale-105" suppressHydrationWarning />
+                Terms of Service
+              </Link>
+            </div>
           </div>
         </footer>
       </div>
