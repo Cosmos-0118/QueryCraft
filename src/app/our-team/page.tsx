@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import {
@@ -19,6 +20,7 @@ type TeamMember = {
   name: string;
   role: string;
   tag: string;
+  image?: string;
   github?: string;
   linkedin?: string;
 };
@@ -30,11 +32,38 @@ const mentors: TeamMember[] = [
 ];
 
 const developers: TeamMember[] = [
-  { name: 'Developer Name', role: 'Developer', tag: 'Frontend', github: '#', linkedin: '#' },
-  { name: 'Developer Name', role: 'Developer', tag: 'Backend', github: '#', linkedin: '#' },
-  { name: 'Developer Name', role: 'Developer', tag: 'Database', github: '#', linkedin: '#' },
-  { name: 'Developer Name', role: 'Developer', tag: 'Design', github: '#', linkedin: '#' },
-  { name: 'Developer Name', role: 'Developer', tag: 'Testing', github: '#', linkedin: '#' },
+  {
+    name: 'Priyan',
+    role: 'Developer',
+    tag: 'Developer',
+    image: '/team/priyan.png',
+    github: 'https://github.com/Skygazer1111',
+    linkedin: 'https://www.linkedin.com/in/priyan-rajarajan-b8128b2a2',
+  },
+  {
+    name: 'Dhanush',
+    role: 'Developer',
+    tag: 'Developer',
+    image: '/team/dhanush.png',
+    github: 'https://github.com/Cosmos-0118',
+    linkedin: 'https://www.linkedin.com/in/dhanushs-dev/',
+  },
+  {
+    name: 'Sathappan PL',
+    role: 'Developer',
+    tag: 'Developer',
+    image: '/team/sathappan.png',
+    github: 'https://github.com/sathappan25',
+    linkedin: 'http://linkedin.com/in/sathappan-palaniappan-6755a7330',
+  },
+  {
+    name: 'Raghul S',
+    role: 'Developer',
+    tag: 'Developer',
+    image: '/team/Raghul.png',
+    github: 'https://github.com/Raghul-Saba',
+    linkedin: 'https://www.linkedin.com/in/raghul-sabapathy-131681355',
+  },
 ];
 
 const fadeUp = {
@@ -56,6 +85,63 @@ function SectionBadge({ children }: { children: React.ReactNode }) {
 
 function TeamCard({ member, index, variant }: { member: TeamMember; index: number; variant: 'mentor' | 'developer' }) {
   const isMentor = variant === 'mentor';
+
+  if (!isMentor) {
+    return (
+      <motion.article
+        variants={fadeUp}
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.35 }}
+        transition={{ duration: 0.5, delay: index * 0.06, ease: 'easeOut' }}
+        whileHover={{ y: -8, rotateX: 2, rotateY: index % 2 === 0 ? -2 : 2 }}
+        className="group relative h-[330px] overflow-hidden rounded-[1.65rem] border border-border/55 bg-card/70 shadow-[0_24px_70px_-48px_var(--shadow-color)] backdrop-blur-md"
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_12%,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_34%),linear-gradient(180deg,color-mix(in_oklab,var(--surface-elevated)_72%,transparent),color-mix(in_oklab,var(--background)_88%,transparent))]" />
+        {member.image ? (
+          <Image
+            src={member.image}
+            alt={`${member.name} profile photo`}
+            fill
+            sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
+            className="object-cover transition duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+            <UserRound size={58} strokeWidth={1.3} suppressHydrationWarning />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/22 to-transparent" />
+        <div className="absolute inset-0 opacity-0 transition duration-300 group-hover:opacity-100">
+          <div className="absolute inset-0 bg-gradient-to-t from-background/88 via-background/20 to-transparent" />
+          <div className="absolute left-4 right-4 top-4 flex items-center justify-between">
+            <a
+              href={member.github ?? '#'}
+              aria-label={`${member.name} GitHub profile`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/75 text-white shadow-lg backdrop-blur-md transition hover:scale-105 hover:bg-black"
+            >
+              <Github size={17} suppressHydrationWarning />
+            </a>
+            <a
+              href={member.linkedin ?? '#'}
+              aria-label={`${member.name} LinkedIn profile`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-sky-300/20 bg-sky-600 text-white shadow-lg backdrop-blur-md transition hover:scale-105 hover:bg-sky-500"
+            >
+              <Linkedin size={16} suppressHydrationWarning />
+            </a>
+          </div>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 p-4">
+          <h3 className="text-lg font-black tracking-tight text-foreground drop-shadow-sm">{member.name}</h3>
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">{member.role}</p>
+        </div>
+      </motion.article>
+    );
+  }
 
   return (
     <motion.article
@@ -86,26 +172,18 @@ function TeamCard({ member, index, variant }: { member: TeamMember; index: numbe
           </span>
         </div>
 
-        <div className="group/photo relative mx-auto mt-4 flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border border-border/60 bg-muted/35 text-muted-foreground transition group-hover:border-primary/40 group-hover:text-primary sm:h-32 sm:w-32">
+        <div className="group/photo relative mx-auto mt-4 flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border border-border/60 bg-muted/35 text-muted-foreground shadow-[0_18px_50px_-28px_var(--shadow-color)] transition group-hover:border-primary/40 group-hover:text-primary sm:h-32 sm:w-32">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,color-mix(in_oklab,var(--foreground)_16%,transparent),transparent_42%),linear-gradient(180deg,color-mix(in_oklab,var(--surface-elevated)_88%,transparent),color-mix(in_oklab,var(--background)_92%,transparent))]" />
-          <UserRound size={42} className="relative" strokeWidth={1.4} suppressHydrationWarning />
-          {variant === 'developer' && (
-            <div className="absolute inset-0 flex items-end justify-between bg-gradient-to-t from-background/90 via-background/25 to-transparent p-3 opacity-0 transition duration-300 group-hover/photo:opacity-100 group-hover:opacity-100">
-              <a
-                href={member.github ?? '#'}
-                aria-label={`${member.name} GitHub profile`}
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/75 text-white shadow-lg backdrop-blur-md transition hover:scale-105 hover:bg-black"
-              >
-                <Github size={16} suppressHydrationWarning />
-              </a>
-              <a
-                href={member.linkedin ?? '#'}
-                aria-label={`${member.name} LinkedIn profile`}
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-300/20 bg-sky-600 text-white shadow-lg backdrop-blur-md transition hover:scale-105 hover:bg-sky-500"
-              >
-                <Linkedin size={15} suppressHydrationWarning />
-              </a>
-            </div>
+          {member.image ? (
+            <Image
+              src={member.image}
+              alt={`${member.name} profile photo`}
+              fill
+              sizes="128px"
+              className="object-cover transition duration-500 group-hover/photo:scale-105"
+            />
+          ) : (
+            <UserRound size={42} className="relative" strokeWidth={1.4} suppressHydrationWarning />
           )}
         </div>
 
@@ -200,7 +278,7 @@ export default function OurTeamPage() {
               The people behind <span className="text-primary">QueryCraft</span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
-              A clean team space for mentors and student builders. Add real images and member details later without changing the layout.
+              Meet the mentors and student builders shaping QueryCraft into a focused learning studio.
             </p>
           </motion.div>
 
@@ -244,7 +322,7 @@ export default function OurTeamPage() {
           >
             The student builders who brought the learning studio to life.
           </motion.p>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {developers.map((member, index) => (
               <TeamCard key={`${member.role}-${index}`} member={member} index={index} variant="developer" />
             ))}
