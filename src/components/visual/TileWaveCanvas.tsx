@@ -131,11 +131,26 @@ export default function TileWaveCanvas({ theme = 'dark' }: { theme?: ThemeMode }
     const borderColor = `rgba(${br},${bg},${bb},0.15)`;
     const [vr, vg, vb] = palette.vignetteRgb;
 
-    let rafId: number;
+    let rafId = 0;
+    let isVisible = document.visibilityState !== 'hidden';
+
+    const handleVisibilityChange = () => {
+      isVisible = document.visibilityState !== 'hidden';
+      if (isVisible && rafId === 0) {
+        rafId = requestAnimationFrame(draw);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const draw = (timestamp: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
+
+      if (!isVisible) {
+        rafId = 0;
+        return;
+      }
 
       if (startTimeRef.current === null) startTimeRef.current = timestamp;
       const elapsed = (timestamp - startTimeRef.current) / 1000;
@@ -229,6 +244,7 @@ export default function TileWaveCanvas({ theme = 'dark' }: { theme?: ThemeMode }
     rafId = requestAnimationFrame(draw);
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       cancelAnimationFrame(rafId);
     };
   }, [theme]);

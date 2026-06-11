@@ -32,7 +32,7 @@ export const privacyContent: LegalPageContent = {
       id: 'introduction',
       title: '1. Introduction',
       body: [
-        'This Privacy Policy explains how QueryCraft collects, uses, stores, and protects information when you use the Service. QueryCraft is designed primarily as a local-first educational app, but some features may use server-side APIs, configured databases, cookies, uploads, or third-party AI services.',
+        'This Privacy Policy explains how QueryCraft collects, uses, stores, and protects information when you use the Service. QueryCraft is designed primarily as a local-first educational app, but some features may use server-side APIs, configured databases, cookies, or third-party AI services.',
       ],
     },
     {
@@ -45,7 +45,7 @@ export const privacyContent: LegalPageContent = {
       bullets: [
         'Local account data: display name, account ID, role selection, creation time, and local password hash.',
         'Workspace content: SQL queries, schemas, query history, ER diagrams, normalization inputs, generated datasets, and settings.',
-        'Test module data: accounts, questions, assignments, attempts, answers, scores, reviews, and uploaded faculty question files.',
+        'Test module data: accounts, questions, assignments, attempts, answers, scores, and reviews.',
         'Optional AI inputs: table names, column names, dependencies, workflow state, and sample table data submitted for analysis.',
       ],
     },
@@ -153,7 +153,7 @@ export const termsContent: LegalPageContent = {
       title: '2. Description of Service',
       body: [
         'QueryCraft is an educational database learning platform. It provides tools for practicing SQL, relational algebra, tuple relational calculus, ER diagramming, database normalization, synthetic table generation, and test-based database exercises.',
-        'Most learning features are local-first and run in the browser. Some features may use server-side API routes, including seed dataset loading, Test DB health checks, Test module authentication, test management, attempt submission, faculty question uploads, and optional AI-assisted normalization analysis.',
+        'Most learning features are local-first and run in the browser. Some features may use server-side API routes, including seed dataset loading, Test DB health checks, Test module authentication, test management, attempt submission, and optional AI-assisted normalization analysis.',
       ],
     },
     {
@@ -215,7 +215,7 @@ export const termsContent: LegalPageContent = {
       id: 'user-content',
       title: '10. User Content',
       body: [
-        'You retain responsibility for content you create, upload, import, enter, or submit in QueryCraft, including SQL statements, schemas, diagrams, generated tables, test questions, test answers, uploaded question files, and sample data.',
+        'You retain responsibility for content you create, import, enter, or submit in QueryCraft, including SQL statements, schemas, diagrams, generated tables, test questions, test answers, and sample data.',
       ],
     },
     {

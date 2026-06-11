@@ -868,10 +868,31 @@ body {
   }
 }
 
+@keyframes qc-glitter-twinkle {
+  0%,
+  100% {
+    opacity: 0.12;
+    transform: translate3d(0, 0, 0) scale(0.75);
+  }
+  45% {
+    opacity: 0.65;
+    transform: translate3d(0, -14px, 0) scale(1.15);
+  }
+}
+
+.qc-glitter-particle {
+  will-change: transform, opacity;
+  animation-name: qc-glitter-twinkle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .qc-tile-grid::after,
-  .qc-bg-tile {
+  .qc-bg-tile,
+  .qc-glitter-particle {
     animation: none;
+    opacity: 0.2;
   }
 }
 

@@ -13,7 +13,7 @@ import {
 } from '@/lib/test/attempt-navigation-lock';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
-  Settings, Palette, Sparkles, FunctionSquare,
+  Settings, Palette, Sparkles, FunctionSquare, Database,
   CircuitBoard, LogOut, ChevronRight, Check,
 } from 'lucide-react';
 
@@ -32,6 +32,7 @@ const NAV_ITEMS: { label: string; href: string; icon: ReactNode; group?: string 
   { label: 'SQL Sandbox', href: '/sandbox', icon: <Terminal size={16} />, group: 'Labs' },
   { label: 'Table Generator', href: '/generator', icon: <Sparkles size={16} />, group: 'Labs' },
   { label: 'Test Module', href: '/tests', icon: <BookOpen size={16} />, group: 'Labs' },
+  { label: 'Question Bank', href: '/tests/questions-bank', icon: <Database size={16} />, group: 'Labs' },
   { label: 'Algebra', href: '/algebra', icon: <Sigma size={16} />, group: 'Theory' },
   { label: 'Tuple Calculus', href: '/tuple-calculus', icon: <FunctionSquare size={16} />, group: 'Theory' },
   { label: 'ER Builder', href: '/er-builder', icon: <PenTool size={16} />, group: 'Theory' },
