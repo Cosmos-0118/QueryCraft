@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { publishTest } from '@/lib/test/test-module-db';
-import { ensureTeacherOwnsTest, requireTestActor } from '@/lib/security/test-module-security';
+import { publishTest } from '@/features/test-module/lib/test-module-db';
+import { ensureTeacherOwnsTest, requireTestActor } from '@/features/test-module/security/test-module-security';
 
 // POST /api/tests/:id/publish
 export async function POST(

@@ -2,16 +2,16 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useSqlEngine } from '@/hooks/use-sql-engine';
-import { useSandboxStore } from '@/stores/sandbox-store';
-import { useSessionPersistence } from '@/hooks/use-session-persistence';
-import { useLoadingStore } from '@/stores/loading-store';
-import { SqlEditor } from '@/components/sandbox/sql-editor';
-import { SchemaBrowser } from '@/components/sandbox/schema-browser';
+import { useSqlEngine } from '@/features/sandbox/hooks/use-sql-engine';
+import { useSandboxStore } from '@/features/sandbox/store';
+import { useSessionPersistence } from '@/shared/hooks/use-session-persistence';
+import { useLoadingStore } from '@/shared/ui/loading/store';
+import { SqlEditor } from '@/features/sandbox/components/sql-editor';
+import { SchemaBrowser } from '@/features/sandbox/components/schema-browser';
 
-import { CreateTableModal } from '@/components/algebra/create-table-modal';
-import { ResultPanel } from '@/components/visual/result-panel';
-import { SqlErrorAlert } from '@/components/visual/sql-error-alert';
+import { CreateTableModal } from '@/features/algebra/components/create-table-modal';
+import { ResultPanel } from '@/shared/ui/query-results/result-panel';
+import { SqlErrorAlert } from '@/shared/ui/query-results/sql-error-alert';
 import type { QueryResult, StatementQueryResult } from '@/types/database';
 import {
   Terminal,

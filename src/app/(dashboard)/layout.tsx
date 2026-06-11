@@ -3,14 +3,14 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRef, useState, useEffect, useSyncExternalStore, type ReactNode } from 'react';
-import { useAuth } from '@/hooks/use-auth';
-import { useThemeStore } from '@/stores/theme-store';
-import { useLoadingStore } from '@/stores/loading-store';
-import { THEME_OPTIONS } from '@/lib/theme';
+import { useAuth } from '@/shared/auth/hooks/use-auth';
+import { useThemeStore } from '@/shared/ui/theme/store';
+import { useLoadingStore } from '@/shared/ui/loading/store';
+import { THEME_OPTIONS } from '@/shared/ui/theme/theme';
 import {
   getAttemptNavigationLockEventName,
   readAttemptNavigationLock,
-} from '@/lib/test/attempt-navigation-lock';
+} from '@/features/test-module/lib/attempt-navigation-lock';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
   Settings, Palette, Sparkles, FunctionSquare, Database,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { probeTestDbConnection } from '@/lib/test-db/probe';
-import { requireTestActor } from '@/lib/security/test-module-security';
+import { probeTestDbConnection } from '@/features/test-module/db/probe';
+import { requireTestActor } from '@/features/test-module/security/test-module-security';
 
 export const runtime = 'nodejs';
 

@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { toPng } from 'html-to-image';
-import { useERStore } from '@/stores/er-store';
-import { ERCanvas } from '@/components/er-diagram/er-canvas';
-import { ERToolbar } from '@/components/er-diagram/er-toolbar';
-import { PropertiesPanel } from '@/components/er-diagram/properties-panel';
-import { erToRelational, schemasToSQL } from '@/lib/engine/er-to-relational';
-import type { ERDiagram } from '@/types/er-diagram';
+import { useERStore } from '@/features/er-builder/store';
+import { ERCanvas } from '@/features/er-builder/components/er-canvas';
+import { ERToolbar } from '@/features/er-builder/components/er-toolbar';
+import { PropertiesPanel } from '@/features/er-builder/components/properties-panel';
+import { erToRelational, schemasToSQL } from '@/features/er-builder/lib/er-to-relational';
+import type { ERDiagram } from '@/features/er-builder/types';
 import {
   GraduationCap,
   Landmark,

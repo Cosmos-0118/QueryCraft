@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useTrcStore } from '@/stores/trc-store';
-import type { TrcHistoryEntry } from '@/stores/trc-store';
+import { useTrcStore } from '@/features/tuple-calculus/store';
+import type { TrcHistoryEntry } from '@/features/tuple-calculus/store';
 import {
   ArrowLeft,
   Clock,
@@ -18,7 +18,7 @@ import {
   ChevronRight,
   Search,
 } from 'lucide-react';
-import { cn } from '@/lib/utils/helpers';
+import { cn } from '@/shared/lib/cn';
 
 export default function TrcHistoryPage() {
   const store = useTrcStore();

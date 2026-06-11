@@ -3,7 +3,7 @@ import {
   applyTestAuthCookie,
   readTestAuthSession,
   readTokenFromRequest,
-} from '@/lib/test-auth/session';
+} from '@/features/test-module/auth/session';
 
 // POST /api/test-auth/session
 // Sync an already-issued token (typically from local storage) into an httpOnly cookie.

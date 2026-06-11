@@ -4,8 +4,8 @@ import {
   findAccountById,
   updateAccountById,
   type TestAccountRole,
-} from '@/lib/test-auth/accounts-db';
-import { requireAdminSession } from '@/lib/test-auth/session';
+} from '@/features/test-module/auth/accounts-db';
+import { requireAdminSession } from '@/features/test-module/auth/session';
 
 function isValidRole(value: unknown): value is TestAccountRole {
   return value === 'teacher' || value === 'student';

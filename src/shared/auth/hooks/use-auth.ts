@@ -1,0 +1,28 @@
+'use client';
+
+import { useAuthStore } from '@/shared/auth/store';
+import { useRouter } from 'next/navigation';
+
+export function useAuth() {
+  const store = useAuthStore();
+  const router = useRouter();
+
+  const logout = () => {
+    store.logout();
+    router.push('/login');
+  };
+
+  return {
+    user: store.user,
+    isAuthenticated: store.isAuthenticated,
+    accounts: store.accounts,
+    login: store.login,
+    addAccount: store.addAccount,
+    updateName: store.updateName,
+    setRole: store.setRole,
+    clearRole: store.clearRole,
+    changePassword: store.changePassword,
+    removeAccount: store.removeAccount,
+    logout,
+  };
+}

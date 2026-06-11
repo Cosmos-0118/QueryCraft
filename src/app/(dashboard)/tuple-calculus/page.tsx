@@ -2,16 +2,16 @@
 
 import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { useSqlEngine } from '@/hooks/use-sql-engine';
-import { useTrcStore } from '@/stores/trc-store';
-import { useLoadingStore } from '@/stores/loading-store';
-import { tupleCalculusToSQL } from '@/lib/engine/tuple-calculus';
-import { ResultPanel } from '@/components/visual/result-panel';
-import { AlgebraToSql } from '@/components/algebra/algebra-to-sql';
-import { TableBrowser } from '@/components/algebra/table-browser';
-import { CreateTableModal } from '@/components/algebra/create-table-modal';
-import { TupleCalculusInput } from '@/components/tuple-calculus/tuple-calculus-input';
-import { cn } from '@/lib/utils/helpers';
+import { useSqlEngine } from '@/features/sandbox/hooks/use-sql-engine';
+import { useTrcStore } from '@/features/tuple-calculus/store';
+import { useLoadingStore } from '@/shared/ui/loading/store';
+import { tupleCalculusToSQL } from '@/features/tuple-calculus/lib/tuple-calculus';
+import { ResultPanel } from '@/shared/ui/query-results/result-panel';
+import { AlgebraToSql } from '@/features/algebra/components/algebra-to-sql';
+import { TableBrowser } from '@/features/algebra/components/table-browser';
+import { CreateTableModal } from '@/features/algebra/components/create-table-modal';
+import { TupleCalculusInput } from '@/features/tuple-calculus/components/tuple-calculus-input';
+import { cn } from '@/shared/lib/cn';
 
 import {
   FunctionSquare,

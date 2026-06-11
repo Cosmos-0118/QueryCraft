@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { signTestAuthToken } from '@/lib/test-auth/crypto';
+import { signTestAuthToken } from '@/features/test-module/auth/crypto';
 
-vi.mock('@/lib/test/test-module-db', async () => {
-  const store = await import('@/lib/test/test-module-store');
+vi.mock('@/features/test-module/lib/test-module-db', async () => {
+  const store = await import('@/features/test-module/lib/test-module-store');
   return store;
 });
 

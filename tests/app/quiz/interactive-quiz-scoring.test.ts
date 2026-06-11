@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateInteractiveAttemptScore } from '@/lib/test/interactive-quiz';
+import { calculateInteractiveAttemptScore } from '@/features/test-module/lib/interactive-quiz';
 
 describe('interactive quiz scoring', () => {
   it('supports totals above legacy numeric(5,2) limits', () => {

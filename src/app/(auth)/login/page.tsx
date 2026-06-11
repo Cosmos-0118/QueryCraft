@@ -1,8 +1,8 @@
 'use client';
 
 import { Suspense, useState } from 'react';
-import { useAuthStore } from '@/stores/auth-store';
-import { useLoadingStore } from '@/stores/loading-store';
+import { useAuthStore } from '@/shared/auth/store';
+import { useLoadingStore } from '@/shared/ui/loading/store';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Trash2, Download, Upload, Copy, Check, AlertTriangle } from 'lucide-react';

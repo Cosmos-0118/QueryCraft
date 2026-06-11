@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Database, FileJson, Loader2, Upload } from 'lucide-react';
-import { useTestAuth } from '@/hooks/use-test-auth';
+import { useTestAuth } from '@/features/test-module/hooks/use-test-auth';
 
 type BankQuestionType = 'mcq' | 'sql_fill';
 type BankDifficulty = 'easy' | 'medium' | 'hard';

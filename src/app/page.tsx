@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import TileWaveCanvas from '@/components/visual/TileWaveCanvas';
-import { useAuth } from '@/hooks/use-auth';
-import { useThemeStore } from '@/stores/theme-store';
-import { THEME_OPTIONS } from '@/lib/theme';
+import TileWaveCanvas from '@/shared/ui/marketing/TileWaveCanvas';
+import { useAuth } from '@/shared/auth/hooks/use-auth';
+import { useThemeStore } from '@/shared/ui/theme/store';
+import { THEME_OPTIONS } from '@/shared/ui/theme/theme';
 import {
   ArrowRight,
   BookOpen,

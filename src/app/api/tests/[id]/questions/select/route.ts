@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   addQuestionBankQuestionsToTest,
   getTestById,
-} from '@/lib/test/test-module-db';
+} from '@/features/test-module/lib/test-module-db';
 import {
   ensureTeacherOwnsTest,
   requireTestActor,
-} from '@/lib/security/test-module-security';
+} from '@/features/test-module/security/test-module-security';
 
 export async function POST(
   req: NextRequest,

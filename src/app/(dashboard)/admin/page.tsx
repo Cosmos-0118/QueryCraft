@@ -19,7 +19,7 @@ import {
   UserCircle2,
   Users,
 } from 'lucide-react';
-import { useAuthorizedFetch, useTestAuth } from '@/hooks/use-test-auth';
+import { useAuthorizedFetch, useTestAuth } from '@/features/test-module/hooks/use-test-auth';
 
 type AccountRole = 'teacher' | 'student';
 

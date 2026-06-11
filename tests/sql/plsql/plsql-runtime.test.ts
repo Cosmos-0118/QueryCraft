@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPlSqlBlock, runPlSqlBlock } from '@/lib/engine/sql-executor/plsql-runtime';
+import { isPlSqlBlock, runPlSqlBlock } from '@/shared/engine/sql/plsql-runtime';
 import type { QueryResult, Row } from '@/types/database';
 
 describe('PL/SQL runtime', () => {

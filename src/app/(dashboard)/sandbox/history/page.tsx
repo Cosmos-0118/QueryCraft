@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useSandboxStore } from '@/stores/sandbox-store';
-import { useThemeStore } from '@/stores/theme-store';
-import type { HistoryEntry } from '@/stores/sandbox-store';
+import { useSandboxStore } from '@/features/sandbox/store';
+import { useThemeStore } from '@/shared/ui/theme/store';
+import type { HistoryEntry } from '@/features/sandbox/store';
 import Link from 'next/link';
-import { SqlErrorAlert } from '@/components/visual/sql-error-alert';
+import { SqlErrorAlert } from '@/shared/ui/query-results/sql-error-alert';
 import {
   ArrowLeft,
   Clock,
@@ -20,7 +20,7 @@ import {
   ChevronRight,
   Search,
 } from 'lucide-react';
-import { cn } from '@/lib/utils/helpers';
+import { cn } from '@/shared/lib/cn';
 
 interface HistoryStatementResult {
   statement: string;

@@ -1,20 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useAlgebraStore } from '@/stores/algebra-store';
-import { useLoadingStore } from '@/stores/loading-store';
-import { useSqlEngine } from '@/hooks/use-sql-engine';
-import { parse, algebraToSQL } from '@/lib/engine/algebra-parser';
-import { evaluateAlgebra, buildContext } from '@/lib/engine/algebra-evaluator';
-import type { StepResult } from '@/lib/engine/algebra-evaluator';
-import { AlgebraInput } from '@/components/algebra/algebra-input';
-import { ExpressionTree } from '@/components/algebra/expression-tree';
-import { IntermediateResult } from '@/components/algebra/intermediate-result';
-import { AlgebraToSql } from '@/components/algebra/algebra-to-sql';
-import { TableBrowser } from '@/components/algebra/table-browser';
-import { CreateTableModal } from '@/components/algebra/create-table-modal';
+import { useAlgebraStore } from '@/features/algebra/store';
+import { useLoadingStore } from '@/shared/ui/loading/store';
+import { useSqlEngine } from '@/features/sandbox/hooks/use-sql-engine';
+import { parse, algebraToSQL } from '@/features/algebra/lib/parser';
+import { evaluateAlgebra, buildContext } from '@/features/algebra/lib/evaluator';
+import type { StepResult } from '@/features/algebra/lib/evaluator';
+import { AlgebraInput } from '@/features/algebra/components/algebra-input';
+import { ExpressionTree } from '@/features/algebra/components/expression-tree';
+import { IntermediateResult } from '@/features/algebra/components/intermediate-result';
+import { AlgebraToSql } from '@/features/algebra/components/algebra-to-sql';
+import { TableBrowser } from '@/features/algebra/components/table-browser';
+import { CreateTableModal } from '@/features/algebra/components/create-table-modal';
 import type { QueryResult } from '@/types/database';
-import { cn } from '@/lib/utils/helpers';
+import { cn } from '@/shared/lib/cn';
 
 import {
   Database,

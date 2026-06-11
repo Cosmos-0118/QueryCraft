@@ -14,8 +14,8 @@ import {
   verifyNormalFormStrict,
   verifyDependencyPreservation,
   verifyLosslessJoin,
-} from '@/lib/engine/normalizer-engine';
-import type { FunctionalDependency, JoinDependency, MultivaluedDependency, NormalForm, TableSchema } from '@/types/normalizer';
+} from '@/features/normalizer/lib/normalizer-engine';
+import type { FunctionalDependency, JoinDependency, MultivaluedDependency, NormalForm, TableSchema } from '@/features/normalizer/types';
 
 function makeTable(args: {
   name: string;

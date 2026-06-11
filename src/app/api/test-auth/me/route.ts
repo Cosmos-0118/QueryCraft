@@ -3,7 +3,7 @@ import {
   applyTestAuthCookie,
   readTestAuthSession,
   readTokenFromRequest,
-} from '@/lib/test-auth/session';
+} from '@/features/test-module/auth/session';
 
 // GET /api/test-auth/me
 // Returns the current authenticated test-module user from signed session token.

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTestModuleTypeById, listLeaderboardEntries } from '@/lib/test/test-module-db';
+import { getTestModuleTypeById, listLeaderboardEntries } from '@/features/test-module/lib/test-module-db';
 import {
   ensureAttemptAccess,
   ensureStudentCanAccessTest,
   ensureTeacherOwnsTest,
   getLatestAttemptForActor,
   requireTestActor,
-} from '@/lib/security/test-module-security';
+} from '@/features/test-module/security/test-module-security';
 
 async function resolveTestId(
   context: { params: { id: string } } | { params: Promise<{ id: string }> },

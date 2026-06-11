@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { saveAttemptAnswers } from '@/lib/test/test-module-db';
-import { ensureAttemptAccess, requireTestActor } from '@/lib/security/test-module-security';
+import { saveAttemptAnswers } from '@/features/test-module/lib/test-module-db';
+import { ensureAttemptAccess, requireTestActor } from '@/features/test-module/security/test-module-security';
 
 async function resolveParams(
   context:

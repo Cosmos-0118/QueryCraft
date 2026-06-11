@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { verifyLosslessJoin } from '@/lib/engine/normalizer-engine';
+import { verifyLosslessJoin } from '@/features/normalizer/lib/normalizer-engine';
 import type {
   FunctionalDependency,
   JoinDependency,
   MultivaluedDependency,
   TableSchema,
-} from '@/types/normalizer';
+} from '@/features/normalizer/types';
 
 function makeTable(args: {
   name: string;

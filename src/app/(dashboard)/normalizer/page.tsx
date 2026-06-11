@@ -47,11 +47,11 @@ import {
     generateTableDataRows,
     inferForeignKeys,
     type GeneratorTableDef,
-} from '@/lib/engine/data-generator';
-import { verifyNormalForm, type VerificationConfidence } from '@/lib/engine/normalizer-engine';
-import { getUserKeyForId, STORAGE_BASE_KEYS } from '@/lib/utils/user-storage';
-import { useAuthStore } from '@/stores/auth-store';
-import { useGeneratorStore } from '@/stores/generator-store';
+} from '@/features/generator/lib/data-generator';
+import { verifyNormalForm, type VerificationConfidence } from '@/features/normalizer/lib/normalizer-engine';
+import { getUserKeyForId, STORAGE_BASE_KEYS } from '@/shared/lib/user-storage';
+import { useAuthStore } from '@/shared/auth/store';
+import { useGeneratorStore } from '@/features/generator/store';
 import type {
     Column,
     FunctionalDependency,
@@ -59,7 +59,7 @@ import type {
     MultivaluedDependency,
     NormalForm,
     TableSchema,
-} from '@/types/normalizer';
+} from '@/features/normalizer/types';
 
 type CanvasStage = 'UNF' | '1NF' | '2NF' | '3NF' | '4NF' | '5NF';
 

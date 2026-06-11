@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { joinPublishedTestByCode } from '@/lib/test/test-module-db';
-import { requireTestActor } from '@/lib/security/test-module-security';
+import { joinPublishedTestByCode } from '@/features/test-module/lib/test-module-db';
+import { requireTestActor } from '@/features/test-module/security/test-module-security';
 
 // POST /api/tests/join
 export async function POST(req: NextRequest) {

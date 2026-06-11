@@ -3,8 +3,8 @@ import {
   listQuestionBankQuestions,
   uploadQuestionsToBank,
   type QuestionBankUploadQuestionInput,
-} from '@/lib/test/test-module-db';
-import { requireTestActor } from '@/lib/security/test-module-security';
+} from '@/features/test-module/lib/test-module-db';
+import { requireTestActor } from '@/features/test-module/security/test-module-security';
 
 function parseUnitsParam(value: string | null): number[] | undefined {
   if (!value) return undefined;

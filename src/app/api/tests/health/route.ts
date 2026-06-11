@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { bootstrapTestDbConnection } from '@/lib/test-db/bootstrap';
-import { requireTestActor } from '@/lib/security/test-module-security';
+import { bootstrapTestDbConnection } from '@/features/test-module/db/bootstrap';
+import { requireTestActor } from '@/features/test-module/security/test-module-security';
 
 export const runtime = 'nodejs';
 

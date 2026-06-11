@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
+import { useTestAuth as useAuth } from '@/features/test-module/hooks/use-test-auth';
 import { ArrowLeft, Clock3, Loader2, RefreshCw, Trophy, Users } from 'lucide-react';
 
 interface LeaderboardEntry {

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createDraftTest } from '@/lib/test/test-module-db';
-import type { InteractiveQuizSettings, TestModuleType } from '@/lib/test/interactive-quiz';
+import { createDraftTest } from '@/features/test-module/lib/test-module-db';
+import type { InteractiveQuizSettings, TestModuleType } from '@/features/test-module/lib/interactive-quiz';
 import {
   listSubmittedAttemptSummariesForActor,
   listTestsForActor,
   requireTestActor,
-} from '@/lib/security/test-module-security';
+} from '@/features/test-module/security/test-module-security';
 
 type QuestionMode = 'mcq_only' | 'sql_only' | 'mixed';
 

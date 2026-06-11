@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useSyncExternalStore } from 'react';
-import { useAuthStore } from '@/stores/auth-store';
+import { useAuthStore } from '@/shared/auth/store';
 
 const emptySubscribe = () => () => {};
 function useHydrated() {

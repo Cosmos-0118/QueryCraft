@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useLoadingStore } from '@/stores/loading-store';
+import { useLoadingStore } from '@/shared/ui/loading/store';
 
 export default function DashboardHomeLoading() {
   const { start, stop } = useLoadingStore();

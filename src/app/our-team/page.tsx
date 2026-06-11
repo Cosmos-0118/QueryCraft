@@ -14,13 +14,13 @@ import {
   UserRound,
   UsersRound,
 } from 'lucide-react';
-import TeamMemberImage from '@/components/our-team/TeamMemberImage';
-import { preloadImages } from '@/lib/preload-images';
-import { useLoadingStore } from '@/stores/loading-store';
-import { useThemeStore } from '@/stores/theme-store';
+import TeamMemberImage from '@/features/our-team/components/TeamMemberImage';
+import { preloadImages } from '@/shared/lib/preload-images';
+import { useLoadingStore } from '@/shared/ui/loading/store';
+import { useThemeStore } from '@/shared/ui/theme/store';
 
-const TileWaveCanvas = dynamic(() => import('@/components/visual/TileWaveCanvas'), { ssr: false });
-const GlitterField = dynamic(() => import('@/components/visual/GlitterField'), { ssr: false });
+const TileWaveCanvas = dynamic(() => import('@/shared/ui/marketing/TileWaveCanvas'), { ssr: false });
+const GlitterField = dynamic(() => import('@/shared/ui/marketing/GlitterField'), { ssr: false });
 
 type TeamMember = {
   name: string;

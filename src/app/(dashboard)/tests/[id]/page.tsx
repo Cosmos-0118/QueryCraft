@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Select, { type MultiValue, type SingleValue, type StylesConfig } from 'react-select';
-import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
+import { useTestAuth as useAuth } from '@/features/test-module/hooks/use-test-auth';
 import {
   AlertTriangle,
   ArrowLeft,
