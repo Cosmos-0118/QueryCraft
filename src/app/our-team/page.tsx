@@ -33,20 +33,20 @@ const mentors: TeamMember[] = [
 
 const developers: TeamMember[] = [
   {
+    name: 'Dhanush',
+    role: 'Developer',
+    tag: 'Developer',
+    image: '/team/dhanush.jpeg',
+    github: 'https://github.com/Cosmos-0118',
+    linkedin: 'https://www.linkedin.com/in/dhanushs-dev/',
+  },
+  {
     name: 'Priyan',
     role: 'Developer',
     tag: 'Developer',
     image: '/team/priyan.png',
     github: 'https://github.com/Skygazer1111',
     linkedin: 'https://www.linkedin.com/in/priyan-rajarajan-b8128b2a2',
-  },
-  {
-    name: 'Dhanush',
-    role: 'Developer',
-    tag: 'Developer',
-    image: '/team/dhanush.png',
-    github: 'https://github.com/Cosmos-0118',
-    linkedin: 'https://www.linkedin.com/in/dhanushs-dev/',
   },
   {
     name: 'Sathappan PL',
