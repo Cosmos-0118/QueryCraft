@@ -26,6 +26,13 @@ function normalizeLogicalOperators(input: string): string {
     .trim();
 }
 
+function convertStringLiterals(input: string): string {
+  return input.replace(/"([^"]*?)"/g, (match, content) => {
+    if (match.includes('.')) return match;
+    return `'${content}'`;
+  });
+}
+
 function quoteAttributeRefs(input: string): string {
   return input.replace(/\b([a-zA-Z_]\w*)\.([a-zA-Z_]\w*)\b/g, '"$1"."$2"');
 }
@@ -83,7 +90,10 @@ function cleanupBooleanExpr(input: string): string {
     .replace(/\(\s*1\s*=\s*1\s*\)/g, '1 = 1')
     .replace(/\b1\s*=\s*1\s+AND\s+/gi, '')
     .replace(/\s+AND\s+1\s*=\s*1\b/gi, '')
+    .replace(/\b1\s*=\s*1\s+OR\s+/gi, '')
+    .replace(/\s+OR\s+1\s*=\s*1\b/gi, '')
     .replace(/\bWHERE\s+AND\b/gi, 'WHERE')
+    .replace(/\bWHERE\s+OR\b/gi, 'WHERE')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -162,6 +172,7 @@ function convertQuantifiers(formula: string): string {
         '1 = 1',
       );
       inner = normalizeLogicalOperators(inner);
+      inner = convertStringLiterals(inner);
       inner = quoteAttributeRefs(inner);
       inner = cleanupBooleanExpr(inner);
       if (!inner || inner === '1 = 1') {
@@ -251,13 +262,16 @@ export function tupleCalculusToSQL(input: string): string {
     '1 = 1',
   );
 
-  if (/\b[a-zA-Z_]\w*\s*\(\s*[a-zA-Z_]\w*\s*\)/.test(whereClause)) {
+  const SQL_KEYWORDS = /^(EXISTS|NOT|SELECT|FROM|WHERE|AS|AND|OR|IN|JOIN|LEFT|RIGHT|FULL|OUTER|INNER|ON|GROUP|ORDER|BY|HAVING|LIMIT|OFFSET|UNION|INTERSECT|EXCEPT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|COUNT|SUM|AVG|MIN|MAX|DISTINCT|CASE|WHEN|THEN|ELSE|END|IS|NULL|BETWEEN|LIKE|CAST|COALESCE)$/i;
+  const freeRelMatch = whereClause.match(/\b([a-zA-Z_]\w*)\s*\(\s*[a-zA-Z_]\w*\s*\)/);
+  if (freeRelMatch && !SQL_KEYWORDS.test(freeRelMatch[1])) {
     throw new Error(
       'Unsupported free relation predicates. Use quantified variables (∃ or ∀) for additional tuple variables.',
     );
   }
 
   whereClause = normalizeLogicalOperators(whereClause);
+  whereClause = convertStringLiterals(whereClause);
   whereClause = quoteAttributeRefs(whereClause);
   whereClause = cleanupBooleanExpr(whereClause);
   if (!whereClause) {

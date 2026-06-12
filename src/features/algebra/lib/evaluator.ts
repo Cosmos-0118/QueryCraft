@@ -444,21 +444,39 @@ export function evaluateAlgebra(
 
 // Simple condition evaluator supporting: =, !=, <, >, <=, >=, AND, OR
 function evalCondition(cond: string, row: Row): boolean {
-  // Replace column references with values
-  const expr = cond;
+  const expr = cond.trim();
 
-  // Handle AND/OR
-  if (/\bAND\b/i.test(expr)) {
-    const parts = expr.split(/\bAND\b/i);
-    return parts.every((p) => evalCondition(p.trim(), row));
-  }
+  // OR has lower precedence — split on OR first so AND binds tighter
   if (/\bOR\b/i.test(expr)) {
-    const parts = expr.split(/\bOR\b/i);
-    return parts.some((p) => evalCondition(p.trim(), row));
+    const parts = splitTopLevel(expr, /\bOR\b/i);
+    if (parts.length > 1) {
+      return parts.some((p) => evalCondition(p.trim(), row));
+    }
+  }
+
+  if (/\bAND\b/i.test(expr)) {
+    const parts = splitTopLevel(expr, /\bAND\b/i);
+    if (parts.length > 1) {
+      return parts.every((p) => evalCondition(p.trim(), row));
+    }
+  }
+
+  // Handle parenthesised sub-expression
+  if (expr.startsWith('(') && expr.endsWith(')')) {
+    let depth = 0;
+    let isWrapped = true;
+    for (let ci = 0; ci < expr.length; ci++) {
+      if (expr[ci] === '(') depth++;
+      if (expr[ci] === ')') depth--;
+      if (depth === 0 && ci < expr.length - 1) { isWrapped = false; break; }
+    }
+    if (isWrapped) {
+      return evalCondition(expr.slice(1, -1), row);
+    }
   }
 
   // Parse comparison: left op right
-  const match = expr.match(/^(.+?)\s*(!=|>=|<=|=|>|<)\s*(.+)$/);
+  const match = expr.match(/^(.+?)\s*(!=|<>|>=|<=|=|>|<)\s*(.+)$/);
   if (!match) return true;
 
   const [, leftStr, op, rightStr] = match;
@@ -469,6 +487,7 @@ function evalCondition(cond: string, row: Row): boolean {
     case '=':
       return leftVal == rightVal; // intentional loose equality for number/string
     case '!=':
+    case '<>':
       return leftVal != rightVal;
     case '>':
       return Number(leftVal) > Number(rightVal);
@@ -481,6 +500,24 @@ function evalCondition(cond: string, row: Row): boolean {
     default:
       return true;
   }
+}
+
+function splitTopLevel(expr: string, sep: RegExp): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let last = 0;
+  const global = new RegExp(sep.source, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = global.exec(expr)) !== null) {
+    const before = expr.slice(last, m.index);
+    depth += (before.match(/\(/g) || []).length - (before.match(/\)/g) || []).length;
+    if (depth === 0) {
+      parts.push(expr.slice(last, m.index));
+      last = m.index + m[0].length;
+    }
+  }
+  parts.push(expr.slice(last));
+  return parts;
 }
 
 function resolveValue(token: string, row: Row): unknown {

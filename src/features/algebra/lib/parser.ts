@@ -140,13 +140,16 @@ export function tokenize(input: string): Token[] {
       continue;
     }
     if (input[i] === '[') {
-      tokens.push({ type: 'LBRACKET', value: '[', pos: i });
-      i++;
-      continue;
-    }
-    if (input[i] === ']') {
-      tokens.push({ type: 'RBRACKET', value: ']', pos: i });
-      i++;
+      const start = i;
+      i++; // skip [
+      let depth = 1;
+      while (i < input.length && depth > 0) {
+        if (input[i] === '[') depth++;
+        if (input[i] === ']') depth--;
+        if (depth > 0) i++;
+      }
+      tokens.push({ type: 'CONDITION', value: input.slice(start + 1, i).trim(), pos: start });
+      if (i < input.length) i++; // skip closing ]
       continue;
     }
     if (input[i] === ',') {
