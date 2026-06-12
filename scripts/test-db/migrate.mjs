@@ -12,7 +12,7 @@ const MIGRATIONS_TABLE = 'test_db_migrations';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..', '..');
-const migrationsDir = path.join(projectRoot, 'src', 'lib', 'test-db', 'migrations');
+const migrationsDir = path.join(projectRoot, 'src', 'features', 'test-module', 'db', 'migrations');
 const defaultEnvFiles = [path.join(projectRoot, '.env.local'), path.join(projectRoot, '.env')];
 
 function parseArgs(rawArgs) {

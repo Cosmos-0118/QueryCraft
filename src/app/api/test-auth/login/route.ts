@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findAccountByEmailWithSecret } from '@/lib/test-auth/accounts-db';
-import { resolveAdminConfig, deriveDisplayName } from '@/lib/test-auth/admin-env';
-import { signTestAuthToken, verifyPassword } from '@/lib/test-auth/crypto';
-import { applyTestAuthCookie } from '@/lib/test-auth/session';
+import { findAccountByEmailWithSecret } from '@/features/test-module/auth/accounts-db';
+import { resolveAdminConfig, deriveDisplayName } from '@/features/test-module/auth/admin-env';
+import { signTestAuthToken, verifyPassword } from '@/features/test-module/auth/crypto';
+import { applyTestAuthCookie } from '@/features/test-module/auth/session';
 
 const GENERIC_ERROR = 'Email or password is incorrect.';
 

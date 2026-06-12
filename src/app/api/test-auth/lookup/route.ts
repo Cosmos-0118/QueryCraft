@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findAccountByEmail } from '@/lib/test-auth/accounts-db';
-import { resolveAdminConfig } from '@/lib/test-auth/admin-env';
+import { findAccountByEmail } from '@/features/test-module/auth/accounts-db';
+import { resolveAdminConfig } from '@/features/test-module/auth/admin-env';
 
 export async function POST(req: NextRequest) {
   try {

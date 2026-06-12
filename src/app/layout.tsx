@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Geist, Geist_Mono } from 'next/font/google';
-import { ThemeProvider } from '@/components/theme-provider';
-import { LoadingOverlay } from '@/components/loading-overlay';
-import { RouteChangeLoader } from '@/components/route-change-loader';
-import { UserScopedStateSync } from '@/components/user-scoped-state-sync';
+import { ThemeProvider } from '@/shared/ui/theme/provider';
+import { LoadingOverlay } from '@/shared/ui/loading/overlay';
+import { RouteChangeLoader } from '@/shared/ui/loading/route-change-loader';
+import { UserScopedStateSync } from '@/shared/ui/sync/user-scoped-state-sync';
 import './globals.css';
 
 const geistSans = Geist({

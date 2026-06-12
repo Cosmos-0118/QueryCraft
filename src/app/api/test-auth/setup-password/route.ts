@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findAccountByEmailWithSecret, setInitialPasswordForEmail } from '@/lib/test-auth/accounts-db';
-import { signTestAuthToken } from '@/lib/test-auth/crypto';
-import { deriveDisplayName, resolveAdminConfig } from '@/lib/test-auth/admin-env';
-import { applyTestAuthCookie } from '@/lib/test-auth/session';
+import { findAccountByEmailWithSecret, setInitialPasswordForEmail } from '@/features/test-module/auth/accounts-db';
+import { signTestAuthToken } from '@/features/test-module/auth/crypto';
+import { deriveDisplayName, resolveAdminConfig } from '@/features/test-module/auth/admin-env';
+import { applyTestAuthCookie } from '@/features/test-module/auth/session';
 
 const MIN_PASSWORD_LENGTH = 6;
 

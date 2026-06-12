@@ -6,8 +6,8 @@ import {
   generateTableDataRows,
   generateTableSQL,
   inferForeignKeys,
-} from '@/lib/engine/data-generator';
-import type { GeneratorTableDef } from '@/lib/engine/data-generator';
+} from '@/features/generator/lib/data-generator';
+import type { GeneratorTableDef } from '@/features/generator/lib/data-generator';
 
 describe('data generator hint detection', () => {
   it('detects register number variants robustly', () => {

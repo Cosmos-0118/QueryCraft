@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Select, { type MultiValue, type SingleValue, type StylesConfig } from 'react-select';
-import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
+import { useTestAuth as useAuth } from '@/features/test-module/hooks/use-test-auth';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -21,6 +21,7 @@ import {
   Trash2,
   Upload,
   User,
+  X,
 } from 'lucide-react';
 
 interface Question {
@@ -68,19 +69,24 @@ interface ImportedQuestionPreview extends ImportedQuestionPayload {
   sourceIndex: number;
 }
 
+interface QuestionBankEntry {
+  id: string;
+  text: string;
+  question_type: 'mcq' | 'sql_fill';
+  options: Array<{ key: string; text: string }>;
+  difficulty: 'easy' | 'medium' | 'hard';
+  unit: number | null;
+  uploaded_at: string;
+  uploaded_by_display_name: string;
+}
+
 type RandomQuestionType = 'mcq' | 'sql_fill' | 'mixed';
 type DifficultyProfile = 'basic' | 'medium' | 'hard' | 'mixed';
 type QuestionSourceMode = 'import' | 'database' | null;
 type SelectOption = { value: string; label: string };
 
 const MIN_MIX_MCQ_COUNT = 1;
-const UNIT_OPTIONS: SelectOption[] = [
-  { value: '1', label: 'Unit 1' },
-  { value: '2', label: 'Unit 2' },
-  { value: '3', label: 'Unit 3' },
-  { value: '4', label: 'Unit 4' },
-  { value: '5', label: 'Unit 5' },
-];
+const FALLBACK_UNITS = [1, 2, 3, 4, 5];
 const RANDOM_TYPE_OPTIONS: SelectOption[] = [
   { value: 'mixed', label: 'Mixed Questions (MCQ + SQL/TEXT)' },
   { value: 'mcq', label: 'MCQ only' },
@@ -371,6 +377,22 @@ export default function TestDetailPage() {
   const [randomDifficulty, setRandomDifficulty] = useState<DifficultyProfile>('mixed');
   const [mixMcqCountInput, setMixMcqCountInput] = useState('3');
   const [selectedUnits, setSelectedUnits] = useState<number[]>([]);
+  const [availableUnits, setAvailableUnits] = useState<number[]>(FALLBACK_UNITS);
+
+  const [showQuestionBankModal, setShowQuestionBankModal] = useState(false);
+  const [questionBankQuery, setQuestionBankQuery] = useState('');
+  const [questionBankDifficulty, setQuestionBankDifficulty] = useState<'all' | 'easy' | 'medium' | 'hard'>('all');
+  const [questionBankType, setQuestionBankType] = useState<'all' | 'mcq' | 'sql_fill'>('all');
+  const [questionBankUnit, setQuestionBankUnit] = useState<'all' | number>('all');
+  const [questionBankUploadedFrom, setQuestionBankUploadedFrom] = useState('');
+  const [questionBankUploadedTo, setQuestionBankUploadedTo] = useState('');
+  const [questionBankPage, setQuestionBankPage] = useState(0);
+  const [questionBankTotal, setQuestionBankTotal] = useState(0);
+  const [questionBankItems, setQuestionBankItems] = useState<QuestionBankEntry[]>([]);
+  const [questionBankLoading, setQuestionBankLoading] = useState(false);
+  const [questionBankError, setQuestionBankError] = useState<string | null>(null);
+  const [questionBankSelectedIds, setQuestionBankSelectedIds] = useState<string[]>([]);
+  const [addingSelectedQuestions, setAddingSelectedQuestions] = useState(false);
 
   const [randomizingQuestions, setRandomizingQuestions] = useState(false);
   const [removingQuestionId, setRemovingQuestionId] = useState<string | null>(null);
@@ -401,7 +423,11 @@ export default function TestDetailPage() {
   const randomTypeSelectOptions = isInteractiveQuiz ? INTERACTIVE_RANDOM_TYPE_OPTIONS : RANDOM_TYPE_OPTIONS;
   const selectedQuestionTypeOption = randomTypeSelectOptions.find((option) => option.value === randomQuestionType) ?? randomTypeSelectOptions[0];
   const selectedDifficultyOption = DIFFICULTY_OPTIONS.find((option) => option.value === randomDifficulty) ?? DIFFICULTY_OPTIONS[0];
-  const selectedUnitOptions = UNIT_OPTIONS.filter((option) => selectedUnits.includes(Number(option.value)));
+  const unitOptions = useMemo<SelectOption[]>(
+    () => availableUnits.map((unit) => ({ value: String(unit), label: `Unit ${unit}` })),
+    [availableUnits],
+  );
+  const selectedUnitOptions = unitOptions.filter((option) => selectedUnits.includes(Number(option.value)));
 
   useEffect(() => {
     if (!hydrated) return;
@@ -459,6 +485,37 @@ export default function TestDetailPage() {
 
     return () => controller.abort();
   }, [hydrated, isAuthenticated, teacherAccessQuery, teacherQuestionsQuery, testId, router]);
+
+  useEffect(() => {
+    if (!hydrated || !isAuthenticated || !isTeacher) return;
+
+    let cancelled = false;
+    const loadUnits = async () => {
+      try {
+        const res = await fetch('/api/tests/questions-bank?limit=1');
+        const data = await res.json() as {
+          facets?: { units?: number[] };
+        };
+        if (!res.ok || cancelled) return;
+        const fetchedUnits = Array.isArray(data.facets?.units)
+          ? data.facets.units
+              .filter((value) => Number.isFinite(value))
+              .map((value) => Math.floor(value))
+              .filter((value) => value >= 1 && value <= 99)
+          : [];
+        if (fetchedUnits.length > 0) {
+          setAvailableUnits(Array.from(new Set(fetchedUnits)).sort((a, b) => a - b));
+        }
+      } catch {
+        // Keep fallback unit list.
+      }
+    };
+
+    void loadUnits();
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, isAuthenticated, isTeacher]);
 
   const stats = useMemo(
     () => ({
@@ -606,11 +663,6 @@ export default function TestDetailPage() {
   const handleAddRandomQuestions = async () => {
     if (!canEditQuestions || !testId) return;
 
-    if (selectedUnits.length === 0) {
-      setActionError('Select at least one unit before adding random questions.');
-      return;
-    }
-
     const parsedCount = Number(randomCount);
     if (!Number.isFinite(parsedCount) || parsedCount <= 0) {
       setActionError('Random count must be a positive number.');
@@ -680,6 +732,142 @@ export default function TestDetailPage() {
       setActionError('Unable to randomize questions from database.');
     } finally {
       setRandomizingQuestions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showQuestionBankModal || !isTeacher) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadQuestionBank = async () => {
+      setQuestionBankLoading(true);
+      setQuestionBankError(null);
+      try {
+        const params = new URLSearchParams();
+        params.set('limit', '20');
+        params.set('offset', String(questionBankPage * 20));
+        if (questionBankQuery.trim()) params.set('q', questionBankQuery.trim());
+        if (questionBankDifficulty !== 'all') params.set('difficulty', questionBankDifficulty);
+        const effectiveBankType = isInteractiveQuiz ? 'mcq' : questionBankType;
+        if (effectiveBankType !== 'all') params.set('question_type', effectiveBankType);
+        if (questionBankUnit !== 'all') params.set('units', String(questionBankUnit));
+        if (questionBankUploadedFrom) params.set('uploaded_from', questionBankUploadedFrom);
+        if (questionBankUploadedTo) params.set('uploaded_to', questionBankUploadedTo);
+
+        const res = await fetch(`/api/tests/questions-bank?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        const data = await res.json() as {
+          questions?: QuestionBankEntry[];
+          total?: number;
+          facets?: { units?: number[] };
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(data.error || 'Unable to load question bank.');
+        }
+        if (cancelled) return;
+
+        setQuestionBankItems(Array.isArray(data.questions) ? data.questions : []);
+        setQuestionBankTotal(typeof data.total === 'number' ? data.total : 0);
+
+        const fetchedUnits = Array.isArray(data.facets?.units)
+          ? data.facets.units
+              .filter((value) => Number.isFinite(value))
+              .map((value) => Math.floor(value))
+              .filter((value) => value >= 1 && value <= 99)
+          : [];
+        if (fetchedUnits.length > 0) {
+          setAvailableUnits(Array.from(new Set(fetchedUnits)).sort((a, b) => a - b));
+        }
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+        if (!cancelled) {
+          setQuestionBankError(err instanceof Error ? err.message : 'Unable to load question bank.');
+        }
+      } finally {
+        if (!cancelled) {
+          setQuestionBankLoading(false);
+        }
+      }
+    };
+
+    void loadQuestionBank();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    showQuestionBankModal,
+    isTeacher,
+    questionBankPage,
+    questionBankQuery,
+    questionBankDifficulty,
+    questionBankType,
+    questionBankUnit,
+    questionBankUploadedFrom,
+    questionBankUploadedTo,
+    isInteractiveQuiz,
+  ]);
+
+  useEffect(() => {
+    setQuestionBankPage(0);
+  }, [
+    questionBankQuery,
+    questionBankDifficulty,
+    questionBankType,
+    questionBankUnit,
+    questionBankUploadedFrom,
+    questionBankUploadedTo,
+  ]);
+
+  const toggleQuestionBankSelection = (questionId: string) => {
+    setQuestionBankSelectedIds((prev) => (
+      prev.includes(questionId)
+        ? prev.filter((id) => id !== questionId)
+        : [...prev, questionId]
+    ));
+  };
+
+  const handleAddSelectedQuestions = async () => {
+    if (!canEditQuestions || !testId) return;
+    if (questionBankSelectedIds.length === 0) {
+      setQuestionBankError('Select at least one question.');
+      return;
+    }
+
+    setAddingSelectedQuestions(true);
+    setQuestionBankError(null);
+    setActionError(null);
+    setActionNotice(null);
+
+    try {
+      const res = await fetch(`/api/tests/${testId}/questions/select${teacherAccessQuery}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question_bank_ids: questionBankSelectedIds }),
+      });
+      const data = await res.json() as { questions?: Question[]; error?: string };
+      if (!res.ok || !Array.isArray(data.questions)) {
+        setQuestionBankError(data.error || 'Unable to add selected questions.');
+        return;
+      }
+
+      const selectedQuestions = data.questions;
+      setQuestions((prev) => {
+        const existing = new Set(prev.map((question) => question.id));
+        const incoming = selectedQuestions.filter((question) => !existing.has(question.id));
+        return [...prev, ...incoming];
+      });
+      setActionNotice(`Added ${selectedQuestions.length} selected question${selectedQuestions.length === 1 ? '' : 's'}.`);
+      setQuestionBankSelectedIds([]);
+      setShowQuestionBankModal(false);
+    } catch {
+      setQuestionBankError('Unable to add selected questions.');
+    } finally {
+      setAddingSelectedQuestions(false);
     }
   };
 
@@ -1102,15 +1290,15 @@ export default function TestDetailPage() {
                         2
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="mb-1 font-semibold text-foreground">Choose Units</p>
-                        <p className="mb-4 text-xs text-muted-foreground">Select one or more syllabus units to pull questions from.</p>
+                        <p className="mb-1 font-semibold text-foreground">Choose Units (Optional)</p>
+                        <p className="mb-4 text-xs text-muted-foreground">Pick units to narrow results, or leave empty to randomize from all units.</p>
                         <Select<SelectOption, true>
                           isMulti
                           styles={MODERN_SELECT_STYLES}
                           value={selectedUnitOptions}
-                          options={UNIT_OPTIONS}
+                          options={unitOptions}
                           closeMenuOnSelect={false}
-                          placeholder="Select units (for example: Unit 1, Unit 3)..."
+                          placeholder="Optional: select units (for example Unit 1, Unit 3)..."
                           onChange={(options: MultiValue<SelectOption>) => {
                             const parsed = options
                               .map((option) => Number(option.value))
@@ -1214,15 +1402,40 @@ export default function TestDetailPage() {
                             Difficulty: {randomDifficulty}
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={handleAddRandomQuestions}
-                          disabled={randomizingQuestions || parsingImport || importingQuestions || selectedUnits.length === 0}
-                          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-6 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {randomizingQuestions ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                          {randomizingQuestions ? 'Adding...' : 'Add Questions from Database'}
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={handleAddRandomQuestions}
+                          disabled={randomizingQuestions || parsingImport || importingQuestions}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-500 px-6 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {randomizingQuestions ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                            {randomizingQuestions ? 'Adding...' : 'Add Random Questions'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuestionBankPage(0);
+                              setQuestionBankError(null);
+                              setQuestionBankSelectedIds([]);
+                              if (isInteractiveQuiz) {
+                                setQuestionBankType('mcq');
+                              }
+                              setShowQuestionBankModal(true);
+                            }}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border/80 bg-background/70 px-5 text-sm font-semibold text-muted-foreground transition hover:border-primary/35 hover:text-foreground"
+                          >
+                            <Database size={14} />
+                            Browse & Pick Questions
+                          </button>
+                          <Link
+                            href="/tests/questions-bank"
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border/80 bg-background/70 px-5 text-sm font-semibold text-muted-foreground transition hover:border-primary/35 hover:text-foreground"
+                          >
+                            <Upload size={14} />
+                            Open Bank Page
+                          </Link>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1309,6 +1522,214 @@ export default function TestDetailPage() {
           })}
         </div>
       </section>
+
+      {showQuestionBankModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-2xl shadow-black/30">
+            <div className="flex items-center justify-between border-b border-border/60 px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Select Questions from Database</p>
+                <p className="text-xs text-muted-foreground">Filter by date, unit, difficulty, and pick questions for this test.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQuestionBankModal(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/80 bg-background/70 text-muted-foreground transition hover:border-border hover:text-foreground"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="border-b border-border/60 p-4">
+              <div className="grid gap-2 md:grid-cols-5">
+                <input
+                  value={questionBankQuery}
+                  onChange={(event) => {
+                    setQuestionBankQuery(event.target.value);
+                    setQuestionBankPage(0);
+                  }}
+                  placeholder="Search question text..."
+                  className="h-10 rounded-xl border border-border bg-background/80 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 md:col-span-2"
+                />
+                <select
+                  value={questionBankDifficulty}
+                  onChange={(event) => {
+                    setQuestionBankDifficulty(event.target.value as 'all' | 'easy' | 'medium' | 'hard');
+                    setQuestionBankPage(0);
+                  }}
+                  className="h-10 rounded-xl border border-border bg-background/80 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="all">All difficulties</option>
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+                <select
+                  value={isInteractiveQuiz ? 'mcq' : questionBankType}
+                  onChange={(event) => {
+                    setQuestionBankType(event.target.value as 'all' | 'mcq' | 'sql_fill');
+                    setQuestionBankPage(0);
+                  }}
+                  disabled={isInteractiveQuiz}
+                  className="h-10 rounded-xl border border-border bg-background/80 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+                >
+                  <option value="all">All types</option>
+                  <option value="mcq">MCQ</option>
+                  <option value="sql_fill">SQL/TEXT</option>
+                </select>
+                <select
+                  value={String(questionBankUnit)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setQuestionBankUnit(value === 'all' ? 'all' : Number(value));
+                    setQuestionBankPage(0);
+                  }}
+                  className="h-10 rounded-xl border border-border bg-background/80 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="all">All units</option>
+                  {availableUnits.map((unit) => (
+                    <option key={unit} value={unit}>
+                      Unit {unit}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-2 grid gap-2 md:grid-cols-4">
+                <input
+                  type="date"
+                  value={questionBankUploadedFrom}
+                  onChange={(event) => {
+                    setQuestionBankUploadedFrom(event.target.value);
+                    setQuestionBankPage(0);
+                  }}
+                  className="h-10 rounded-xl border border-border bg-background/80 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                />
+                <input
+                  type="date"
+                  value={questionBankUploadedTo}
+                  onChange={(event) => {
+                    setQuestionBankUploadedTo(event.target.value);
+                    setQuestionBankPage(0);
+                  }}
+                  className="h-10 rounded-xl border border-border bg-background/80 px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                />
+                <div className="md:col-span-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuestionBankQuery('');
+                      setQuestionBankDifficulty('all');
+                      setQuestionBankType('all');
+                      setQuestionBankUnit('all');
+                      setQuestionBankUploadedFrom('');
+                      setQuestionBankUploadedTo('');
+                      setQuestionBankPage(0);
+                    }}
+                    className="inline-flex h-10 items-center rounded-xl border border-border/80 bg-background/70 px-4 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              {questionBankError && (
+                <div className="mb-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                  {questionBankError}
+                </div>
+              )}
+
+              {questionBankLoading ? (
+                <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-sm text-muted-foreground">
+                  <Loader2 size={14} className="animate-spin" />
+                  Loading question bank...
+                </div>
+              ) : questionBankItems.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border/70 bg-background/40 px-4 py-10 text-center text-sm text-muted-foreground">
+                  No questions found for the selected filters.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {questionBankItems.map((question) => {
+                    const checked = questionBankSelectedIds.includes(question.id);
+                    return (
+                      <label
+                        key={question.id}
+                        className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
+                          checked
+                            ? 'border-primary/50 bg-primary/[0.08]'
+                            : 'border-border/70 bg-background/55 hover:border-primary/30'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleQuestionBankSelection(question.id)}
+                          className="mt-1 h-4 w-4 rounded border-border bg-background"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-foreground">{question.text}</p>
+                          <div className="mt-1.5 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span className="rounded-md border border-border/70 bg-background/70 px-2 py-0.5">{question.question_type}</span>
+                            <span className="rounded-md border border-border/70 bg-background/70 px-2 py-0.5">{question.difficulty}</span>
+                            <span className="rounded-md border border-border/70 bg-background/70 px-2 py-0.5">
+                              {question.unit ? `Unit ${question.unit}` : 'Unit NA'}
+                            </span>
+                            <span className="rounded-md border border-border/70 bg-background/70 px-2 py-0.5">
+                              {new Date(question.uploaded_at).toLocaleDateString()}
+                            </span>
+                            <span className="rounded-md border border-border/70 bg-background/70 px-2 py-0.5">
+                              {question.uploaded_by_display_name}
+                            </span>
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-4 py-3">
+              <p className="text-xs text-muted-foreground">
+                Page {questionBankPage + 1} of {Math.max(1, Math.ceil(questionBankTotal / 20))}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuestionBankPage((prev) => Math.max(0, prev - 1))}
+                  disabled={questionBankPage === 0}
+                  className="inline-flex h-9 items-center rounded-lg border border-border/80 bg-background/70 px-3 text-sm text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const maxPage = Math.max(0, Math.ceil(questionBankTotal / 20) - 1);
+                    setQuestionBankPage((prev) => Math.min(maxPage, prev + 1));
+                  }}
+                  disabled={(questionBankPage + 1) * 20 >= questionBankTotal}
+                  className="inline-flex h-9 items-center rounded-lg border border-border/80 bg-background/70 px-3 text-sm text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddSelectedQuestions}
+                  disabled={addingSelectedQuestions || questionBankSelectedIds.length === 0}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {addingSelectedQuestions ? <Loader2 size={13} className="animate-spin" /> : <Database size={13} />}
+                  {addingSelectedQuestions ? 'Adding...' : `Add Selected (${questionBankSelectedIds.length})`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPublishDialog && (
         <div

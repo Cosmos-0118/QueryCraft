@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getInteractiveCheckContext } from '@/lib/test/test-module-db';
-import { calculateInteractiveQuestionPoints } from '@/lib/test/interactive-quiz';
-import { ensureAttemptAccess, requireTestActor } from '@/lib/security/test-module-security';
+import { getInteractiveCheckContext } from '@/features/test-module/lib/test-module-db';
+import { calculateInteractiveQuestionPoints } from '@/features/test-module/lib/interactive-quiz';
+import { ensureAttemptAccess, requireTestActor } from '@/features/test-module/security/test-module-security';
 
 interface CheckAnswerBody {
   attempt_id?: string;

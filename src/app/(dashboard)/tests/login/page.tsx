@@ -12,7 +12,7 @@ import {
   ShieldCheck,
   UserCircle2,
 } from 'lucide-react';
-import { useTestAuth } from '@/hooks/use-test-auth';
+import { useTestAuth } from '@/features/test-module/hooks/use-test-auth';
 
 type Stage = 'email' | 'password' | 'create_password';
 

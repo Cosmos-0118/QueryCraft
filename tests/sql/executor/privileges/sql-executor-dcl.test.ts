@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { SqlExecutor } from '@/lib/engine/sql-executor';
+import { SqlExecutor } from '@/shared/engine/sql';
 
 describe('SqlExecutor DCL (users and grants)', () => {
   let executor: SqlExecutor;

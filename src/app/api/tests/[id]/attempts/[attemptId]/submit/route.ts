@@ -4,9 +4,9 @@ import {
   getTestById,
   overrideSubmittedAttemptScore,
   submitAttempt,
-} from '@/lib/test/test-module-db';
-import { calculateInteractiveAttemptScore, normalizeInteractiveQuizSettings } from '@/lib/test/interactive-quiz';
-import { ensureAttemptAccess, requireTestActor } from '@/lib/security/test-module-security';
+} from '@/features/test-module/lib/test-module-db';
+import { calculateInteractiveAttemptScore, normalizeInteractiveQuizSettings } from '@/features/test-module/lib/interactive-quiz';
+import { ensureAttemptAccess, requireTestActor } from '@/features/test-module/security/test-module-security';
 
 interface SubmitAttemptBody {
   answers?: Record<string, string>;

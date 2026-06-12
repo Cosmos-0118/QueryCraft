@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { bulkUpsertAccounts, type TestAccountRole } from '@/lib/test-auth/accounts-db';
-import { parseCsv, parseXlsx } from '@/lib/test-auth/import-parser';
-import { requireAdminSession } from '@/lib/test-auth/session';
+import { bulkUpsertAccounts, type TestAccountRole } from '@/features/test-module/auth/accounts-db';
+import { parseCsv, parseXlsx } from '@/features/test-module/auth/import-parser';
+import { requireAdminSession } from '@/features/test-module/auth/session';
 
 export const runtime = 'nodejs';
 

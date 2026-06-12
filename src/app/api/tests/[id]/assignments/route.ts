@@ -3,11 +3,11 @@ import {
   addAssignmentToTest,
   listAssignmentsForTest,
   removeAssignmentFromTest,
-} from '@/lib/test/test-module-db';
+} from '@/features/test-module/lib/test-module-db';
 import {
   ensureTeacherOwnsTest,
   requireTestActor,
-} from '@/lib/security/test-module-security';
+} from '@/features/test-module/security/test-module-security';
 
 async function ensureTeacherAccess(req: NextRequest, testId: string) {
   const actorResult = requireTestActor(req, {

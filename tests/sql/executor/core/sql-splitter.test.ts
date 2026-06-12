@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitSqlStatements } from '@/lib/engine/sql-executor/statement-splitter';
+import { splitSqlStatements } from '@/shared/engine/sql/statement-splitter';
 
 describe('SQL statement splitter', () => {
   it('keeps trigger body as single statement', () => {

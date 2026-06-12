@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   decomposeTo3NF,
   verifyDependencyPreservation,
-} from '@/lib/engine/normalizer-engine';
+} from '@/features/normalizer/lib/normalizer-engine';
 import type {
   FunctionalDependency,
   JoinDependency,
   MultivaluedDependency,
   TableSchema,
-} from '@/types/normalizer';
+} from '@/features/normalizer/types';
 
 function makeTable(args: {
   name: string;

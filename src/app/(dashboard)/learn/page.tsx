@@ -2,8 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useThemeStore } from '@/stores/theme-store';
-import { cn } from '@/lib/utils/helpers';
+import { useThemeStore } from '@/shared/ui/theme/store';
+import { cn } from '@/shared/lib/cn';
 import {
   BookOpen,
   Check,

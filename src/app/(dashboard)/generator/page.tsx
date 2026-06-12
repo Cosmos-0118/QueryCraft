@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { useGeneratorStore } from '@/stores/generator-store';
-import { useThemeStore } from '@/stores/theme-store';
+import { useGeneratorStore } from '@/features/generator/store';
+import { useThemeStore } from '@/shared/ui/theme/store';
 import {
   TABLE_TEMPLATES,
   inferForeignKeys,
   type ColumnType,
   type SemanticHint,
-} from '@/lib/engine/data-generator';
-import { cn } from '@/lib/utils/helpers';
+} from '@/features/generator/lib/data-generator';
+import { cn } from '@/shared/lib/cn';
 import {
   Sparkles,
   Plus,

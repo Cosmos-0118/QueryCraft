@@ -3,18 +3,18 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTestAuth as useAuth } from '@/hooks/use-test-auth';
+import { useTestAuth as useAuth } from '@/features/test-module/hooks/use-test-auth';
 import {
   createClipboardIntegrityManager,
   getSuspiciousShortcutDescriptor,
   getViewportCoverageRatio,
   isEditableClipboardTarget,
   TEST_PROCTORING_CONFIG,
-} from '@/lib/test/tamper-detection';
+} from '@/features/test-module/lib/tamper-detection';
 import {
   clearAttemptNavigationLock,
   setAttemptNavigationLock,
-} from '@/lib/test/attempt-navigation-lock';
+} from '@/features/test-module/lib/attempt-navigation-lock';
 import {
   AlertTriangle,
   ArrowLeft,

@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '@/hooks/use-auth';
-import { useThemeStore } from '@/stores/theme-store';
-import { THEME_OPTIONS } from '@/lib/theme';
+import { useAuth } from '@/shared/auth/hooks/use-auth';
+import { useThemeStore } from '@/shared/ui/theme/store';
+import { THEME_OPTIONS } from '@/shared/ui/theme/theme';
 
 export default function SettingsPage() {
   const { user, updateName, changePassword } = useAuth();

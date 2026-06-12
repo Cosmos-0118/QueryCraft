@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { verifyNormalForm } from '@/lib/engine/normalizer-engine';
-import type { FunctionalDependency, TableSchema } from '@/types/normalizer';
+import { verifyNormalForm } from '@/features/normalizer/lib/normalizer-engine';
+import type { FunctionalDependency, TableSchema } from '@/features/normalizer/types';
 
 function makeTable(args: {
   name: string;

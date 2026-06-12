@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import { LegalPage } from '@/components/legal-page';
-import { termsContent } from '@/lib/legal-content';
+import { LegalPage } from '@/shared/ui/legal/legal-page';
+import { termsContent } from '@/shared/ui/legal/content';
 
 export const metadata: Metadata = {
   title: 'Terms of Service | QueryCraft',

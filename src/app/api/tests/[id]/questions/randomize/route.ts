@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addRandomQuestionsFromBankToTest } from '@/lib/test/test-module-db';
-import { ensureTeacherOwnsTest, requireTestActor } from '@/lib/security/test-module-security';
+import { addRandomQuestionsFromBankToTest } from '@/features/test-module/lib/test-module-db';
+import { ensureTeacherOwnsTest, requireTestActor } from '@/features/test-module/security/test-module-security';
 
 type RandomQuestionType = 'mcq' | 'sql_fill' | 'mixed';
 type DifficultyProfile = 'basic' | 'medium' | 'hard' | 'mixed';
@@ -126,13 +126,13 @@ export async function POST(
     let normalizedUnits: number[] | undefined;
     if (requestedUnits !== undefined && requestedUnits !== null) {
       if (!Array.isArray(requestedUnits)) {
-        return NextResponse.json({ error: 'units must be an array of unit numbers (1-5).' }, { status: 400 });
+        return NextResponse.json({ error: 'units must be an array of unit numbers (1-99).' }, { status: 400 });
       }
       const collected: number[] = [];
       for (const raw of requestedUnits) {
         const value = typeof raw === 'number' ? Math.floor(raw) : Math.floor(Number(raw));
-        if (!Number.isFinite(value) || value < 1 || value > 5) {
-          return NextResponse.json({ error: 'Each unit must be an integer between 1 and 5.' }, { status: 400 });
+        if (!Number.isFinite(value) || value < 1 || value > 99) {
+          return NextResponse.json({ error: 'Each unit must be an integer between 1 and 99.' }, { status: 400 });
         }
         if (!collected.includes(value)) collected.push(value);
       }

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   TEST_PROCTORING_CONFIG,
   createClipboardIntegrityManager,
-} from '@/lib/test/tamper-detection';
+} from '@/features/test-module/lib/tamper-detection';
 
 describe('tamper-detection clipboard integrity manager', () => {
   afterEach(() => {

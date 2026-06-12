@@ -5,12 +5,12 @@ import {
   listQuestionsForTest,
   removeQuestionFromTest,
   updateQuestionAnswer,
-} from '@/lib/test/test-module-db';
+} from '@/features/test-module/lib/test-module-db';
 import {
   ensureStudentCanAccessTest,
   ensureTeacherOwnsTest,
   requireTestActor,
-} from '@/lib/security/test-module-security';
+} from '@/features/test-module/security/test-module-security';
 
 function normalizeOptionKey(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 1);

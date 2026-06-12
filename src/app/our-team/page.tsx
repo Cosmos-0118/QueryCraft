@@ -1,8 +1,9 @@
 'use client';
 
-import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { memo, useEffect, useState, useSyncExternalStore } from 'react';
+import { motion } from 'framer-motion';
 import {
   ArrowLeft,
   CircuitBoard,
@@ -13,8 +14,13 @@ import {
   UserRound,
   UsersRound,
 } from 'lucide-react';
-import TileWaveCanvas from '@/components/visual/TileWaveCanvas';
-import { useThemeStore } from '@/stores/theme-store';
+import TeamMemberImage from '@/features/our-team/components/TeamMemberImage';
+import { preloadImages } from '@/shared/lib/preload-images';
+import { useLoadingStore } from '@/shared/ui/loading/store';
+import { useThemeStore } from '@/shared/ui/theme/store';
+
+const TileWaveCanvas = dynamic(() => import('@/shared/ui/marketing/TileWaveCanvas'), { ssr: false });
+const GlitterField = dynamic(() => import('@/shared/ui/marketing/GlitterField'), { ssr: false });
 
 type TeamMember = {
   name: string;
@@ -33,20 +39,20 @@ const mentors: TeamMember[] = [
 
 const developers: TeamMember[] = [
   {
+    name: 'Dhanush',
+    role: 'Developer',
+    tag: 'Developer',
+    image: '/team/dhanush.jpeg',
+    github: 'https://github.com/Cosmos-0118',
+    linkedin: 'https://www.linkedin.com/in/dhanushs-dev/',
+  },
+  {
     name: 'Priyan',
     role: 'Developer',
     tag: 'Developer',
     image: '/team/priyan.png',
     github: 'https://github.com/Skygazer1111',
     linkedin: 'https://www.linkedin.com/in/priyan-rajarajan-b8128b2a2',
-  },
-  {
-    name: 'Dhanush',
-    role: 'Developer',
-    tag: 'Developer',
-    image: '/team/dhanush.png',
-    github: 'https://github.com/Cosmos-0118',
-    linkedin: 'https://www.linkedin.com/in/dhanushs-dev/',
   },
   {
     name: 'Sathappan PL',
@@ -66,9 +72,20 @@ const developers: TeamMember[] = [
   },
 ];
 
+const TEAM_IMAGE_SOURCES = developers
+  .map((member) => member.image)
+  .filter((image): image is string => Boolean(image));
+
 const fadeUp = {
   hidden: { opacity: 0, y: 28 },
   show: { opacity: 1, y: 0 },
+};
+
+const shouldUseLiteMode = () => {
+  if (typeof window === 'undefined') return false;
+
+  const connection = (window.navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches || (connection?.saveData ?? false);
 };
 
 function SectionBadge({ children }: { children: React.ReactNode }) {
@@ -83,7 +100,15 @@ function SectionBadge({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TeamCard({ member, index, variant }: { member: TeamMember; index: number; variant: 'mentor' | 'developer' }) {
+const TeamCard = memo(function TeamCard({
+  member,
+  index,
+  variant,
+}: {
+  member: TeamMember;
+  index: number;
+  variant: 'mentor' | 'developer';
+}) {
   const isMentor = variant === 'mentor';
 
   if (!isMentor) {
@@ -94,17 +119,16 @@ function TeamCard({ member, index, variant }: { member: TeamMember; index: numbe
         whileInView="show"
         viewport={{ once: true, amount: 0.35 }}
         transition={{ duration: 0.5, delay: index * 0.06, ease: 'easeOut' }}
-        whileHover={{ y: -8, rotateX: 2, rotateY: index % 2 === 0 ? -2 : 2 }}
-        className="group relative h-[330px] overflow-hidden rounded-[1.65rem] border border-border/55 bg-card/70 shadow-[0_24px_70px_-48px_var(--shadow-color)] backdrop-blur-md"
+        className="group relative h-[330px] overflow-hidden rounded-[1.65rem] border border-border/55 bg-card/70 shadow-[0_24px_70px_-48px_var(--shadow-color)] transition-transform duration-300 hover:-translate-y-2"
       >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_12%,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_34%),linear-gradient(180deg,color-mix(in_oklab,var(--surface-elevated)_72%,transparent),color-mix(in_oklab,var(--background)_88%,transparent))]" />
         {member.image ? (
-          <Image
+          <TeamMemberImage
             src={member.image}
             alt={`${member.name} profile photo`}
-            fill
             sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
-            className="object-cover transition duration-500 group-hover:scale-105"
+            priority={index < 2}
+            className="transition duration-500 group-hover:scale-105"
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
@@ -150,10 +174,7 @@ function TeamCard({ member, index, variant }: { member: TeamMember; index: numbe
       whileInView="show"
       viewport={{ once: true, amount: 0.35 }}
       transition={{ duration: 0.5, delay: index * 0.06, ease: 'easeOut' }}
-      whileHover={{ y: -8, rotateX: 2, rotateY: index % 2 === 0 ? -2 : 2 }}
-      className={`group relative overflow-hidden rounded-[1.65rem] border border-border/55 bg-card/70 shadow-[0_24px_70px_-48px_var(--shadow-color)] backdrop-blur-md ${
-        isMentor ? 'h-[310px]' : 'h-[280px]'
-      }`}
+      className="group relative h-[310px] overflow-hidden rounded-[1.65rem] border border-border/55 bg-card/70 shadow-[0_24px_70px_-48px_var(--shadow-color)] transition-transform duration-300 hover:-translate-y-2"
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_12%,color-mix(in_oklab,var(--primary)_20%,transparent),transparent_32%),linear-gradient(180deg,color-mix(in_oklab,var(--surface-elevated)_72%,transparent),color-mix(in_oklab,var(--background)_88%,transparent))]" />
       <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-background via-background/72 to-transparent" />
@@ -168,19 +189,18 @@ function TeamCard({ member, index, variant }: { member: TeamMember; index: numbe
             {member.tag}
           </span>
           <span className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-primary">
-            {isMentor ? <GraduationCap size={15} suppressHydrationWarning /> : <UserRound size={15} suppressHydrationWarning />}
+            <GraduationCap size={15} suppressHydrationWarning />
           </span>
         </div>
 
         <div className="group/photo relative mx-auto mt-4 flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border border-border/60 bg-muted/35 text-muted-foreground shadow-[0_18px_50px_-28px_var(--shadow-color)] transition group-hover:border-primary/40 group-hover:text-primary sm:h-32 sm:w-32">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,color-mix(in_oklab,var(--foreground)_16%,transparent),transparent_42%),linear-gradient(180deg,color-mix(in_oklab,var(--surface-elevated)_88%,transparent),color-mix(in_oklab,var(--background)_92%,transparent))]" />
           {member.image ? (
-            <Image
+            <TeamMemberImage
               src={member.image}
               alt={`${member.name} profile photo`}
-              fill
               sizes="128px"
-              className="object-cover transition duration-500 group-hover/photo:scale-105"
+              className="transition duration-500 group-hover/photo:scale-105"
             />
           ) : (
             <UserRound size={42} className="relative" strokeWidth={1.4} suppressHydrationWarning />
@@ -197,49 +217,68 @@ function TeamCard({ member, index, variant }: { member: TeamMember; index: numbe
       </div>
     </motion.article>
   );
-}
+});
 
 export default function OurTeamPage() {
   const { theme } = useThemeStore();
-  const { scrollYProgress } = useScroll();
-  const heroY = useTransform(scrollYProgress, [0, 1], [0, -120]);
-  const glowScale = useTransform(scrollYProgress, [0, 0.7], [1, 1.35]);
+  const start = useLoadingStore((state) => state.start);
+  const setProgress = useLoadingStore((state) => state.setProgress);
+  const setMessage = useLoadingStore((state) => state.setMessage);
+  const stop = useLoadingStore((state) => state.stop);
+  const [isReady, setIsReady] = useState(false);
+
+  const liteMode = useSyncExternalStore(
+    (onStoreChange) => {
+      const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const handleChange = () => onStoreChange();
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    },
+    shouldUseLiteMode,
+    () => false,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const preparePage = async () => {
+      start('Loading team…');
+
+      await preloadImages(TEAM_IMAGE_SOURCES, (loaded, total) => {
+        if (cancelled) return;
+        const progress = total === 0 ? 100 : Math.round((loaded / total) * 100);
+        setProgress(progress);
+        if (loaded === total) {
+          setMessage('Almost ready…');
+        }
+      });
+
+      if (cancelled) return;
+
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+      if (cancelled) return;
+
+      setIsReady(true);
+      stop();
+    };
+
+    void preparePage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [start, setProgress, setMessage, stop]);
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
-      <TileWaveCanvas theme={theme} />
+      {isReady && !liteMode && <TileWaveCanvas theme={theme} />}
 
       <div className="pointer-events-none fixed inset-0 z-[1]">
-        <motion.div
-          style={{ y: heroY, scale: glowScale }}
-          className="absolute left-1/2 top-20 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/15 blur-3xl"
-        />
+        <div className="absolute left-1/2 top-20 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,transparent_0%,color-mix(in_oklab,var(--background)_18%,transparent)_32%,var(--background)_94%)]" />
       </div>
 
-      <div className="pointer-events-none fixed inset-0 z-[2] overflow-hidden">
-        {Array.from({ length: 34 }, (_, index) => (
-          <motion.span
-            key={index}
-            className="absolute h-1 w-1 rounded-full bg-primary/45"
-            style={{
-              left: `${(index * 23) % 100}%`,
-              top: `${(index * 37) % 100}%`,
-            }}
-            animate={{
-              opacity: [0.16, 0.72, 0.16],
-              y: [0, -18, 0],
-              scale: [0.75, 1.25, 0.75],
-            }}
-            transition={{
-              duration: 3.4 + (index % 6) * 0.45,
-              repeat: Infinity,
-              delay: index * 0.12,
-              ease: 'easeInOut',
-            }}
-          />
-        ))}
-      </div>
+      {isReady && !liteMode && <GlitterField />}
 
       <header className="sticky top-0 z-30 border-b border-border/25 bg-background/62 backdrop-blur-xl">
         <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center justify-between px-6">
@@ -262,11 +301,16 @@ export default function OurTeamPage() {
         </div>
       </header>
 
-      <main className="relative z-10">
+      <motion.main
+        className="relative z-10"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: isReady ? 1 : 0 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
         <section className="mx-auto flex min-h-[72svh] w-full max-w-[1200px] flex-col items-center justify-center px-6 py-20 text-center">
           <motion.div
             initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
+            animate={isReady ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 }}
             transition={{ duration: 0.55, ease: 'easeOut' }}
             className="relative"
           >
@@ -285,7 +329,7 @@ export default function OurTeamPage() {
           <motion.div
             className="mt-12 flex items-center gap-2 rounded-full border border-border/50 bg-card/55 px-4 py-2 text-xs font-semibold text-muted-foreground backdrop-blur-md"
             initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
+            animate={isReady ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
             transition={{ duration: 0.5, delay: 0.18 }}
           >
             <Sparkles size={13} className="text-primary" suppressHydrationWarning />
@@ -328,7 +372,7 @@ export default function OurTeamPage() {
             ))}
           </div>
         </section>
-      </main>
+      </motion.main>
     </div>
   );
 }

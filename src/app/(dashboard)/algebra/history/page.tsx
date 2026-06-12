@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useAlgebraStore } from '@/stores/algebra-store';
-import type { AlgebraHistoryEntry } from '@/stores/algebra-store';
+import { useAlgebraStore } from '@/features/algebra/store';
+import type { AlgebraHistoryEntry } from '@/features/algebra/store';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -20,7 +20,7 @@ import {
   GitBranch,
   Table2,
 } from 'lucide-react';
-import { cn } from '@/lib/utils/helpers';
+import { cn } from '@/shared/lib/cn';
 
 export default function AlgebraHistoryPage() {
   const store = useAlgebraStore();

@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { useTestAuth } from '@/hooks/use-test-auth';
+import { useTestAuth } from '@/features/test-module/hooks/use-test-auth';
 import {
   AlertTriangle,
   ArrowLeft,
   ClipboardList,
   Clock3,
   Copy,
+  Database,
   Eye,
   KeyRound,
   Loader2,
@@ -805,6 +806,15 @@ export default function TestsPage() {
         </div>
 
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          {isTeacher && (
+            <Link
+              href="/tests/questions-bank"
+              className="inline-flex h-11 items-center gap-2 rounded-full border border-border/70 bg-background/70 px-4 text-sm font-semibold text-muted-foreground transition hover:border-primary/35 hover:text-foreground"
+            >
+              <Database size={15} />
+              Question Bank
+            </Link>
+          )}
           {isTeacher && (
             <button
                 className="inline-flex h-11 items-center gap-2 rounded-full bg-gradient-to-r from-teal-400 to-cyan-500 px-5 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
