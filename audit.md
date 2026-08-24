@@ -1,148 +1,442 @@
-# SQL Sandbox Audit — MySQL Emulator (Pass 4, Deep Review)
+# QueryCraft Feature Audit
 
-Date: 2026-05-08  
-
-**Method:** End-to-end read of the `SqlExecutor` pipeline, `translateMySQL`, virtual `database-commands`, `alter-table-compat`, tokenizer/privilege code, post-exec error fallback, and the `tests/sql` suite. **Scope** matches Pass 3: **SQLite/sql.js is the intended free backend**; the product goal is to **emulate as much MySQL command surface as is reasonable**, not to host mysqld.
-
----
-
-## Overall rating
-
-**7.5 / 10** *(Pass 3: 7.3 / 10)*
-
-**Rubric (explicit):**
-
-- **9–10:** Near-complete coverage of emulatable `SHOW` / DDL / DCL plus few opaque SQLite errors.
-- **7–8:** Strong pipeline; gaps mostly in long-tail syntax and metadata. **← current band (7.5).**
-- **5–6:** Core DML only; little introspection or admin simulation.
-
-This pass **raises** the score slightly versus Pass 3 after verifying **secondary systems** that are easy to miss in a shallow review: `detectMySqlCompatibilityFallback` (post–SQLite error hints for `ON DUPLICATE`, full-text, `REGEXP`, partitions, `WITH ROLLUP`, `JSON_TABLE`, etc.), a **substantial** `handleAlterTableCompatibility` (MODIFY/CHANGE/ADD/DROP column, RENAME, ADD/DROP index with limits), growing **compatibility tests** (119 total), and layered **unsupported** detection (`UNSUPPORTED_MYSQL_PATTERNS` + verb allowlist + SHOW-specific messages).
-
-Remaining work is still **dominated** by unimplemented `SHOW` variants and MySQL-only expressions—not by lack of structure.
+**Date:** 2026-08-24  
+**Scope:** Full application feature surface (labs, assessment stack, APIs, shared platform)  
+**Sources:** Routes, feature modules, stores, engines, API routes, `package.json`, sidebar nav, README
 
 ---
 
-## Architecture snapshot (execution order)
+## Executive summary
 
-For a single statement, the effective order is:
+QueryCraft has two product layers:
 
-1. **PL/SQL block** path if applicable ([`isPlSqlBlock` / `runPlSqlBlock`](src/lib/engine/sql-executor/index.ts)).
-2. **[`handleDatabaseCommand`](src/lib/engine/sql-executor/internal/database-commands.ts)** — users, grants, `CALL`, `USE`, `SHOW USERS` / `SHOW GRANTS`, MySQL-style `FLUSH PRIVILEGES`, multi-DB `ATTACH` / listing, and other virtual commands.
-3. **[`handlePreparedStatementCommand`](src/lib/engine/sql-executor/index.ts)** — `SET @` session variables, `PREPARE` / `EXECUTE` / `DEALLOCATE` (in-memory; `EXECUTE` re-enters `execute()`).
-4. **[`denyIfNoPrivilege`](src/lib/engine/sql-executor/index.ts)** — table targets from [`extractPrivilegeTableTargets`](src/lib/engine/sql-lexer.ts) or `requiredPrivilegeForSql`; default deny for non-admin when no mapping exists (with `PRIVILEGE_EXEMPT_VERBS` for TCL / `SET` / `USE` / `START`).
-5. **[`handleAlterTableCompatibility`](src/lib/engine/sql-executor/internal/alter-table-compat.ts)** — emulated `ALTER` before raw SQLite.
-6. **View rewrites** for simple single-table view DML ([`view-manager`](src/lib/engine/sql-executor/view-manager.ts)).
-7. **[`translateMySQL`](src/lib/engine/sql-executor/translation.ts)** — SHOW stubs, TCL, SET no-ops / `FOREIGN_KEY_CHECKS`, strip/replace MySQL idioms, type rewrites, `ANY`/`SOME`/`ALL` via [`rewriteSubqueryOperators`](src/lib/engine/sql-executor/subquery-rewriter.ts), statistical aggregates.
-8. **[`detectUnsupportedMySqlCommand`](src/lib/engine/sql-executor/index.ts)** — explicit server-only patterns, SQLite verb allowlist, SHOW variant messaging.
-9. **`activeDb.exec`** — on failure, **[`detectMySqlCompatibilityFallback`](src/lib/engine/sql-executor/index.ts)** maps common SQLite syntax errors to MySQL-oriented explanations when regexes match.
+1. **Browser labs** — SQL, algebra, TRC, ER, normalizer, generator, learn (work offline / local-first)
+2. **Postgres Test Module** — classic tests, interactive quiz, question bank, admin (needs `TEST_DB_URL`)
 
-This layering is **above average** for a WASM SQL tutor; the rating reflects **coverage breadth**, not absence of layers.
+Core learning labs are production-ready for demos and class use. The Test/Quiz/Admin stack is largely built but env-gated and underdocumented relative to the rest of the app. README still understates the real API and assessment surface.
 
 ---
 
-## Verification snapshot
+## Tech stack
 
-- **Tests:** `npm test -- tests/sql` → **13 files, 119 tests passed** (suite grew vs Pass 3).
-- **Files deeply reviewed:**  
-  [`index.ts`](src/lib/engine/sql-executor/index.ts) · [`translation.ts`](src/lib/engine/sql-executor/translation.ts) · [`database-commands.ts`](src/lib/engine/sql-executor/internal/database-commands.ts) · [`alter-table-compat.ts`](src/lib/engine/sql-executor/internal/alter-table-compat.ts) · [`sql-lexer.ts`](src/lib/engine/sql-executor/sql-lexer.ts) · [`mysql-compat.ts`](src/lib/engine/sql-executor/mysql-compat.ts) · [`subquery-rewriter.ts`](src/lib/engine/sql-executor/subquery-rewriter.ts)
+| Layer | Technology | Version / notes | Used for |
+|-------|------------|-----------------|----------|
+| Framework | Next.js (App Router) | `^16.2.9` | App shell, routes, API routes |
+| UI library | React / React DOM | `19.2.3` | Client UI |
+| Language | TypeScript | `^5` | Type-safe app + engines |
+| Styling | Tailwind CSS | `^4` (+ `@tailwindcss/postcss`) | Design system / layout |
+| Motion | Framer Motion | `^12` | Landing + UI motion |
+| Icons | Lucide React | `^0.475` | Sidebar / UI icons |
+| State | Zustand | `^5` | Feature stores + persistence |
+| Validation | Zod | `^3.24` | Schemas / input validation |
+| SQL editor | CodeMirror 6 | `codemirror` + `@codemirror/*` | Sandbox SQL editing |
+| Diagrams | `@xyflow/react` (React Flow) | `^12.10` | ER Builder (+ normalizer canvas pieces) |
+| In-browser SQL | sql.js (WASM SQLite) | `^1.14` | Sandbox / algebra / TRC execution |
+| Synthetic data | `@faker-js/faker` | `^10.3` | Table Generator / normalizer samples |
+| Export | html-to-image | `^1.11` | ER / canvas PNG export |
+| Spreadsheet import | read-excel-file | `^9` | Admin / question bank Excel import |
+| Select UI | react-select | `^5.10` | Form selects |
+| Class helpers | clsx, tailwind-merge, CVA | — | Conditional / variant styles |
+| Server DB | `pg` (node-postgres) | `^8.20` | Test Module Postgres |
+| Optional AI | Groq API | env: `GROQ_API_KEY` | Normalizer “Analyze with AI” |
+| Unit tests | Vitest | `^3` | Engine / SQL suite |
+| Lint / format | ESLint 9, Prettier | Next ESLint config `16.1.6` | Code quality |
+| Runtime target | Node.js | 20+ (README) | Dev / build / migrate scripts |
 
----
+### Architecture pattern
 
-## Issues (ordered by criticality)
-
-### 1) Critical — `SHOW` / catalog parity
-
-**Implemented in [`translateMySQL`](src/lib/engine/sql-executor/translation.ts) (non-exhaustive):**  
-`SHOW DATABASES`, `SHOW TABLES` / `SHOW FULL TABLES`, `SHOW COLUMNS`/`FIELDS FROM`, `DESC`/`DESCRIBE`/`EXPLAIN` table form, `SHOW CREATE TABLE`, `SHOW INDEX`/`INDEXES`/`KEYS FROM`, `SHOW TABLE STATUS`, `SHOW WARNINGS`/`ERRORS`, `SHOW ENGINES`, `SHOW CREATE DATABASE`, `SHOW PROCESSLIST`, `SHOW VARIABLES`/`STATUS` (stubs), plus `SHOW` handling augmented in [`database-commands`](src/lib/engine/sql-executor/internal/database-commands.ts) (e.g. `SHOW USERS`, `SHOW GRANTS`).
-
-**Still high-impact gaps** (typical in dumps, tooling, and tutorials):  
-`SHOW CREATE VIEW`, `SHOW TRIGGERS`, `SHOW PROCEDURE STATUS`, `SHOW FUNCTION STATUS`, `SHOW CREATE PROCEDURE` / `FUNCTION`, `SHOW OPEN TABLES`, `SHOW TABLE TYPES`, charset/collation listings, and qualified `db.table` / `IN db` forms that current single-line regexes do not accept.
-
-**Impact:** Introspection-driven scripts **break early** even when the objects exist in `sqlite_master` or executor metadata.
-
-**Mitigation direction:** Implement each as a small **virtual result** (query `sqlite_master`, `PRAGMA`, and stored procedure/function/trigger maps).
-
----
-
-### 2) High — MySQL-only SQL features (rewrite + error quality)
-
-**Prevention:** [`UNSUPPORTED_MYSQL_PATTERNS`](src/lib/engine/sql-executor/index.ts) blocks some server-only statements before execution.
-
-**After SQLite failure:** [`detectMySqlCompatibilityFallback`](src/lib/engine/sql-executor/index.ts) explains several patterns: `ON DUPLICATE KEY UPDATE` limitations, `MATCH ... AGAINST`, `REGEXP`/`RLIKE`, `PARTITION`, `TABLESPACE`, `WITH ROLLUP`, `JSON_TABLE`.
-
-**Gaps:** Anything **not** in those lists still surfaces as a raw SQLite error. Long tail includes additional functions, advanced JSON operators, spatial types, generated-column edge cases, etc.
-
-**Impact:** “Paste from Stack Overflow” workloads remain **fragile** until either rewritten or caught by fallback hints.
-
----
-
-### 3) High — `ON DUPLICATE KEY UPDATE` → SQLite upsert semantics
-
-Translation rewrites to `ON CONFLICT DO UPDATE` ([`translation.ts`](src/lib/engine/sql-executor/translation.ts)). SQLite requires a **conflict target** compatible with the schema; MySQL’s duplicate-key rule can differ. Fallback messaging admits **limited emulation** ([`detectMySqlCompatibilityFallback`](src/lib/engine/sql-executor/index.ts)).
-
-**Impact:** Valid MySQL upserts can **fail** on SQLite even after rewrite.
+| Concern | Approach |
+|---------|----------|
+| Labs SQL runtime | Browser WASM (sql.js), not a hosted DB |
+| Lab persistence | Zustand + user-scoped `localStorage` |
+| Device auth | Client SHA-256 accounts + `sessionStorage` session |
+| Test Module auth | Server HMAC sessions, HTTP-only cookie, scrypt passwords |
+| Test Module data | Postgres via `TEST_DB_URL` + SQL migrations |
+| Seed datasets | JSON files under `seed/datasets` via `GET /api/datasets` |
 
 ---
 
-### 4) High — Lexer-driven privileges vs exotic SQL
+## Feature scorecard
 
-[`extractPrivilegeTableTargets`](src/lib/engine/sql-lexer.ts) covers core read/DML + `TRUNCATE` in depth; `requiredPrivilegeForSql` extends coverage ([`index.ts`](src/lib/engine/sql-executor/index.ts)). Unusual syntactic shapes can still produce **conservative privilege mistakes** (false deny or over-broad allow in edge cases).
-
-**Impact:** Matters most for **non-admin** sandboxes; default deny on unmapped verbs reduces silent bypass risk.
-
----
-
-### 5) Medium — `ALTER TABLE` emulation scope
-
-[`handleAlterTableCompatibility`](src/lib/engine/sql-executor/internal/alter-table-compat.ts) supports a **bounded** set: MODIFY/CHANGE column (rebuild), ADD COLUMN (with FIRST/AFTER), DROP COLUMN, RENAME TO, ADD/DROP INDEX-style operations; unknown segments return **`Unsupported ALTER TABLE operation segment`**.
-
-**Impact:** MySQL migrations that mix unsupported alter clauses still stop with an explicit message—good— but **coverage** is not “all MySQL ALTER.”
-
----
-
-### 6) Medium — Virtual multi-database vs MySQL catalogs
-
-`SHOW DATABASES` returns the **active** DB name; `CREATE DATABASE`/`DROP DATABASE` are largely **virtual** ([`translation.ts`](src/lib/engine/sql-executor/translation.ts)). [`database-commands`](src/lib/engine/sql-executor/internal/database-commands.ts) adds `ATTACH`-based multi-db behavior for some flows.
-
-**Impact:** Tools expecting a **large information_schema-style catalog** will not see full fidelity.
-
----
-
-### 7) Medium — Triggers and stored routines
-
-[`normalizeMySqlTriggerDefinition`](src/lib/engine/sql-executor/mysql-compat.ts) rejects several MySQL trigger body idioms. Procedures/functions work for supported subsets; parameter modes and bodies remain **partially** supported.
-
-**Impact:** Routine-heavy dumps fail **more often** than OLTP CRUD.
+| Feature | Status | Needs |
+|---------|--------|-------|
+| Landing / Privacy / Terms | Shipped | — |
+| Our Team | Shipped* | — (*mentor placeholders) |
+| Device-local auth | Shipped | — |
+| Dashboard | Shipped (thin) | — |
+| SQL Sandbox + history | Shipped | datasets API |
+| Algebra + history | Shipped | datasets API |
+| Tuple Calculus + history | Shipped | datasets API |
+| ER Builder | Shipped | — |
+| Normalizer | Shipped UI, split architecture | Groq optional |
+| Table Generator | Shipped | — |
+| Learn | Shipped | — |
+| Settings / Themes | Shipped | — |
+| Test Module + Question Bank | Shipped if DB up | Postgres |
+| Interactive Quiz | Shipped if DB up | Postgres |
+| Admin | Shipped if DB up | Postgres + admin env |
+| SQL engine (MySQL-on-SQLite) | Strong (~7.5/10) | WASM |
 
 ---
 
-### 8) Low — `RESET` / `FLUSH` / admin no-ops
+## Navigation
 
-[`translateMySQL`](src/lib/engine/sql-executor/translation.ts) treats some admin prefixes as **empty OK** results. That matches a sandbox with no server process but can **mask** MySQL subcommands users expected to do something observable.
+Sidebar (`src/app/(dashboard)/layout.tsx`):
 
----
+- **Main:** Dashboard, Learn
+- **Labs:** SQL Sandbox, Table Generator, Test Module, Question Bank
+- **Theory:** Algebra, Tuple Calculus, ER Builder, Normalizer
+- **Account:** Settings
 
-### 9) Low — Prepared statements are session-local and simplified
+**Not in sidebar:** `/admin`, `/interactive-quiz` (reached via Test Module), history sub-routes, privacy/terms/team.
 
-In-memory `PREPARE`/`EXECUTE` does not replicate **full** MySQL wire/server semantics; adequate for most labs if documented.
-
----
-
-## Strengths (confirmed in this pass)
-
-- **Triple-line defense:** pre-check unsupported patterns, post-translate verb/show detection, **post-sqlite** compatibility fallback.
-- **Real ALTER emulation** beyond naive passthrough, with explicit **unsupported segment** errors.
-- **DML compatibility:** `INSERT IGNORE`, `REPLACE`, MySQL `LIMIT` offset form, `FOR UPDATE` strip, aggregate variance/stddev expansion, `ANY`/`SOME`/`ALL` rewrites, concat rules.
-- **119** SQL-layer tests exercising executor, compatibility, routines, transactions, multidb, PL/SQL integration.
+Dashboard home tiles omit Generator and Test Module despite sidebar links.
 
 ---
 
-## Out of scope (honest stubs / rejects)
+## 1. Landing / marketing (`/`, `/privacy`, `/terms`, `/our-team`)
 
-Replication admin, binary logs, `INSTALL PLUGIN`, server `LOAD DATA`/`LOAD XML`, `XA`, `HANDLER`, `SHUTDOWN`, `CLONE`, etc.—appropriate to reject or stub; **not** counted against the 7.5 for “wrong backend.”
+**Status:** Fully shipped (mentors: placeholder)
+
+**Capabilities**
+- Animated landing with tool cards and CTA to login/dashboard
+- Theme picker / lite mode for reduced motion
+- Privacy + Terms via shared legal UI
+- Our Team with developer profiles
+
+**Gaps**
+- Mentors are `"Mentor Name"` placeholders
+- Landing omits Test Module / Interactive Quiz
+- Marketing stats (“86+ commands”, “13 categories”) slightly stale vs Learn catalog
+
+**Dependencies:** Browser-only
 
 ---
 
-## Final assessment
+## 2. Auth (device-local) — `/login`, `/register`
 
-Pass 4 confirms the emulator is **engineered in depth** (not a thin regex wrapper). The score moves to **7.5** because those mechanisms were **fully credited** in the rubric. The **next leap** toward “almost all commands” is **quantitative:** implement the missing **SHOW** and catalog paths, then expand **rewrite/fallback** pairs for the highest-frequency MySQL-only constructs still hitting raw SQLite errors.
+**Status:** Fully shipped
+
+**Capabilities**
+- Multi-account on one device; password check; session restore
+- Export/import account codes
+- Per-account workspace isolation in localStorage
+- Dashboard layout client auth guard → `/login`
+
+**Gaps**
+- Educational auth only (SHA-256 client hash), not production identity
+- Register min password length (4) vs Settings (`minLength={8}`) mismatch
+- Separate from Test Module auth
+
+**Dependencies:** Browser-only
+
+---
+
+## 3. Dashboard home — `/dashboard`
+
+**Status:** Fully shipped (thin hub)
+
+**Capabilities**
+- Static workspace chooser / “Learning Command Center” grid
+
+**Gaps**
+- No recent activity; missing Generator / Test Module tiles; stats slightly stale
+
+**Dependencies:** Browser-only (auth-gated)
+
+---
+
+## 4. SQL Sandbox (+ history)
+
+**Status:** Fully shipped — strongest lab module
+
+**Capabilities**
+- In-browser sql.js with MySQL-style emulation
+- CodeMirror editor, multi-statement execution, schema browser
+- Seed datasets, SQL import, CSV export
+- Query history (persisted, user-scoped)
+- Panels for triggers, procedures, cursors, grants/security
+- Statement-level results and SQL error details
+
+**Gaps**
+- Not real MySQL (SQLite/WASM + emulation)
+- Long-tail `SHOW` / server-only syntax gaps (see historical SQL emulator notes)
+
+**Dependencies:** Browser-only + `GET /api/datasets`
+
+---
+
+## 5. Relational Algebra (+ history)
+
+**Status:** Fully shipped
+
+**Capabilities**
+- Parser, expression tree, step-by-step evaluation, SQL translation
+- Ops: σ π γ τ, joins (natural/outer/semi/anti), ∪ ∩ − ÷ × ρ, sort/agg
+- Shares sql.js tables/seeds; history persistence
+
+**Gaps**
+- Condition evaluation is JS-based (edge-case limits)
+- Division/rename depth limited vs textbook edge cases
+
+**Dependencies:** Browser-only (+ datasets API)
+
+---
+
+## 6. Tuple Calculus (+ history)
+
+**Status:** Fully shipped
+
+**Capabilities**
+- TRC → SQL → execute (`{ t | … }`, ∃/∀, ∧∨¬)
+- Examples per seed dataset; history pages
+- Shared table browser / create-table patterns
+
+**Gaps**
+- Translation heuristics (not a full TRC prover)
+- Complex nested ∀/∃ may fail; depends on SQL engine for correctness
+
+**Dependencies:** Browser-only (+ datasets API)
+
+---
+
+## 7. ER Diagram Builder
+
+**Status:** Fully shipped
+
+**Capabilities**
+- React Flow canvas: entities (weak), attributes (key/multi/derived/composite)
+- Relationships 1:1 / 1:N / M:N
+- Presets: University, Banking, Credentia
+- Undo/redo, properties panel
+- ER → relational conversion + SQL; PNG export
+
+**Gaps**
+- Composite attrs not fully expanded in conversion
+- Identifying/weak relationship nuances simplified; column types mostly TEXT
+
+**Dependencies:** Browser-only
+
+---
+
+## 8. Normalizer Studio
+
+**Status:** Shipped UI with split / unfinished architecture
+
+**What users get**
+- Large monolithic page: stage canvases UNF → 1NF → 2NF → 3NF → 4NF → 5NF
+- Verification via `verifyNormalForm`
+- Faker sample data; import from Table Generator
+- Optional **Analyze with AI** → `POST /api/normalizer/analyze-ai`
+
+**Also present but mostly unwired**
+- Full engine (`normalize()`, decompose, lossless / dependency preservation)
+- Canvas components (`normalizer-canvas`, `nf-stepper`, toolbar, store, etc.)
+
+**Gaps**
+- No dedicated BCNF stage in the UI (BCNF exists in engine order)
+- Page uses verification more than the auto-`normalize()` pipeline
+- Orphan / ROADMAP UI under `features/normalizer/components/`
+- AI needs `GROQ_API_KEY` (not listed in `.env.example`)
+
+**Dependencies:** Browser-only core; Groq optional for AI
+
+---
+
+## 9. Table Generator
+
+**Status:** Fully shipped
+
+**Capabilities**
+- Multi-table definitions, semantic hints, Faker values, FK inference
+- Templates (students / employees / ecommerce / university / hospital)
+- Copy generated SQL; Zustand persistence; Normalizer import source
+
+**Gaps**
+- No one-click “load into Sandbox” (copy/paste workflow)
+
+**Dependencies:** Browser-only
+
+---
+
+## 10. Learn page
+
+**Status:** Fully shipped (reference, not interactive tutor)
+
+**Capabilities**
+- Large static searchable catalog (~100 command entries)
+- DDL, constraints, DML, SELECT, aggregates, joins, subqueries, set ops, TCL, MySQL routines, DCL, metadata, algebra, normal forms
+- Search, copy examples, category UI
+
+**Gaps**
+- Not interactive lessons; marketing “visual walkthroughs” oversells UI chrome
+
+**Dependencies:** Browser-only
+
+---
+
+## 11. Settings
+
+**Status:** Fully shipped
+
+**Capabilities**
+- Display name, change password, 6 theme palettes
+
+**Gaps**
+- No workspace data export/wipe from Settings
+- Password length inconsistency with register
+
+**Dependencies:** Browser-only
+
+---
+
+## 12. Admin — `/admin`
+
+**Status:** Fully shipped when env configured
+
+**Capabilities**
+- Admin-only (Test Module auth)
+- CRUD teachers/students; Excel/CSV import; search/filter
+
+**Gaps**
+- Not in main sidebar
+- Platform admin via env (`ADMIN_EMAIL` / `ADMIN_PASSWORD`), not a DB role row alone
+
+**Dependencies:** Postgres `TEST_DB_URL`, admin env, `TEST_AUTH_SECRET` (prod)
+
+---
+
+## 13. Test Module (`/tests/*`)
+
+**Status:** Fully shipped when DB configured; unusable without `TEST_DB_URL` + migrations
+
+| Route | Role |
+|-------|------|
+| `/tests/login` | Email lookup → password / first-time setup |
+| `/tests` | Teacher list + create/publish; student join + past tests; chooser → Interactive Quiz |
+| `/tests/questions-bank` | Browse/upload MCQ + sql_fill |
+| `/tests/[id]` | Questions, bank select/randomize, modes, publish code |
+| `/tests/[id]/attempt` | Proctored attempt (fullscreen, blur, paste block, violations, autosave, auto-submit) |
+| `/tests/[id]/result` | Scores, per-question feedback, violations |
+| `/tests/[id]/review` | Teacher review / publish results |
+
+**Capabilities**
+- Roles admin / teacher / student
+- Classic MCQ + sql_fill; mix modes; assignments; join codes
+- Integrity monitoring; seeded question bank
+- Migrations `0001`–`0015`
+
+**Gaps**
+- Dual auth (device-local vs Test Module) is confusing
+- README underdocuments Test APIs / env
+- sql_fill grading is string-oriented (not live SQL sandbox grading)
+- Question Bank in sidebar for all device-authed users, but still needs Test login + DB
+
+**Dependencies:** Postgres, migrations, `TEST_AUTH_SECRET`, admin env for admin flows
+
+---
+
+## 14. Interactive Quiz
+
+**Status:** Fully shipped (Postgres)
+
+**Capabilities**
+- Create with timer / max points / difficulty / randomize
+- Per-question timer; live scoring via `/interactive/check`
+- Leaderboard with live refresh
+- MCQ-only
+
+**Gaps**
+- Not in main sidebar (via Test chooser)
+- No sql_fill; lighter proctoring than classic attempt
+
+**Dependencies:** Same as Test Module
+
+---
+
+## 15. API routes
+
+| Route group | Status | Purpose |
+|-------------|--------|---------|
+| `GET /api/datasets` | Shipped | Seed JSON |
+| `POST /api/normalizer/analyze-ai` | Shipped | Groq FD/MVD/JD assist |
+| `/api/test-auth/*` | Shipped | lookup, login, setup-password, session, me, logout, admin users/import |
+| `/api/tests/*` | Shipped | CRUD tests, questions, randomize/select, publish, join, attempts, submit, violations, review, assignments, leaderboard, interactive/check, health/probe |
+
+**Gap:** README still claims only datasets + health APIs.
+
+---
+
+## 16. Shared SQL engine / MySQL emulation
+
+**Status:** Fully shipped as an emulator (not mysqld) — prior deep review ~**7.5 / 10**
+
+**Capabilities**
+- Multi-DB ATTACH, users/grants, procedures/functions/triggers/cursors
+- PL/SQL-ish blocks, ALTER compatibility, view DML rewrite
+- MySQL translation layer, subquery ANY/ALL, unsupported-pattern guards
+- Vitest coverage under `tests/sql/`
+
+**Gaps**
+- Incomplete SHOW/metadata parity
+- Server-only ops rejected; SQLite semantics underneath
+- Upsert / exotic ALTER / long-tail functions remain fragile
+
+**Dependencies:** Browser WASM (`public/sql-wasm.wasm`)
+
+---
+
+## 17. Seed datasets
+
+**Status:** Fully shipped
+
+| Dataset | File |
+|---------|------|
+| Banking | `seed/datasets/banking.json` |
+| Credentia | `seed/datasets/credentia.json` |
+| University | `seed/datasets/university.json` |
+
+Used by Sandbox, Algebra, and Tuple Calculus via `/api/datasets`.
+
+---
+
+## 18. Theme / sync / legal UI
+
+**Status:** Fully shipped
+
+- **Theme:** 6 palettes via CSS variables (landing, dashboard, settings)
+- **Sync:** `UserScopedStateSync` rehydrates lab stores on account switch
+- **Legal:** shared `LegalPage` + content for Privacy / Terms
+
+**Dependencies:** Browser-only
+
+---
+
+## Highest-signal findings
+
+1. **README lag** — Documents only datasets + health; real surface includes full Test Module + AI normalizer APIs.
+2. **Normalizer split-brain** — Production UI is one huge page; ROADMAP components/store are unused / underused.
+3. **Two auth systems** — Device-local SHA-256 vs Postgres scrypt Test Module.
+4. **Labs are solid offline; assessments need Postgres** — Neon/local + migrate + secrets.
+5. **Nav vs marketing** — Tests / Admin / Interactive Quiz under-linked on home/landing; Admin not in sidebar.
+6. **`.env.example` incomplete** — Missing documented `GROQ_*`, `ADMIN_*`, `TEST_AUTH_SECRET`.
+
+---
+
+## Recommended next priorities
+
+| Priority | Item |
+|----------|------|
+| P0 | Document Test Module + env vars in README / `.env.example` |
+| P0 | Treat Postgres as a hard dependency whenever demoing tests/quiz |
+| P1 | Resolve Normalizer architecture (wire engine/canvas or delete orphans) |
+| P1 | Align dashboard/landing/nav with Generator, Tests, Quiz, Admin |
+| P2 | Unify or clearly separate the two auth experiences for students |
+| P2 | Improve sql_fill grading (live SQL check vs string match) |
+| P2 | Continue MySQL SHOW / metadata parity in the sandbox engine |
+
+---
+
+## Bottom line
+
+Learning labs are **demo-ready**. Test/Quiz/Admin is **largely built** but **env-gated and poorly documented**. Normalizer **works**, with unfinished architectural debt.
