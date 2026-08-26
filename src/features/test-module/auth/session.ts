@@ -3,7 +3,6 @@ import { verifyTestAuthToken, type TestAuthTokenPayload } from '@/features/test-
 
 export const TEST_AUTH_HEADER = 'x-test-auth-token';
 export const TEST_AUTH_COOKIE = 'qc_test_auth';
-export const TEST_AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 12;
 
 function readCookieValue(cookieHeader: string | null, name: string): string | null {
   if (!cookieHeader) return null;
@@ -60,7 +59,7 @@ export function applyTestAuthCookie(res: NextResponse, token: string): void {
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    maxAge: TEST_AUTH_COOKIE_MAX_AGE_SECONDS,
+    // Omit maxAge so the cookie is a browser session cookie.
   });
 }
 
