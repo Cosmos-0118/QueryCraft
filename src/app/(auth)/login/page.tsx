@@ -8,7 +8,6 @@ import {
   KeyRound,
   Loader2,
   Mail,
-  ShieldCheck,
   UserCircle2,
 } from 'lucide-react';
 import { useTestAuth } from '@/features/test-module/hooks/use-test-auth';
@@ -317,13 +316,8 @@ function LoginPageContent() {
 
   return (
     <div className="relative mx-auto w-full max-w-xl rounded-3xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 sm:p-8">
-      <div className="mb-7 flex items-start justify-between gap-3">
-        {stage === 'email' ? (
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3.5 py-1.5 text-xs font-semibold text-primary">
-            <ShieldCheck size={12} />
-            QueryCraft Login
-          </div>
-        ) : (
+      {stage !== 'email' && (
+        <div className="mb-7">
           <button
             type="button"
             onClick={handleBackToEmail}
@@ -332,8 +326,8 @@ function LoginPageContent() {
             <ArrowLeft size={13} />
             Change email
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       <h1 className="text-2xl font-bold tracking-tight sm:text-[2rem]">Sign in to QueryCraft</h1>
 
