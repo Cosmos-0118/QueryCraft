@@ -402,7 +402,7 @@ export default function TestsPage() {
   const [showTeacherModuleChooser, setShowTeacherModuleChooser] = useState(true);
   const [hydrationTimeoutReached, setHydrationTimeoutReached] = useState(false);
 
-  const { user, hydrated, isAuthenticated, logout } = useTestAuth();
+  const { user, hydrated, isAuthenticated } = useTestAuth();
   const isTeacher = user?.role === 'teacher';
   const isStudent = user?.role === 'student';
   const submissionNoticeVisible = searchParams?.get('submitted') === '1';
@@ -414,13 +414,7 @@ export default function TestsPage() {
   const handleBackFromWorkspace = () => {
     setJoinError(null);
     setError(null);
-
-    if (isTeacher) {
-      setShowTeacherModuleChooser(true);
-      return;
-    }
-
-    logout();
+    setShowTeacherModuleChooser(true);
   };
 
   useEffect(() => {
@@ -771,13 +765,15 @@ export default function TestsPage() {
       <div className="mb-6 overflow-hidden rounded-[2rem] border border-white/10 bg-card/80 p-5 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-7">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <button
-            onClick={handleBackFromWorkspace}
+          {isTeacher && (
+            <button
+              onClick={handleBackFromWorkspace}
               className="mb-4 inline-flex items-center gap-2 rounded-full border border-teal-300/60 bg-gradient-to-r from-teal-400 to-cyan-500 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110"
-          >
-            <ArrowLeft size={13} />
-            {isTeacher ? 'Back to Test Type' : 'Back'}
-          </button>
+            >
+              <ArrowLeft size={13} />
+              Back to Test Type
+            </button>
+          )}
             <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
               {isTeacher ? 'Normal Test Workspace' : 'Your Test Dashboard'}
             </h1>
