@@ -180,7 +180,7 @@ export default function TestReviewPage() {
   useEffect(() => {
     if (!hydrated) return;
     if (!isAuthenticated || !user) {
-      router.replace(`/tests/login?next=${encodeURIComponent(`/tests/${testId ?? ''}/review`)}`);
+      router.replace(`/login?next=${encodeURIComponent(`/tests/${testId ?? ''}/review`)}`);
     }
   }, [hydrated, isAuthenticated, router, testId, user]);
 
@@ -198,7 +198,7 @@ export default function TestReviewPage() {
           const testRes = await fetch(`/api/tests/${testId}`, { signal: controller.signal });
 
           if (testRes.status === 401) {
-            router.replace(`/tests/login?next=${encodeURIComponent(`/tests/${testId}/review`)}`);
+            router.replace(`/login?next=${encodeURIComponent(`/tests/${testId}/review`)}`);
             return;
           }
 
@@ -221,7 +221,7 @@ export default function TestReviewPage() {
         ]);
 
         if (testRes.status === 401 || assignmentsRes.status === 401 || reviewRes.status === 401) {
-          router.replace(`/tests/login?next=${encodeURIComponent(`/tests/${testId}/review`)}`);
+          router.replace(`/login?next=${encodeURIComponent(`/tests/${testId}/review`)}`);
           return;
         }
 

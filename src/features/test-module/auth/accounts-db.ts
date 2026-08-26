@@ -2,13 +2,16 @@ import { sql } from '@/features/test-module/db';
 import { hashPassword } from '@/features/test-module/auth/crypto';
 import { deriveDisplayName } from '@/features/test-module/auth/admin-env';
 
-export type TestAccountRole = 'teacher' | 'student';
+export type TestAccountRole = 'admin' | 'teacher' | 'student';
 
 export interface TestAccountRecord {
   id: string;
   email: string;
   role: TestAccountRole;
   display_name: string;
+  faculty_id: string | null;
+  registration_number: string | null;
+  section: string | null;
   password_set: boolean;
   is_active: boolean;
   created_at: string;
@@ -20,6 +23,9 @@ interface AccountWithSecretRow {
   email: string;
   role: TestAccountRole;
   display_name: string | null;
+  faculty_id: string | null;
+  registration_number: string | null;
+  section: string | null;
   password_hash: string | null;
   password_set: boolean;
   is_active: boolean;
@@ -32,6 +38,9 @@ interface PublicAccountRow {
   email: string;
   role: TestAccountRole;
   display_name: string | null;
+  faculty_id: string | null;
+  registration_number: string | null;
+  section: string | null;
   password_set: boolean;
   is_active: boolean;
   created_at: string;
@@ -44,6 +53,9 @@ function mapPublic(row: PublicAccountRow | AccountWithSecretRow): TestAccountRec
     email: row.email,
     role: row.role,
     display_name: row.display_name ?? deriveDisplayName(row.email),
+    faculty_id: row.faculty_id ?? null,
+    registration_number: row.registration_number ?? null,
+    section: row.section ?? null,
     password_set: !!row.password_set,
     is_active: !!row.is_active,
     created_at: row.created_at,
@@ -56,6 +68,9 @@ const PUBLIC_COLUMNS = `
   email,
   role,
   display_name,
+  faculty_id,
+  registration_number,
+  section,
   password_set,
   is_active,
   created_at,
@@ -67,6 +82,9 @@ const SECRET_COLUMNS = `
   email,
   role,
   display_name,
+  faculty_id,
+  registration_number,
+  section,
   password_hash,
   password_set,
   is_active,
@@ -79,7 +97,47 @@ function normalizeEmail(email: string): { email: string; emailLower: string } {
   return { email: trimmed, emailLower: trimmed.toLowerCase() };
 }
 
+let authSchemaReadyPromise: Promise<void> | null = null;
+
+export function ensureAuthSchemaExtensions(): Promise<void> {
+  authSchemaReadyPromise ??= sql.raw(
+    `
+    ALTER TABLE test_module_accounts
+      ADD COLUMN IF NOT EXISTS faculty_id text,
+      ADD COLUMN IF NOT EXISTS registration_number text,
+      ADD COLUMN IF NOT EXISTS section text;
+
+    ALTER TABLE test_module_accounts
+      DROP CONSTRAINT IF EXISTS test_module_accounts_role_check;
+
+    ALTER TABLE test_module_accounts
+      ADD CONSTRAINT test_module_accounts_role_check
+      CHECK (role IN ('admin', 'teacher', 'student'));
+
+    CREATE TABLE IF NOT EXISTS test_auth_otps (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      email_lower text NOT NULL,
+      otp_hash text NOT NULL,
+      purpose text NOT NULL CHECK (purpose IN ('setup_password')),
+      expires_at timestamptz NOT NULL,
+      consumed_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_test_auth_otps_email_purpose
+      ON test_auth_otps (email_lower, purpose, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_test_auth_otps_expires_at
+      ON test_auth_otps (expires_at);
+    `,
+    [],
+  ).then(() => undefined);
+
+  return authSchemaReadyPromise;
+}
+
 export async function findAccountByEmailWithSecret(email: string) {
+  await ensureAuthSchemaExtensions();
   const { emailLower } = normalizeEmail(email);
 
   const result = await sql.raw(
@@ -96,6 +154,7 @@ export async function findAccountByEmailWithSecret(email: string) {
 }
 
 export async function findAccountByEmail(email: string): Promise<TestAccountRecord | null> {
+  await ensureAuthSchemaExtensions();
   const { emailLower } = normalizeEmail(email);
 
   const result = await sql.raw(
@@ -113,6 +172,7 @@ export async function findAccountByEmail(email: string): Promise<TestAccountReco
 }
 
 export async function findAccountById(id: string): Promise<TestAccountRecord | null> {
+  await ensureAuthSchemaExtensions();
   const result = await sql.raw(
     `
     SELECT ${PUBLIC_COLUMNS}
@@ -128,10 +188,12 @@ export async function findAccountById(id: string): Promise<TestAccountRecord | n
 }
 
 export async function listAccounts(): Promise<TestAccountRecord[]> {
+  await ensureAuthSchemaExtensions();
   const result = await sql.raw(
     `
     SELECT ${PUBLIC_COLUMNS}
     FROM test_module_accounts
+    WHERE role <> 'admin'
     ORDER BY created_at DESC;
     `,
     [],
@@ -140,10 +202,35 @@ export async function listAccounts(): Promise<TestAccountRecord[]> {
   return (result.rows as PublicAccountRow[]).map(mapPublic);
 }
 
+export async function ensureAdminAccount(email: string): Promise<TestAccountRecord> {
+  const existing = await findAccountByEmail(email);
+  if (existing) {
+    if (existing.role !== 'admin') {
+      const updated = await updateAccountById(existing.id, { role: 'admin', isActive: true });
+      if (!updated) {
+        throw new Error('Unable to activate admin account.');
+      }
+      return updated;
+    }
+
+    return existing;
+  }
+
+  const outcome = await createAccount({
+    email,
+    role: 'admin',
+    displayName: deriveDisplayName(email),
+  });
+  return outcome.account;
+}
+
 export interface CreateAccountInput {
   email: string;
   role: TestAccountRole;
   displayName?: string;
+  facultyId?: string | null;
+  registrationNumber?: string | null;
+  section?: string | null;
 }
 
 export interface CreateAccountOutcome {
@@ -152,6 +239,7 @@ export interface CreateAccountOutcome {
 }
 
 export async function createAccount(input: CreateAccountInput): Promise<CreateAccountOutcome> {
+  await ensureAuthSchemaExtensions();
   const { email, emailLower } = normalizeEmail(input.email);
   if (!email || !emailLower.includes('@')) {
     throw new Error('A valid email is required.');
@@ -161,12 +249,28 @@ export async function createAccount(input: CreateAccountInput): Promise<CreateAc
 
   const result = await sql.raw(
     `
-    INSERT INTO test_module_accounts (email, email_lower, role, display_name)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO test_module_accounts (
+      email,
+      email_lower,
+      role,
+      display_name,
+      faculty_id,
+      registration_number,
+      section
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     ON CONFLICT (email_lower) DO NOTHING
     RETURNING ${PUBLIC_COLUMNS};
     `,
-    [email, emailLower, input.role, displayName],
+    [
+      email,
+      emailLower,
+      input.role,
+      displayName,
+      input.facultyId?.trim() || null,
+      input.registrationNumber?.trim() || null,
+      input.section?.trim() || null,
+    ],
   );
 
   const inserted = result.rows[0] as PublicAccountRow | undefined;
@@ -186,9 +290,13 @@ export interface UpdateAccountInput {
   role?: TestAccountRole;
   displayName?: string;
   isActive?: boolean;
+  facultyId?: string | null;
+  registrationNumber?: string | null;
+  section?: string | null;
 }
 
 export async function updateAccountById(id: string, input: UpdateAccountInput): Promise<TestAccountRecord | null> {
+  await ensureAuthSchemaExtensions();
   const sets: string[] = [];
   const values: unknown[] = [];
   let i = 1;
@@ -206,6 +314,21 @@ export async function updateAccountById(id: string, input: UpdateAccountInput): 
   if (input.isActive !== undefined) {
     sets.push(`is_active = $${i++}`);
     values.push(input.isActive);
+  }
+
+  if (input.facultyId !== undefined) {
+    sets.push(`faculty_id = $${i++}`);
+    values.push(input.facultyId?.trim() || null);
+  }
+
+  if (input.registrationNumber !== undefined) {
+    sets.push(`registration_number = $${i++}`);
+    values.push(input.registrationNumber?.trim() || null);
+  }
+
+  if (input.section !== undefined) {
+    sets.push(`section = $${i++}`);
+    values.push(input.section?.trim() || null);
   }
 
   if (sets.length === 0) {
@@ -230,6 +353,7 @@ export async function updateAccountById(id: string, input: UpdateAccountInput): 
 }
 
 export async function deleteAccountById(id: string): Promise<boolean> {
+  await ensureAuthSchemaExtensions();
   const result = await sql.raw(
     `
     DELETE FROM test_module_accounts
@@ -242,6 +366,7 @@ export async function deleteAccountById(id: string): Promise<boolean> {
 }
 
 export async function setAccountPasswordHash(id: string, passwordHash: string): Promise<TestAccountRecord | null> {
+  await ensureAuthSchemaExtensions();
   const result = await sql.raw(
     `
     UPDATE test_module_accounts
@@ -258,7 +383,20 @@ export async function setAccountPasswordHash(id: string, passwordHash: string): 
   return row ? mapPublic(row) : null;
 }
 
-export async function setInitialPasswordForEmail(email: string, password: string): Promise<TestAccountRecord | null> {
+export async function setAccountPassword(id: string, password: string): Promise<TestAccountRecord | null> {
+  const passwordHash = await hashPassword(password);
+  return setAccountPasswordHash(id, passwordHash);
+}
+
+export async function setInitialPasswordForEmail(
+  email: string,
+  password: string,
+  profile?: {
+    facultyId?: string | null;
+    registrationNumber?: string | null;
+    section?: string | null;
+  },
+): Promise<TestAccountRecord | null> {
   const account = await findAccountByEmailWithSecret(email);
   if (!account) return null;
   if (account.password_set) {
@@ -269,7 +407,14 @@ export async function setInitialPasswordForEmail(email: string, password: string
   }
 
   const passwordHash = await hashPassword(password);
-  return setAccountPasswordHash(account.id, passwordHash);
+  const updated = await setAccountPasswordHash(account.id, passwordHash);
+  if (!updated) return null;
+
+  if (profile) {
+    return updateAccountById(account.id, profile);
+  }
+
+  return updated;
 }
 
 export interface BulkUpsertResult {

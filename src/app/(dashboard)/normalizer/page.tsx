@@ -50,7 +50,7 @@ import {
 } from '@/features/generator/lib/data-generator';
 import { verifyNormalForm, type VerificationConfidence } from '@/features/normalizer/lib/normalizer-engine';
 import { getUserKeyForId, STORAGE_BASE_KEYS } from '@/shared/lib/user-storage';
-import { useAuthStore } from '@/shared/auth/store';
+import { useTestAuthStore } from '@/features/test-module/store';
 import { useGeneratorStore } from '@/features/generator/store';
 import type {
     Column,
@@ -1868,7 +1868,7 @@ function isCanvasNodeData(data: unknown): data is CanvasNodeData {
 }
 
 export default function NormalizerPage() {
-    const storageScopeId = useAuthStore((state) => state.user?.id ?? 'guest');
+    const storageScopeId = useTestAuthStore((state) => state.user?.id ?? 'guest');
     const generatorTables = useGeneratorStore((state) => state.tables);
 
     const [activeStage, setActiveStage] = useState<CanvasStage>('UNF');

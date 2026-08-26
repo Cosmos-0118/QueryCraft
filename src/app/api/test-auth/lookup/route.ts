@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findAccountByEmail } from '@/features/test-module/auth/accounts-db';
+import { ensureAdminAccount, findAccountByEmail } from '@/features/test-module/auth/accounts-db';
 import { resolveAdminConfig } from '@/features/test-module/auth/admin-env';
 
 export async function POST(req: NextRequest) {
@@ -13,10 +13,11 @@ export async function POST(req: NextRequest) {
 
     const adminConfig = resolveAdminConfig();
     if (adminConfig && adminConfig.emailLower === email.toLowerCase()) {
+      const account = await ensureAdminAccount(adminConfig.email);
       return NextResponse.json({
         exists: true,
-        password_set: true,
-        is_active: true,
+        password_set: account.password_set,
+        is_active: account.is_active,
         role: 'admin' as const,
       });
     }

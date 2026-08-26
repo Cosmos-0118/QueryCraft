@@ -179,7 +179,7 @@ export default function TestResultPage() {
         const [testData, questionsData] = await Promise.all([testRes.json(), questionsRes.json()]);
 
         if (testRes.status === 401 || questionsRes.status === 401) {
-          router.replace(`/tests/login?next=${encodeURIComponent(loginNextTarget)}`);
+          router.replace(`/login?next=${encodeURIComponent(loginNextTarget)}`);
           return;
         }
 
@@ -209,7 +209,7 @@ export default function TestResultPage() {
         const attemptData = await attemptRes.json();
 
         if (attemptRes.status === 401) {
-          router.replace(`/tests/login?next=${encodeURIComponent(loginNextTarget)}`);
+          router.replace(`/login?next=${encodeURIComponent(loginNextTarget)}`);
           return;
         }
 

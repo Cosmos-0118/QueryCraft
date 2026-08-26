@@ -1,370 +1,564 @@
 'use client';
 
-import { Suspense, useState } from 'react';
-import { useAuthStore } from '@/shared/auth/store';
-import { useLoadingStore } from '@/shared/ui/loading/store';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import { Plus, Trash2, Download, Upload, Copy, Check, AlertTriangle } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  KeyRound,
+  Loader2,
+  Mail,
+  ShieldCheck,
+  UserCircle2,
+} from 'lucide-react';
+import { useTestAuth } from '@/features/test-module/hooks/use-test-auth';
+
+type Role = 'admin' | 'teacher' | 'student';
+type Stage = 'email' | 'password' | 'otp_setup';
+
+interface LookupResponse {
+  exists: boolean;
+  password_set: boolean;
+  is_active: boolean;
+  role: Role | null;
+  error?: string;
+}
+
+interface OtpResponse {
+  ok?: boolean;
+  role?: Role;
+  email_sent?: boolean;
+  expires_in_minutes?: number;
+  dev_otp?: string | null;
+  error?: string;
+}
+
+interface AuthSuccessResponse {
+  token: string;
+  user: {
+    id: string;
+    email: string;
+    role: Role;
+    display_name: string;
+    faculty_id?: string | null;
+    registration_number?: string | null;
+    section?: string | null;
+    password_set: boolean;
+  };
+  error?: string;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function getPostLoginPath(role: Role) {
+  return role === 'admin' ? '/admin' : '/dashboard';
+}
 
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { start: startLoading, stop: stopLoading, setMessage } = useLoadingStore();
+  const { setSession, isAuthenticated, hydrated, user } = useTestAuth();
+
   const nextPath = searchParams.get('next');
-  const { accounts, login, removeAccount, exportAccount, importAccount } = useAuthStore();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const safeNext = useMemo(
+    () => (nextPath && nextPath.startsWith('/') && !nextPath.startsWith('//') ? nextPath : null),
+    [nextPath],
+  );
+
+  const [stage, setStage] = useState<Stage>('email');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [facultyId, setFacultyId] = useState('');
+  const [registrationNumber, setRegistrationNumber] = useState('');
+  const [section, setSection] = useState('');
+  const [resolvedRole, setResolvedRole] = useState<Role | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [deleteError, setDeleteError] = useState('');
-  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // Import state
-  const [showImport, setShowImport] = useState(false);
-  const [importCode, setImportCode] = useState('');
-  const [importMsg, setImportMsg] = useState('');
+  useEffect(() => {
+    if (!hydrated || !isAuthenticated || !user) return;
+    router.replace(safeNext ?? getPostLoginPath(user.role));
+  }, [hydrated, isAuthenticated, router, safeNext, user]);
 
-  // Export state
-  const [exportedCode, setExportedCode] = useState<string | null>(null);
-  const [exportCopied, setExportCopied] = useState(false);
+  const resetSecrets = () => {
+    setPassword('');
+    setConfirmPassword('');
+    setOtp('');
+  };
 
-  const selected = accounts.find((a) => a.id === selectedId);
+  const handleBackToEmail = () => {
+    setStage('email');
+    setResolvedRole(null);
+    setError(null);
+    setNotice(null);
+    resetSecrets();
+  };
 
-  const redirectTo =
-    nextPath && nextPath.startsWith('/') && !nextPath.startsWith('//')
-      ? nextPath
-      : '/dashboard';
+  const finalizeSession = (data: AuthSuccessResponse) => {
+    setSession({
+      token: data.token,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        role: data.user.role,
+        displayName: data.user.display_name,
+        facultyId: data.user.faculty_id ?? null,
+        registrationNumber: data.user.registration_number ?? null,
+        section: data.user.section ?? null,
+      },
+    });
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedId) return;
-    setError('');
+    router.replace(safeNext ?? getPostLoginPath(data.user.role));
+  };
+
+  const sendOtp = async (targetEmail: string) => {
+    const res = await fetch('/api/test-auth/request-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: targetEmail }),
+    });
+    const data = (await res.json()) as OtpResponse;
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Unable to send OTP.');
+    }
+
+    setResolvedRole(data.role ?? 'student');
+    const devHint = data.dev_otp ? ` Dev OTP: ${data.dev_otp}` : '';
+    const deliveryText = data.email_sent
+      ? `Brevo accepted the OTP email for ${targetEmail}.`
+      : `OTP generated for ${targetEmail}; email sending is not configured.`;
+    setNotice(`${deliveryText} It expires in ${data.expires_in_minutes ?? 10} minutes.${devHint}`);
+  };
+
+  const handleEmailSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = email.trim();
+    setError(null);
+    setNotice(null);
+    resetSecrets();
+
+    if (!EMAIL_RE.test(trimmed)) {
+      setError('Enter a valid email address.');
+      return;
+    }
+
     setLoading(true);
-    startLoading('Signing you in...');
     try {
-      await login(selectedId, password);
-      setMessage('Opening your workspace...');
-      router.push(redirectTo);
+      const res = await fetch('/api/test-auth/lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed }),
+      });
+      const data = (await res.json()) as LookupResponse;
+
+      if (!res.ok) {
+        setError(data.error || 'Unable to look up this account.');
+        return;
+      }
+
+      if (data.exists && !data.is_active) {
+        setError('This account has been disabled. Contact your administrator.');
+        return;
+      }
+
+      if (data.exists && data.password_set) {
+        setResolvedRole(data.role);
+        setStage('password');
+        return;
+      }
+
+      if (!data.exists) {
+        setError('This email is not registered. Ask the admin to add your account.');
+        return;
+      }
+
+      if (data.exists && data.role === 'admin') {
+        setResolvedRole('admin');
+        setNotice('Admin email recognized. Create a password to finish setup.');
+        setStage('otp_setup');
+        return;
+      }
+
+      if (data.role === 'teacher') {
+        await sendOtp(trimmed);
+        setStage('otp_setup');
+        return;
+      }
+
+      if (data.role === 'student') {
+        setResolvedRole('student');
+        setNotice('Student email recognized. Create a password to finish setup.');
+        setStage('otp_setup');
+        return;
+      }
     } catch (err) {
-      stopLoading();
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : 'Network error while checking the email.');
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    setDeleteError('');
-    setDeleteLoading(true);
+  const handlePasswordSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = email.trim();
+    setError(null);
+    setNotice(null);
+
+    if (!password) {
+      setError('Enter your password.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      await removeAccount(id, deletePassword);
-      setConfirmDeleteId(null);
-      setDeletePassword('');
-      if (selectedId === id) {
-        setSelectedId(null);
-        setPassword('');
+      const res = await fetch('/api/test-auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed, password }),
+      });
+      const data = (await res.json()) as AuthSuccessResponse;
+
+      if (!res.ok) {
+        if (res.status === 409) {
+          if (resolvedRole === 'admin') {
+            setNotice('Admin email recognized. Create a password to finish setup.');
+          } else if (resolvedRole === 'teacher') {
+            await sendOtp(trimmed);
+          } else if (resolvedRole === 'student') {
+            setNotice('Student email recognized. Create a password to finish setup.');
+          } else {
+            setError('This account needs password setup. Go back and enter your email again.');
+            return;
+          }
+          setStage('otp_setup');
+          setPassword('');
+          setError(
+            resolvedRole === 'admin'
+              ? 'Create a password to finish activating this admin account.'
+              : 'Verify the OTP and create a password to finish activating this account.',
+          );
+          return;
+        }
+        setError(data.error || 'Email or password is incorrect.');
+        return;
       }
+
+      finalizeSession(data);
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : 'Unable to remove account');
+      setError(err instanceof Error ? err.message : 'Network error while signing in.');
     } finally {
-      setDeleteLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleExport = (id: string) => {
+  const handleSetupSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = email.trim();
+    setError(null);
+
+    if (resolvedRole === 'teacher' && !/^\d{6}$/.test(otp.trim())) {
+      setError('Enter the 6-digit OTP from your email.');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    if (resolvedRole === 'teacher' && !facultyId.trim()) {
+      setError('Faculty ID is required.');
+      return;
+    }
+
+    if (resolvedRole === 'student' && (!registrationNumber.trim() || !section.trim())) {
+      setError('Registration number and section are required.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      const code = exportAccount(id);
-      setExportedCode(code);
-      setExportCopied(false);
+      const res = await fetch('/api/test-auth/setup-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: trimmed,
+          otp: otp.trim(),
+          password,
+          confirm_password: confirmPassword,
+          faculty_id: facultyId.trim(),
+          registration_number: registrationNumber.trim(),
+          section: section.trim(),
+        }),
+      });
+      const data = (await res.json()) as AuthSuccessResponse;
+
+      if (!res.ok) {
+        setError(data.error || 'Unable to finish account setup.');
+        return;
+      }
+
+      finalizeSession(data);
     } catch {
-      /* ignore */
+      setError('Network error while setting up your account.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleCopyExport = () => {
-    if (!exportedCode) return;
-    navigator.clipboard.writeText(exportedCode);
-    setExportCopied(true);
-    setTimeout(() => setExportCopied(false), 2000);
-  };
-
-  const handleImport = () => {
-    setImportMsg('');
-    try {
-      const name = importAccount(importCode);
-      setImportMsg(`Imported "${name}" successfully!`);
-      setImportCode('');
-      setTimeout(() => { setShowImport(false); setImportMsg(''); }, 1500);
-    } catch (err) {
-      setImportMsg(err instanceof Error ? err.message : 'Import failed');
-    }
-  };
-
-  // Export code overlay
-  if (exportedCode !== null) {
-    return (
-      <div className="rounded-xl border border-border bg-card p-8">
-        <button
-          onClick={() => setExportedCode(null)}
-          className="mb-4 text-sm text-muted-foreground hover:text-foreground"
-        >
-          &larr; Back
-        </button>
-        <h2 className="text-lg font-bold">Account Transfer Code</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Copy this code and paste it in the other browser to transfer your account.
-        </p>
-        <div className="relative mt-4">
-          <textarea
-            readOnly
-            value={exportedCode}
-            rows={3}
-            className="w-full resize-none rounded-lg border border-border bg-muted px-3 py-2 font-mono text-xs text-foreground"
-          />
+  return (
+    <div className="relative mx-auto w-full max-w-xl rounded-3xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 sm:p-8">
+      <div className="mb-7 flex items-start justify-between gap-3">
+        {stage === 'email' ? (
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3.5 py-1.5 text-xs font-semibold text-primary">
+            <ShieldCheck size={12} />
+            QueryCraft Login
+          </div>
+        ) : (
           <button
-            onClick={handleCopyExport}
-            className="absolute right-2 top-2 rounded-md bg-background p-1.5 text-muted-foreground hover:text-foreground"
-            title="Copy code"
+            type="button"
+            onClick={handleBackToEmail}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
           >
-            {exportCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+            <ArrowLeft size={13} />
+            Change email
           </button>
-        </div>
-        {exportCopied && (
-          <p className="mt-2 text-sm text-green-500">Copied to clipboard!</p>
         )}
       </div>
-    );
-  }
 
-  // Import screen
-  if (showImport) {
-    return (
-      <div className="rounded-xl border border-border bg-card p-8">
-        <button
-          onClick={() => { setShowImport(false); setImportCode(''); setImportMsg(''); }}
-          className="mb-4 text-sm text-muted-foreground hover:text-foreground"
-        >
-          &larr; Back to accounts
-        </button>
-        <h2 className="text-lg font-bold">Import Account</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Paste the transfer code from another browser to add the account here.
-        </p>
-        <div className="mt-4 space-y-3">
-          <textarea
-            value={importCode}
-            onChange={(e) => setImportCode(e.target.value)}
-            rows={3}
-            placeholder="Paste transfer code here..."
-            className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-primary focus:ring-1 focus:ring-ring"
-            autoFocus
-          />
-          {importMsg && (
-            <p className={`text-sm ${importMsg.includes('successfully') ? 'text-green-500' : 'text-red-500'}`}>
-              {importMsg}
-            </p>
-          )}
-          <button
-            onClick={handleImport}
-            disabled={!importCode.trim()}
-            className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-          >
-            Import
-          </button>
-        </div>
-      </div>
-    );
-  }
+      <h1 className="text-2xl font-bold tracking-tight sm:text-[2rem]">Sign in to QueryCraft</h1>
 
-  // Password entry screen
-  if (selected) {
-    return (
-      <div className="rounded-xl border border-border bg-card p-8">
-        <button
-          onClick={() => { setSelectedId(null); setPassword(''); setError(''); }}
-          className="mb-4 text-sm text-muted-foreground hover:text-foreground"
-        >
-          &larr; Back to accounts
-        </button>
-
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
-            {selected.displayName.charAt(0).toUpperCase()}
-          </div>
-          <h1 className="text-xl font-bold">{selected.displayName}</h1>
-        </div>
-
-        <form onSubmit={handleLogin} className="mt-6 space-y-4">
-          {error && (
-            <div className="rounded-lg bg-red-500/10 p-3 text-sm text-red-500">{error}</div>
-          )}
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium">Password</label>
-            <input
-              id="password"
-              type="password"
-              required
-              autoFocus
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-ring"
-              placeholder="Enter your password"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-          >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
-      </div>
-    );
-  }
-
-  // Account picker screen
-  return (
-    <div className="rounded-xl border border-border bg-card p-8">
-      <h1 className="text-2xl font-bold">Welcome to QueryCraft</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        {accounts.length > 0 ? 'Choose your account to continue.' : 'No accounts on this device yet.'}
-      </p>
-
-      {accounts.length > 0 && (
-        <div className="mt-6 space-y-3">
-          {accounts.map((account) => (
-            <div
-              key={account.id}
-              className={`group rounded-2xl border p-1.5 transition-all ${
-                confirmDeleteId === account.id
-                  ? 'border-red-500/30 bg-red-500/5 shadow-[0_0_0_1px_rgba(239,68,68,0.08)]'
-                  : 'border-border/80 bg-card shadow-sm hover:border-primary/20 hover:shadow-md'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setSelectedId(account.id);
-                    setError('');
-                    setConfirmDeleteId(null);
-                    setDeletePassword('');
-                    setDeleteError('');
-                  }}
-                  className="flex flex-1 items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-muted/70"
-                >
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground shadow-sm">
-                    {account.displayName.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-foreground">{account.displayName}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Created {new Date(account.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </button>
-
-                <div className="flex shrink-0 items-center gap-1 pr-1">
-                  <button
-                    onClick={() => handleExport(account.id)}
-                    className="rounded-lg border border-transparent p-2 text-muted-foreground transition-all hover:border-primary/15 hover:bg-primary/10 hover:text-primary"
-                    title="Export account"
-                  >
-                    <Download size={15} />
-                  </button>
-                  <button
-                    onClick={() => {
-                      setConfirmDeleteId(account.id);
-                      setDeletePassword('');
-                      setDeleteError('');
-                    }}
-                    className="rounded-lg border border-transparent p-2 text-muted-foreground transition-all hover:border-red-500/15 hover:bg-red-500/10 hover:text-red-400"
-                    title="Remove account"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
-
-              {confirmDeleteId === account.id && (
-                <div className="mx-1 mb-1 mt-2 rounded-xl border border-red-500/20 bg-[linear-gradient(180deg,rgba(239,68,68,0.12),rgba(239,68,68,0.04))] p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/12 text-red-400">
-                      <AlertTriangle size={18} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground">
-                        Remove {account.displayName}?
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        Enter your password to permanently remove this local account from this device.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 space-y-2">
-                    <label className="block text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                      Confirm Password
-                    </label>
-                    <input
-                      type="password"
-                      value={deletePassword}
-                      onChange={(e) => {
-                        setDeletePassword(e.target.value);
-                        if (deleteError) setDeleteError('');
-                      }}
-                      className="h-11 w-full rounded-xl border border-red-500/15 bg-background/90 px-3.5 text-sm outline-none transition focus:border-red-400/60 focus:ring-2 focus:ring-red-500/20"
-                      placeholder="Enter your account password"
-                      autoFocus
-                    />
-                    {deleteError && (
-                      <p className="text-sm text-red-400">{deleteError}</p>
-                    )}
-                  </div>
-
-                  <div className="mt-4 flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => {
-                        setConfirmDeleteId(null);
-                        setDeletePassword('');
-                        setDeleteError('');
-                      }}
-                      className="rounded-xl px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => handleDelete(account.id)}
-                      disabled={deleteLoading || !deletePassword}
-                      className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-500/90 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {deleteLoading ? 'Removing...' : 'Remove Account'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+      {error && (
+        <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+          {error}
         </div>
       )}
 
-      <div className="mt-4 flex gap-2">
-        <Link
-          href="/register"
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-dashed border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary"
-        >
-          <Plus size={16} />
-          Add Account
-        </Link>
-        <button
-          onClick={() => setShowImport(true)}
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-dashed border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary"
-        >
-          <Upload size={16} />
-          Import Account
-        </button>
+      {notice && (
+        <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-300">
+          {notice}
+        </div>
+      )}
+
+      {stage === 'email' && (
+        <form onSubmit={handleEmailSubmit} className="mt-8 space-y-5">
+          <div>
+            <label htmlFor="login-email" className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Email
+            </label>
+            <div className="relative mt-2">
+              <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                id="login-email"
+                type="email"
+                autoFocus
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
+                autoComplete="email"
+                required
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+          >
+            {loading ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
+            Continue
+          </button>
+        </form>
+      )}
+
+      {stage === 'password' && (
+        <form onSubmit={handlePasswordSubmit} className="mt-8 space-y-5">
+          <AccountSummary email={email} role={resolvedRole} />
+          <PasswordInput
+            id="login-password"
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="current-password"
+            autoFocus
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+          >
+            {loading ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
+            Sign in
+          </button>
+        </form>
+      )}
+
+      {stage === 'otp_setup' && (
+        <form onSubmit={handleSetupSubmit} className="mt-8 space-y-5">
+          <AccountSummary email={email} role={resolvedRole} />
+
+          {resolvedRole === 'teacher' && (
+            <div>
+              <label htmlFor="otp" className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Email OTP
+              </label>
+              <input
+                id="otp"
+                value={otp}
+                onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="123456"
+                className="mt-2 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm font-semibold tracking-[0.2em] outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                required
+              />
+            </div>
+          )}
+
+          {resolvedRole === 'teacher' && (
+            <div>
+              <label htmlFor="faculty-id" className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Faculty ID
+              </label>
+              <input
+                id="faculty-id"
+                value={facultyId}
+                onChange={(event) => setFacultyId(event.target.value)}
+                placeholder="FAC-001"
+                className="mt-2 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
+                required
+              />
+            </div>
+          )}
+
+          {resolvedRole === 'student' && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="registration-number" className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Registration No.
+                </label>
+                <input
+                  id="registration-number"
+                  value={registrationNumber}
+                  onChange={(event) => setRegistrationNumber(event.target.value)}
+                  placeholder="REG123"
+                  className="mt-2 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="section" className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Section
+                </label>
+                <input
+                  id="section"
+                  value={section}
+                  onChange={(event) => setSection(event.target.value)}
+                  placeholder="A"
+                  className="mt-2 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
+                  required
+                />
+              </div>
+            </div>
+          )}
+
+          <PasswordInput
+            id="create-password"
+            label="New password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+          />
+          <PasswordInput
+            id="confirm-password"
+            label="Confirm password"
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            autoComplete="new-password"
+          />
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+          >
+            {loading ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
+            {resolvedRole === 'teacher'
+              ? 'Verify OTP & Create Password'
+              : resolvedRole === 'admin'
+                ? 'Create Admin Password'
+                : 'Create Student Password'}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function AccountSummary({ email, role }: { email: string; role: Role | null }) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-background/60 p-4 text-sm text-muted-foreground">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+        <span className="inline-flex min-w-0 items-center gap-2 font-medium text-foreground">
+          <UserCircle2 size={15} className="shrink-0" />
+          <span className="truncate">{email}</span>
+        </span>
+        {role && (
+          <span className="inline-flex h-7 items-center rounded-full border border-border/70 bg-card/70 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] leading-none">
+            {role === 'teacher' ? 'faculty' : role}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PasswordInput({
+  id,
+  label,
+  value,
+  onChange,
+  autoComplete,
+  autoFocus = false,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: string;
+  autoFocus?: boolean;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        {label}
+      </label>
+      <div className="relative mt-2">
+        <KeyRound size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <input
+          id={id}
+          type="password"
+          autoFocus={autoFocus}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="At least 6 characters"
+          className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm outline-none transition focus:border-primary focus:ring-1 focus:ring-ring"
+          autoComplete={autoComplete}
+          required
+          minLength={6}
+        />
       </div>
     </div>
   );

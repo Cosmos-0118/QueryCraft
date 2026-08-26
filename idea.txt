@@ -1,0 +1,44 @@
+so i want the login to work like this
+
+remove the local device auth 
+i want a universal login for the whole website 
+remove the test d=feature login 
+so one login before entering the webiste is enough
+so there are three logins 
+Admin, where the admin can add the student email and the faculty email login 
+
+Faculty login 
+where the faculty can login with the email given by the admin
+then get an otp to the mail and then create a new password and then login 
+from the next time onwards no need of otp login 
+simply email id and password is enough and it opens the faculty dashoard where 
+it all remains the same but the test feature should be directly able to create and publish a test
+the faculty should eneter their faculty id as well while registering for the first time
+add a profile page for the faculty 
+
+Student login 
+the user can straight up give his email and then recieve an otp to the mail
+then enter the otp and then create a new password and then login 
+next tim elogin =s can be simply done with wmail and password instead of otp
+the students should also be asked their registration numbers as well along with their section 
+add a profile page for the students 
+
+fo rthe otp feature we can have brevo api key so that we can send emails
+
+
+
+so inside the student login everything should be same 
+but in the test feature the student should only be able to see the test code entering page and the test history page and 
+then will only be able to take tests there and see results 
+
+
+any new login email other than the designated faculty email added by the admin 
+should be considered as a student account 
+
+
+the question bank feature should only be visible to the faculty login 
+
+the admin login should be only showing add faculy and manage faculty and add students and manage students 
+
+
+remove the old unnecessary code for the login and other stuff and make this work properly 

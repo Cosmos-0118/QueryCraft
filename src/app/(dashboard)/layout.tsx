@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRef, useState, useEffect, useSyncExternalStore, type ReactNode } from 'react';
-import { useAuth } from '@/shared/auth/hooks/use-auth';
+import { useTestAuth } from '@/features/test-module/hooks/use-test-auth';
 import { useThemeStore } from '@/shared/ui/theme/store';
 import { useLoadingStore } from '@/shared/ui/loading/store';
 import { THEME_OPTIONS } from '@/shared/ui/theme/theme';
@@ -13,8 +13,8 @@ import {
 } from '@/features/test-module/lib/attempt-navigation-lock';
 import {
   LayoutDashboard, BookOpen, Terminal, Sigma, PenTool, RefreshCw,
-  Settings, Palette, Sparkles, FunctionSquare, Database,
-  CircuitBoard, LogOut, ChevronRight, Check,
+  Palette, Sparkles, FunctionSquare, Database,
+  CircuitBoard, LogOut, ChevronRight, Check, ShieldCheck, UserCircle2,
 } from 'lucide-react';
 
 const emptySubscribe = () => () => { };
@@ -26,18 +26,21 @@ function useHydrated() {
   );
 }
 
-const NAV_ITEMS: { label: string; href: string; icon: ReactNode; group?: string }[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={16} />, group: 'Main' },
-  { label: 'Learn', href: '/learn', icon: <BookOpen size={16} />, group: 'Main' },
-  { label: 'SQL Sandbox', href: '/sandbox', icon: <Terminal size={16} />, group: 'Labs' },
-  { label: 'Table Generator', href: '/generator', icon: <Sparkles size={16} />, group: 'Labs' },
-  { label: 'Test Module', href: '/tests', icon: <BookOpen size={16} />, group: 'Labs' },
-  { label: 'Question Bank', href: '/tests/questions-bank', icon: <Database size={16} />, group: 'Labs' },
-  { label: 'Algebra', href: '/algebra', icon: <Sigma size={16} />, group: 'Theory' },
-  { label: 'Tuple Calculus', href: '/tuple-calculus', icon: <FunctionSquare size={16} />, group: 'Theory' },
-  { label: 'ER Builder', href: '/er-builder', icon: <PenTool size={16} />, group: 'Theory' },
-  { label: 'Normalizer', href: '/normalizer', icon: <RefreshCw size={16} />, group: 'Theory' },
-  { label: 'Settings', href: '/settings', icon: <Settings size={16} />, group: 'Account' },
+type AppRole = 'admin' | 'teacher' | 'student';
+
+const NAV_ITEMS: { label: string; href: string; icon: ReactNode; group?: string; roles: AppRole[] }[] = [
+  { label: 'Admin Console', href: '/admin', icon: <ShieldCheck size={16} />, group: 'Main', roles: ['admin'] },
+  { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={16} />, group: 'Main', roles: ['teacher', 'student'] },
+  { label: 'Learn', href: '/learn', icon: <BookOpen size={16} />, group: 'Main', roles: ['teacher', 'student'] },
+  { label: 'SQL Sandbox', href: '/sandbox', icon: <Terminal size={16} />, group: 'Labs', roles: ['teacher', 'student'] },
+  { label: 'Table Generator', href: '/generator', icon: <Sparkles size={16} />, group: 'Labs', roles: ['teacher', 'student'] },
+  { label: 'Test Module', href: '/tests', icon: <BookOpen size={16} />, group: 'Labs', roles: ['teacher', 'student'] },
+  { label: 'Question Bank', href: '/tests/questions-bank', icon: <Database size={16} />, group: 'Labs', roles: ['teacher'] },
+  { label: 'Algebra', href: '/algebra', icon: <Sigma size={16} />, group: 'Theory', roles: ['teacher', 'student'] },
+  { label: 'Tuple Calculus', href: '/tuple-calculus', icon: <FunctionSquare size={16} />, group: 'Theory', roles: ['teacher', 'student'] },
+  { label: 'ER Builder', href: '/er-builder', icon: <PenTool size={16} />, group: 'Theory', roles: ['teacher', 'student'] },
+  { label: 'Normalizer', href: '/normalizer', icon: <RefreshCw size={16} />, group: 'Theory', roles: ['teacher', 'student'] },
+  { label: 'Profile', href: '/profile', icon: <UserCircle2 size={16} />, group: 'Account', roles: ['teacher', 'student'] },
 ];
 
 const NAV_GROUPS = ['Main', 'Labs', 'Theory', 'Account'];
@@ -60,24 +63,41 @@ function Breadcrumbs() {
   );
 }
 
-function SidebarLogo() {
+function isPathAllowedForRole(pathname: string, role: AppRole) {
+  if (role === 'admin') {
+    return pathname === '/admin';
+  }
+
+  if (pathname === '/admin') {
+    return false;
+  }
+
+  if (role === 'student' && pathname.startsWith('/tests/questions-bank')) {
+    return false;
+  }
+
+  return true;
+}
+
+function SidebarLogo({ href }: { href: string }) {
   return (
     <div className="flex h-14 items-center gap-2.5 border-b border-border/60 px-4">
       <div className="qc-brand-mark flex h-7 w-7 items-center justify-center rounded-lg">
         <CircuitBoard size={14} />
       </div>
-      <Link href="/dashboard" className="text-[15px] font-black tracking-tight text-foreground">
+      <Link href={href} className="text-[15px] font-black tracking-tight text-foreground">
         Query<span className="text-primary">Craft</span>
       </Link>
     </div>
   );
 }
 
-function SidebarNav({ pathname, onClose }: { pathname: string; onClose?: () => void }) {
+function SidebarNav({ pathname, role, onClose }: { pathname: string; role: AppRole; onClose?: () => void }) {
   return (
     <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
       {NAV_GROUPS.map((group) => {
-        const items = NAV_ITEMS.filter((i) => i.group === group);
+        const items = NAV_ITEMS.filter((i) => i.group === group && i.roles.includes(role));
+        if (items.length === 0) return null;
         return (
           <div key={group} className="mb-3">
             <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/70">{group}</p>
@@ -115,7 +135,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
   const mounted = useHydrated();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, hydrated, logout } = useTestAuth();
   const { theme, setTheme } = useThemeStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -125,19 +145,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { start: startLoading, stop: stopLoading } = useLoadingStore();
 
   useEffect(() => {
-    if (mounted && !isAuthenticated && !redirected.current) {
+    if (mounted && hydrated && !isAuthenticated && !redirected.current) {
       redirected.current = true;
       router.replace('/login');
     }
-  }, [mounted, isAuthenticated, router]);
+  }, [hydrated, mounted, isAuthenticated, router]);
 
   useEffect(() => {
-    if (!mounted || !isAuthenticated) {
+    if (!mounted || !hydrated || !isAuthenticated || !user) return;
+    if (isPathAllowedForRole(pathname, user.role)) return;
+
+    router.replace(user.role === 'admin' ? '/admin' : '/dashboard');
+  }, [hydrated, isAuthenticated, mounted, pathname, router, user]);
+
+  useEffect(() => {
+    if (!mounted || !hydrated || !isAuthenticated) {
       startLoading('Authenticating…');
     } else {
       stopLoading();
     }
-  }, [mounted, isAuthenticated, startLoading, stopLoading]);
+  }, [hydrated, mounted, isAuthenticated, startLoading, stopLoading]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -192,18 +219,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, [isAuthenticated, lockedAttemptPath, mounted, router]);
 
-  if (!mounted || !isAuthenticated) {
+  if (!mounted || !hydrated || !isAuthenticated || !user) {
     return null;
   }
 
   const initials = user?.displayName?.charAt(0)?.toUpperCase() || '?';
+  const homeHref = user.role === 'admin' ? '/admin' : '/dashboard';
 
   return (
     <div className="qc-app-shell flex h-[100svh] overflow-hidden">
       {/* Desktop sidebar */}
       <aside className="qc-sidebar hidden h-[100svh] w-56 shrink-0 flex-col overflow-hidden border-r border-border/60 lg:flex">
-        <SidebarLogo />
-        <SidebarNav pathname={pathname} />
+        <SidebarLogo href={homeHref} />
+        <SidebarNav pathname={pathname} role={user.role} />
         {/* User footer */}
         <div className="border-t border-border/60 p-3">
           <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
@@ -222,8 +250,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
           <aside className="qc-sidebar absolute left-0 top-0 flex h-full w-56 flex-col shadow-2xl">
-            <SidebarLogo />
-            <SidebarNav pathname={pathname} onClose={() => setMobileOpen(false)} />
+            <SidebarLogo href={homeHref} />
+            <SidebarNav pathname={pathname} role={user.role} onClose={() => setMobileOpen(false)} />
             <div className="border-t border-border/60 p-3">
               <div className="flex items-center gap-2.5 px-2 py-2">
                 <div className="qc-avatar flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-bold">
@@ -317,11 +345,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </div>
                   <div className="p-1">
                     <Link
-                      href="/settings"
+                      href={user.role === 'admin' ? '/admin' : '/profile'}
                       onClick={() => setUserMenuOpen(false)}
                       className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
                     >
-                      <Settings size={14} /> Settings
+                      <UserCircle2 size={14} /> {user.role === 'admin' ? 'Admin Console' : 'Profile'}
                     </Link>
                     <button
                       onClick={() => { setUserMenuOpen(false); logout(); }}

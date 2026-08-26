@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findAccountByEmailWithSecret } from '@/features/test-module/auth/accounts-db';
-import { resolveAdminConfig, deriveDisplayName } from '@/features/test-module/auth/admin-env';
+import { deriveDisplayName } from '@/features/test-module/auth/admin-env';
 import { signTestAuthToken, verifyPassword } from '@/features/test-module/auth/crypto';
 import { applyTestAuthCookie } from '@/features/test-module/auth/session';
 
@@ -14,36 +14,6 @@ export async function POST(req: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
-    }
-
-    const emailLower = email.toLowerCase();
-    const adminConfig = resolveAdminConfig();
-
-    if (adminConfig && adminConfig.emailLower === emailLower) {
-      if (password !== adminConfig.password) {
-        return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
-      }
-
-      const token = signTestAuthToken({
-        sub: adminConfig.pseudoId,
-        email: adminConfig.email,
-        role: 'admin',
-        displayName: adminConfig.displayName,
-      });
-
-      const response = NextResponse.json({
-        token,
-        user: {
-          id: adminConfig.pseudoId,
-          email: adminConfig.email,
-          role: 'admin',
-          display_name: adminConfig.displayName,
-          password_set: true,
-        },
-      });
-
-      applyTestAuthCookie(response, token);
-      return response;
     }
 
     const account = await findAccountByEmailWithSecret(email);
@@ -81,6 +51,9 @@ export async function POST(req: NextRequest) {
         email: account.email,
         role: account.role,
         display_name: displayName,
+        faculty_id: account.faculty_id,
+        registration_number: account.registration_number,
+        section: account.section,
         password_set: true,
       },
     });

@@ -17,6 +17,9 @@ export interface CompatUser {
   displayName: string;
   email: string;
   role: 'admin' | 'teacher' | 'student';
+  facultyId?: string | null;
+  registrationNumber?: string | null;
+  section?: string | null;
 }
 
 function toCompat(user: TestAuthUser | null): CompatUser | null {
@@ -26,6 +29,9 @@ function toCompat(user: TestAuthUser | null): CompatUser | null {
     displayName: user.displayName,
     email: user.email,
     role: user.role,
+    facultyId: user.facultyId ?? null,
+    registrationNumber: user.registrationNumber ?? null,
+    section: user.section ?? null,
   };
 }
 
@@ -95,6 +101,9 @@ export function useTestAuth() {
             email?: unknown;
             role?: unknown;
             display_name?: unknown;
+            faculty_id?: unknown;
+            registration_number?: unknown;
+            section?: unknown;
           };
         } | null;
 
@@ -122,6 +131,9 @@ export function useTestAuth() {
               email: serverUser.email,
               role: serverUser.role,
               displayName: serverUser.display_name,
+              facultyId: typeof serverUser.faculty_id === 'string' ? serverUser.faculty_id : null,
+              registrationNumber: typeof serverUser.registration_number === 'string' ? serverUser.registration_number : null,
+              section: typeof serverUser.section === 'string' ? serverUser.section : null,
             },
             token: null,
           });
@@ -158,7 +170,7 @@ export function useTestAuth() {
       // Clear local auth state even if server cookie cleanup fails.
     });
     clearSession();
-    router.push('/tests/login');
+    router.push('/login');
   };
 
   return {
@@ -183,7 +195,7 @@ export function useRequireTestAuth(options?: { allowedRoles?: Array<'admin' | 't
   useEffect(() => {
     if (!hydrated) return;
     if (!isAuthenticated) {
-      router.replace('/tests/login');
+      router.replace('/login');
       return;
     }
     if (options?.allowedRoles && user && !options.allowedRoles.includes(user.role)) {

@@ -188,7 +188,7 @@ export default function TestAttemptPage() {
   useEffect(() => {
     if (!hydrated) return;
     if (!isAuthenticated || !user) {
-      router.replace(`/tests/login?next=${encodeURIComponent(`/tests/${testId ?? ''}/attempt`)}`);
+      router.replace(`/login?next=${encodeURIComponent(`/tests/${testId ?? ''}/attempt`)}`);
     }
   }, [hydrated, isAuthenticated, router, testId, user]);
 

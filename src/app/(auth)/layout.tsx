@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useSyncExternalStore } from 'react';
-import { useAuthStore } from '@/shared/auth/store';
+import { useTestAuth } from '@/features/test-module/hooks/use-test-auth';
 
 const emptySubscribe = () => () => {};
 function useHydrated() {
@@ -16,13 +16,13 @@ function useHydrated() {
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const mounted = useHydrated();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const { isAuthenticated, user, hydrated } = useTestAuth();
 
   useEffect(() => {
-    if (mounted && isAuthenticated) {
-      router.replace('/dashboard');
+    if (mounted && hydrated && isAuthenticated && user) {
+      router.replace(user.role === 'admin' ? '/admin' : '/dashboard');
     }
-  }, [mounted, isAuthenticated, router]);
+  }, [hydrated, mounted, isAuthenticated, router, user]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">

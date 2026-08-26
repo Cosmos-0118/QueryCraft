@@ -94,7 +94,7 @@ export default function QuestionBankPage() {
   useEffect(() => {
     if (!hydrated) return;
     if (!isAuthenticated || !user) {
-      router.replace('/tests/login');
+      router.replace('/login');
       return;
     }
     if (user.role !== 'teacher' && user.role !== 'admin') {
