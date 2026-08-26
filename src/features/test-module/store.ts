@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 
 /**
- * Auth scoped to the test module only. Independent from the global useAuthStore
- * so that the rest of the app (sandbox, algebra, etc.) keeps working unchanged.
+ * Universal app auth, backed by the server-issued test-auth cookie.
  *
  * Security note:
  * - Do NOT persist test-module auth in localStorage/sessionStorage.
@@ -17,6 +16,9 @@ export interface TestAuthUser {
   email: string;
   role: TestAuthRole;
   displayName: string;
+  facultyId?: string | null;
+  registrationNumber?: string | null;
+  section?: string | null;
 }
 
 interface TestAuthState {

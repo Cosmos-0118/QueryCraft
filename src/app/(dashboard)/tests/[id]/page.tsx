@@ -432,7 +432,7 @@ export default function TestDetailPage() {
   useEffect(() => {
     if (!hydrated) return;
     if (!isAuthenticated || !user) {
-      router.replace(`/tests/login?next=${encodeURIComponent(`/tests/${testId ?? ''}`)}`);
+      router.replace(`/login?next=${encodeURIComponent(`/tests/${testId ?? ''}`)}`);
       return;
     }
   }, [hydrated, isAuthenticated, router, testId, user]);
@@ -453,7 +453,7 @@ export default function TestDetailPage() {
         ]);
 
         if (testRes.status === 401 || questionsRes.status === 401) {
-          router.replace(`/tests/login?next=${encodeURIComponent(`/tests/${testId}`)}`);
+          router.replace(`/login?next=${encodeURIComponent(`/tests/${testId}`)}`);
           return;
         }
 

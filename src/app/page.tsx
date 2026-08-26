@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import TileWaveCanvas from '@/shared/ui/marketing/TileWaveCanvas';
-import { useAuth } from '@/shared/auth/hooks/use-auth';
+import { useTestAuth } from '@/features/test-module/hooks/use-test-auth';
 import { useThemeStore } from '@/shared/ui/theme/store';
 import { THEME_OPTIONS } from '@/shared/ui/theme/theme';
 import {
@@ -71,10 +71,10 @@ const shouldUseLiteMode = () => {
 };
 
 export default function Home() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, hydrated: authHydrated } = useTestAuth();
   const { theme, setTheme } = useThemeStore();
-  const hydrated = useHydrated();
-  const canUseAuthedRoutes = hydrated && isAuthenticated;
+  const pageHydrated = useHydrated();
+  const canUseAuthedRoutes = pageHydrated && authHydrated && isAuthenticated;
   const [clickBursts, setClickBursts] = useState<ClickBurst[]>([]);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const TRAIL_SEGMENTS = 7;

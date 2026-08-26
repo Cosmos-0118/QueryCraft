@@ -1,3 +1,5 @@
+import { useTestAuthStore } from '@/features/test-module/store';
+
 export const AUTH_STORAGE_KEY = 'querycraft-auth';
 export const AUTH_SESSION_STORAGE_KEY = 'querycraft-session';
 
@@ -22,6 +24,11 @@ function readUserIdFromStorage(raw: string | null): string | null {
 
 export function readCurrentBrowserUserId(): string | null {
   if (typeof window === 'undefined') return null;
+
+  const universalUserId = useTestAuthStore.getState().user?.id;
+  if (universalUserId) {
+    return universalUserId;
+  }
 
   const sessionUserId = readUserIdFromStorage(sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY));
   if (sessionUserId) {

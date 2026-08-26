@@ -338,7 +338,7 @@ export default function InteractiveQuizPage() {
   useEffect(() => {
     if (!hydrated) return;
     if (!isAuthenticated) {
-      router.replace('/tests/login');
+      router.replace('/login');
       return;
     }
     if (isAdmin) {

@@ -6,7 +6,7 @@ import { splitSqlStatements } from '@/shared/engine/sql/statement-splitter';
 import { sqlErrorEngine } from '@/shared/engine/sql-error-engine';
 import type { QueryResult, TableSchema } from '@/types/database';
 import { useLoadingStore } from '@/shared/ui/loading/store';
-import { useAuthStore } from '@/shared/auth/store';
+import { useTestAuthStore } from '@/features/test-module/store';
 import { getUserKey, STORAGE_BASE_KEYS } from '@/shared/lib/user-storage';
 import { fetchSeedDatasets, type SeedDataset } from '@/shared/lib/seed-datasets';
 
@@ -343,7 +343,7 @@ function initSharedEngine(userId: string): Promise<CachedEngine | null> {
 
 export function useSqlEngine(options?: { isolated?: boolean }) {
   const isolated = options?.isolated ?? false;
-  const storageScopeId = useAuthStore((state) => state.user?.id ?? 'guest');
+  const storageScopeId = useTestAuthStore((state) => state.user?.id ?? 'guest');
   const executorRef = useRef<SqlExecutor | null>(null);
   const persistedStatementsRef = useRef<PersistedStatementRecord[]>([]);
   const activeDatabaseRef = useRef('main');

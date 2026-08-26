@@ -399,7 +399,7 @@ export default function TestsPage() {
   const [pastTestsLoading, setPastTestsLoading] = useState(false);
   const [pastTestsError, setPastTestsError] = useState<string | null>(null);
   const [pastTestsSettled, setPastTestsSettled] = useState(false);
-  const [showTeacherModuleChooser, setShowTeacherModuleChooser] = useState(false);
+  const [showTeacherModuleChooser, setShowTeacherModuleChooser] = useState(true);
   const [hydrationTimeoutReached, setHydrationTimeoutReached] = useState(false);
 
   const { user, hydrated, isAuthenticated, logout } = useTestAuth();
@@ -410,13 +410,6 @@ export default function TestsPage() {
     ? `?role=teacher&userId=${encodeURIComponent(user.id)}`
     : '';
   const showPastTestsLoading = loading || pastTestsLoading;
-
-  const handleSignOut = () => {
-    setJoinError(null);
-    setError(null);
-    setShowTeacherModuleChooser(false);
-    logout();
-  };
 
   const handleBackFromWorkspace = () => {
     setJoinError(null);
@@ -433,7 +426,7 @@ export default function TestsPage() {
   useEffect(() => {
     if (!hydrated) return;
     if (!isAuthenticated || !user) {
-      router.replace('/tests/login');
+      router.replace('/login');
       return;
     }
     if (user.role === 'admin') {
@@ -447,7 +440,7 @@ export default function TestsPage() {
     }
 
     const fallbackRedirectId = window.setTimeout(() => {
-      window.location.replace('/tests/login');
+      window.location.replace('/login');
     }, 900);
 
     return () => {
@@ -509,7 +502,7 @@ export default function TestsPage() {
           if (res.status === 401 || res.status === 403) {
             setTests([]);
             setError('Your test session expired. Redirecting to sign in...');
-            router.replace('/tests/login');
+            router.replace('/login');
             return;
           }
           throw new Error('Failed to load tests');
@@ -698,7 +691,7 @@ export default function TestsPage() {
             <div className="mt-3 space-y-2">
               <p className="text-xs text-muted-foreground">Session check is taking longer than expected.</p>
               <Link
-                href="/tests/login"
+                href="/login"
                 className="inline-flex items-center gap-2 rounded-lg border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-border"
               >
                 Continue to sign in
@@ -719,7 +712,7 @@ export default function TestsPage() {
             Redirecting to test sign in...
           </div>
           <Link
-            href="/tests/login"
+            href="/login"
             className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-border"
           >
             Continue to sign in
@@ -734,16 +727,6 @@ export default function TestsPage() {
       <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col items-center justify-center px-5 py-10 sm:px-6 lg:px-8 lg:py-14">
         <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.16),transparent_38%),radial-gradient(ellipse_at_top_right,rgba(249,115,22,0.12),transparent_42%),linear-gradient(180deg,rgba(15,23,42,0.15),transparent)]" />
         <div className="w-full max-w-4xl overflow-hidden rounded-[2rem] border border-white/10 bg-card/80 p-6 shadow-2xl shadow-black/25 backdrop-blur-xl sm:p-8 lg:p-10">
-          <div className="mb-8 flex justify-center">
-            <button
-              onClick={handleSignOut}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-            >
-              <ArrowLeft size={13} />
-              Sign out
-            </button>
-          </div>
-
           <div className="text-center">
             <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.09] px-3.5 py-1.5 text-xs font-semibold text-primary">
               <Sparkles size={11} />

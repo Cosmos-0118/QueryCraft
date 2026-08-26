@@ -88,7 +88,7 @@ export default function AdminUsersPage() {
   useEffect(() => {
     if (!hydrated) return;
     if (!isAuthenticated) {
-      router.replace('/tests/login');
+      router.replace('/login');
       return;
     }
     if (user?.role !== 'admin') {
@@ -301,7 +301,7 @@ export default function AdminUsersPage() {
             <ShieldCheck size={12} />
             Test Module Admin
           </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">User Management</h1>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Manage Faculty & Students</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             Add the emails that are allowed to access the test module and assign their role.
           </p>
@@ -324,7 +324,7 @@ export default function AdminUsersPage() {
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Total Users" value={String(stats.total)} icon={<Users size={16} />} />
-        <StatCard title="Teachers" value={String(stats.teachers)} icon={<Sparkles size={16} />} />
+        <StatCard title="Faculty" value={String(stats.teachers)} icon={<Sparkles size={16} />} />
         <StatCard title="Students" value={String(stats.students)} icon={<UserCircle2 size={16} />} />
         <StatCard
           title="Pending Activation"
@@ -339,9 +339,9 @@ export default function AdminUsersPage() {
           onSubmit={handleCreate}
           className="rounded-2xl border border-border/85 bg-card/85 p-5 shadow-xl shadow-black/10"
         >
-          <h2 className="text-sm font-semibold tracking-tight">Add a single user</h2>
+          <h2 className="text-sm font-semibold tracking-tight">Add faculty or student email</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            The user will set their own password the first time they sign in.
+            Faculty set their password with email OTP. Students create their password on first login.
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_160px_auto]">
@@ -359,7 +359,7 @@ export default function AdminUsersPage() {
               className="h-11 rounded-xl border border-border bg-background px-3.5 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
             >
               <option value="student">Student</option>
-              <option value="teacher">Teacher</option>
+              <option value="teacher">Faculty</option>
             </select>
             <button
               type="submit"
@@ -393,7 +393,7 @@ export default function AdminUsersPage() {
               className="h-11 rounded-xl border border-border bg-background px-3.5 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
             >
               <option value="student">Default: Student</option>
-              <option value="teacher">Default: Teacher</option>
+              <option value="teacher">Default: Faculty</option>
             </select>
 
             <label
@@ -441,7 +441,7 @@ export default function AdminUsersPage() {
       <div className="rounded-2xl border border-border/85 bg-card/85 p-5 shadow-xl shadow-black/10">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-sm font-semibold tracking-tight">All users</h2>
+            <h2 className="text-sm font-semibold tracking-tight">Manage faculty and students</h2>
             <p className="text-xs text-muted-foreground">{filteredAccounts.length} of {accounts.length} shown</p>
           </div>
 
@@ -461,7 +461,7 @@ export default function AdminUsersPage() {
               className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
             >
               <option value="all">All roles</option>
-              <option value="teacher">Teachers</option>
+              <option value="teacher">Faculty</option>
               <option value="student">Students</option>
             </select>
           </div>
@@ -552,8 +552,8 @@ export default function AdminUsersPage() {
       </div>
 
       <p className="mt-6 text-xs text-muted-foreground">
-        Need to update the platform admin? Edit <code>ADMIN_EMAIL</code> and <code>ADMIN_PASSWORD</code> in
-        your environment configuration.
+        Need to update the platform admin? Edit <code>ADMIN_EMAIL</code> in your environment configuration.
+        The admin password is created through email OTP setup.
       </p>
 
       <p className="mt-1 text-xs text-muted-foreground">
@@ -596,7 +596,7 @@ export default function AdminUsersPage() {
                   className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                 >
                   <option value="student">Student</option>
-                  <option value="teacher">Teacher</option>
+                  <option value="teacher">Faculty</option>
                 </select>
               </div>
 
