@@ -1171,12 +1171,15 @@ export class SqlExecutor {
         reason: 'SOUNDS LIKE comparisons are not available in the SQLite runtime.',
       },
       {
-        pattern: /\bUPDATE\b[\s\S]*\bLIMIT\s+\d+/i,
+        // End-anchored so a subquery's own LIMIT (e.g. `SET x = (SELECT y FROM z LIMIT 1)`)
+        // doesn't false-positive — a genuine UPDATE ... LIMIT clause is always the
+        // statement's trailing clause.
+        pattern: /\bUPDATE\b[\s\S]*\bLIMIT\s+\d+\s*;?\s*$/i,
         reason:
           'UPDATE ... LIMIT is a MySQL extension that SQLite does not support. Rewrite with a WHERE clause over primary keys.',
       },
       {
-        pattern: /\bDELETE\b[\s\S]*\bLIMIT\s+\d+/i,
+        pattern: /\bDELETE\b[\s\S]*\bLIMIT\s+\d+\s*;?\s*$/i,
         reason:
           'DELETE ... LIMIT is a MySQL extension that SQLite does not support. Rewrite with a WHERE clause over primary keys.',
       },

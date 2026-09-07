@@ -1,8 +1,8 @@
 import type { SqlJsDatabase, TranslatedQuery } from './types';
-import type { Row } from '@/types/database';
 import { emptyOkResult, statusResult, stripComments } from './utils';
 import { rewriteSubqueryOperators } from './subquery-rewriter';
 import { transformSqlCodeSegments } from './sql-lexer';
+import { quoteSqlLiteral } from './sql-structure-utils';
 
 function rewriteFunctionCalls(
   sql: string,
@@ -359,6 +359,219 @@ function applyMiscFunctionRewrites(sql: string): string {
       }
     },
   );
+}
+
+function applyIsNullCompatibilityRewrites(sql: string): string {
+  // Paren-depth aware (unlike a naive [^)]+ regex), so ISNULL(COALESCE(a,b))
+  // translates correctly instead of stopping at the first ')'.
+  return rewriteFunctionCalls(sql, ['ISNULL'], (_fnName, argument) => `(${argument} IS NULL)`);
+}
+
+const MYSQL_MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const MYSQL_WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function sqlCaseNameLookup(strftimeExpr: string, names: readonly string[], oneIndexed: boolean): string {
+  const whens = names
+    .map((name, i) => `WHEN ${oneIndexed ? i + 1 : i} THEN '${name.replace(/'/g, "''")}'`)
+    .join(' ');
+  return `(CASE CAST(${strftimeExpr} AS INTEGER) ${whens} END)`;
+}
+
+/**
+ * Translate a MySQL DATE_FORMAT() literal format string into a SQL expression
+ * built from SQLite strftime()/CASE fragments. Only literal (single-quoted)
+ * format strings are handled — a dynamic format argument is left untranslated
+ * (it will fail loudly at execution rather than silently mis-format).
+ */
+function translateDateFormatCall(dateArg: string, formatLiteral: string): string | null {
+  const literalMatch = formatLiteral.match(/^'((?:''|[^'])*)'$/);
+  if (!literalMatch) return null;
+  const format = literalMatch[1].replace(/''/g, "'");
+
+  const parts: string[] = [];
+  let literalBuf = '';
+  const flushLiteral = () => {
+    if (literalBuf) {
+      parts.push(quoteSqlLiteral(literalBuf));
+      literalBuf = '';
+    }
+  };
+
+  for (let i = 0; i < format.length; i += 1) {
+    const ch = format[i];
+    if (ch !== '%' || i === format.length - 1) {
+      literalBuf += ch;
+      continue;
+    }
+    const spec = format[i + 1];
+    i += 1;
+    let expr: string | null;
+    switch (spec) {
+      case 'Y':
+        expr = `strftime('%Y', ${dateArg})`;
+        break;
+      case 'y':
+        expr = `substr(strftime('%Y', ${dateArg}), 3, 2)`;
+        break;
+      case 'm':
+        expr = `strftime('%m', ${dateArg})`;
+        break;
+      case 'c':
+        expr = `CAST(strftime('%m', ${dateArg}) AS TEXT)`;
+        break;
+      case 'd':
+        expr = `strftime('%d', ${dateArg})`;
+        break;
+      case 'e':
+        expr = `CAST(strftime('%d', ${dateArg}) AS TEXT)`;
+        break;
+      case 'H':
+        expr = `strftime('%H', ${dateArg})`;
+        break;
+      case 'h':
+      case 'I':
+        expr = `printf('%02d', ((CAST(strftime('%H', ${dateArg}) AS INTEGER) + 11) % 12) + 1)`;
+        break;
+      case 'i':
+        expr = `strftime('%M', ${dateArg})`;
+        break;
+      case 's':
+      case 'S':
+        expr = `strftime('%S', ${dateArg})`;
+        break;
+      case 'p':
+        expr = `(CASE WHEN CAST(strftime('%H', ${dateArg}) AS INTEGER) < 12 THEN 'AM' ELSE 'PM' END)`;
+        break;
+      case 'j':
+        expr = `strftime('%j', ${dateArg})`;
+        break;
+      case 'w':
+        expr = `strftime('%w', ${dateArg})`;
+        break;
+      case 'M':
+        expr = sqlCaseNameLookup(`strftime('%m', ${dateArg})`, MYSQL_MONTH_NAMES, true);
+        break;
+      case 'b':
+        expr = sqlCaseNameLookup(
+          `strftime('%m', ${dateArg})`,
+          MYSQL_MONTH_NAMES.map((n) => n.slice(0, 3)),
+          true,
+        );
+        break;
+      case 'W':
+        expr = sqlCaseNameLookup(`strftime('%w', ${dateArg})`, MYSQL_WEEKDAY_NAMES, false);
+        break;
+      case 'a':
+        expr = sqlCaseNameLookup(
+          `strftime('%w', ${dateArg})`,
+          MYSQL_WEEKDAY_NAMES.map((n) => n.slice(0, 3)),
+          false,
+        );
+        break;
+      case '%':
+        literalBuf += '%';
+        continue;
+      default:
+        // Unsupported specifier (%U/%u/%V/%v/%X/%x week-numbering and others) —
+        // bail out rather than silently drop it; caller leaves the call untranslated.
+        return null;
+    }
+    flushLiteral();
+    parts.push(expr);
+  }
+  flushLiteral();
+
+  if (parts.length === 0) return "''";
+  return parts.join(' || ');
+}
+
+function applyDateFormatCompatibilityRewrites(sql: string): string {
+  return rewriteFunctionCalls(sql, ['DATE_FORMAT'], (fnName, argument) => {
+    const parts = splitTopLevelComma(argument);
+    if (parts.length !== 2) return `${fnName}(${argument})`;
+    const translated = translateDateFormatCall(parts[0].trim(), parts[1].trim());
+    return translated ?? `${fnName}(${argument})`;
+  });
+}
+
+interface StrToDateField {
+  key: 'Y' | 'y' | 'm' | 'd' | 'H' | 'i' | 's';
+  width: number;
+}
+
+const STR_TO_DATE_FIELD_WIDTH: Record<StrToDateField['key'], number> = {
+  Y: 4,
+  y: 2,
+  m: 2,
+  d: 2,
+  H: 2,
+  i: 2,
+  s: 2,
+};
+
+/**
+ * Translate STR_TO_DATE(str, format) for a literal, fixed-width MySQL format
+ * string (e.g. '%Y-%m-%d %H:%i:%s') into a SQL expression that reassembles an
+ * ISO-8601 string via substr() on fixed character offsets. Formats containing
+ * variable-width or name-based specifiers (%c, %e, %M, %b, %W, %a, %p, ...)
+ * are not representable this way and are left untranslated.
+ */
+function translateStrToDateCall(strArg: string, formatLiteral: string): string | null {
+  const literalMatch = formatLiteral.match(/^'((?:''|[^'])*)'$/);
+  if (!literalMatch) return null;
+  const format = literalMatch[1].replace(/''/g, "'");
+
+  const fields: { key: StrToDateField['key']; offset: number }[] = [];
+  let offset = 1; // SQL substr() is 1-indexed
+
+  for (let i = 0; i < format.length; i += 1) {
+    const ch = format[i];
+    if (ch !== '%' || i === format.length - 1) {
+      offset += 1;
+      continue;
+    }
+    const spec = format[i + 1] as StrToDateField['key'] | '%';
+    i += 1;
+    if (spec === '%') {
+      offset += 1;
+      continue;
+    }
+    const width = STR_TO_DATE_FIELD_WIDTH[spec as StrToDateField['key']];
+    if (!width) return null; // unsupported/variable-width specifier
+    fields.push({ key: spec as StrToDateField['key'], offset });
+    offset += width;
+  }
+
+  const extract = (key: StrToDateField['key']): string | null => {
+    const field = fields.find((f) => f.key === key);
+    if (!field) return null;
+    return `substr(${strArg}, ${field.offset}, ${STR_TO_DATE_FIELD_WIDTH[key]})`;
+  };
+
+  const year = extract('Y') ?? (extract('y') ? `('20' || ${extract('y')})` : null);
+  if (!year) return null; // no representable year field — can't build a valid date
+  const month = extract('m') ?? "'01'";
+  const day = extract('d') ?? "'01'";
+  const hour = extract('H');
+  const minute = extract('i');
+  const second = extract('s');
+
+  const datePart = `(${year} || '-' || ${month} || '-' || ${day})`;
+  if (!hour && !minute && !second) return datePart;
+  const timePart = `(${hour ?? "'00'"} || ':' || ${minute ?? "'00'"} || ':' || ${second ?? "'00'"})`;
+  return `(${datePart} || ' ' || ${timePart})`;
+}
+
+function applyStrToDateCompatibilityRewrites(sql: string): string {
+  return rewriteFunctionCalls(sql, ['STR_TO_DATE'], (fnName, argument) => {
+    const parts = splitTopLevelComma(argument);
+    if (parts.length !== 2) return `${fnName}(${argument})`;
+    const translated = translateStrToDateCall(parts[0].trim(), parts[1].trim());
+    return translated ?? `${fnName}(${argument})`;
+  });
 }
 
 function findMatchingParen(sql: string, openIndex: number): number {
@@ -763,60 +976,13 @@ export function translateMySQL(
   const norm = cleaned.replace(/\s+/g, ' ').trim();
   const upper = norm.toUpperCase();
 
-  // SHOW DATABASES
-  if (/^SHOW\s+DATABASES\s*;?$/i.test(norm)) {
-    return {
-      sql: null,
-      result: {
-        columns: ['Database'],
-        rows: [{ Database: activeDatabase }],
-        rowCount: 1,
-        executionTimeMs: 0,
-      },
-    };
-  }
-
-  // SHOW TABLES / SHOW FULL TABLES
-  if (/^SHOW\s+(FULL\s+)?TABLES\s*;?$/i.test(norm)) {
-    const tableColumn = `Tables_in_${activeDatabase}`;
-    return {
-      sql: `SELECT name AS '${tableColumn}' FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
-    };
-  }
-
-  // SHOW COLUMNS FROM / SHOW FIELDS FROM / DESCRIBE / DESC / EXPLAIN (table)
-  {
-    const m = norm.match(
-      /^(?:SHOW\s+(?:FULL\s+)?(?:COLUMNS|FIELDS)\s+FROM|DESC(?:RIBE)?|EXPLAIN)\s+[`"']?(\w+)[`"']?\s*;?$/i,
-    );
-    if (m) {
-      const table = m[1];
-      return buildDescribeResult(table, db);
-    }
-  }
-
-  // SHOW CREATE TABLE
-  {
-    const m = norm.match(/^SHOW\s+CREATE\s+TABLE\s+[`"']?(\w+)[`"']?\s*;?$/i);
-    if (m) {
-      const table = m[1];
-      return buildShowCreateTable(table, db);
-    }
-  }
-
-  // SHOW INDEX FROM / SHOW INDEXES FROM / SHOW KEYS FROM
-  {
-    const m = norm.match(/^SHOW\s+(?:INDEX|INDEXES|KEYS)\s+FROM\s+[`"']?(\w+)[`"']?\s*;?$/i);
-    if (m) {
-      const table = m[1];
-      return { sql: `PRAGMA index_list("${table}")` };
-    }
-  }
-
-  // SHOW TABLE STATUS
-  if (/^SHOW\s+TABLE\s+STATUS/i.test(norm)) {
-    return buildTableStatus(db);
-  }
+  // NOTE: SHOW DATABASES, SHOW TABLES, SHOW COLUMNS/FIELDS, DESCRIBE/DESC/EXPLAIN,
+  // SHOW CREATE TABLE, SHOW INDEX/INDEXES/KEYS, and SHOW TABLE STATUS are all handled
+  // earlier in the pipeline by handleDatabaseCommand() (internal/database-commands.ts),
+  // which runs before translateMySQL(). Do not re-add handlers for these here — a
+  // second, divergent implementation is unreachable under normal input but becomes a
+  // silent-fallback hazard the moment a database-commands.ts regex fails to match an
+  // edge-case form (see docs/mysql-compat-limitations.md).
 
   // SHOW WARNINGS / SHOW ERRORS — no-op for SQLite
   if (/^SHOW\s+(COUNT\s*\(\s*\*\s*\)\s+)?(WARNINGS|ERRORS)\s*;?$/i.test(norm)) {
@@ -850,27 +1016,8 @@ export function translateMySQL(
     };
   }
 
-  // SHOW CREATE DATABASE
-  {
-    const m = norm.match(/^SHOW\s+CREATE\s+DATABASE\s+[`"']?(\w+)[`"']?\s*;?$/i);
-    if (m) {
-      const dbName = m[1];
-      return {
-        sql: null,
-        result: {
-          columns: ['Database', 'Create Database'],
-          rows: [
-            {
-              Database: dbName,
-              'Create Database': `CREATE DATABASE \"${dbName}\"`,
-            },
-          ],
-          rowCount: 1,
-          executionTimeMs: 0,
-        },
-      };
-    }
-  }
+  // NOTE: SHOW CREATE DATABASE is handled earlier by handleDatabaseCommand()
+  // (internal/database-commands.ts:671) — do not duplicate it here.
 
   // CREATE DATABASE / DROP DATABASE — virtual (single-db in SQLite)
   if (/^CREATE\s+(DATABASE|SCHEMA)/i.test(upper)) {
@@ -992,7 +1139,7 @@ export function translateMySQL(
             db: activeDatabase,
             Command: 'Query',
             Time: 0,
-            State: '',
+            State: 'simulated — no real server process list is tracked',
             Info: null,
           },
         ],
@@ -1019,6 +1166,10 @@ export function translateMySQL(
       { Variable_name: 'collation_server', Value: 'utf8mb4_general_ci' },
       { Variable_name: 'autocommit', Value: '1' },
       { Variable_name: 'foreign_key_checks', Value: '1' },
+      {
+        Variable_name: 'querycraft_emulation_notice',
+        Value: 'Static placeholders — not live server state',
+      },
     ].filter((row) => likeTest(row.Variable_name));
     return {
       sql: null,
@@ -1041,9 +1192,13 @@ export function translateMySQL(
       );
       return regex.test(value);
     };
-    const allRows = [{ Variable_name: 'Uptime', Value: '0' }].filter((row) =>
-      likeTest(row.Variable_name),
-    );
+    const allRows = [
+      { Variable_name: 'Uptime', Value: '0' },
+      {
+        Variable_name: 'querycraft_emulation_notice',
+        Value: 'Status counters are not tracked; values are static placeholders',
+      },
+    ].filter((row) => likeTest(row.Variable_name));
     return {
       sql: null,
       result: {
@@ -1236,9 +1391,8 @@ export function translateMySQL(
     next = next.replace(/\bNOW\s*\(\s*\)/gi, "datetime('now')");
     next = next.replace(/\bCURDATE\s*\(\s*\)/gi, "date('now')");
     next = next.replace(/\bCURTIME\s*\(\s*\)/gi, "time('now')");
-    next = next.replace(/\bISNULL\s*\(([^)]+)\)/gi, '($1 IS NULL)');
-    next = next.replace(/\bDATABASE\s*\(\s*\)/gi, `'${activeDatabase}'`);
-    next = next.replace(/\b(?:CURRENT_USER|USER)\s*\(\s*\)/gi, `'${activeUser}'`);
+    next = next.replace(/\bDATABASE\s*\(\s*\)/gi, quoteSqlLiteral(activeDatabase));
+    next = next.replace(/\b(?:CURRENT_USER|USER)\s*\(\s*\)/gi, quoteSqlLiteral(activeUser));
     next = next.replace(/\bVERSION\s*\(\s*\)/gi, 'sqlite_version()');
     // MySQL operators with no direct SQLite spelling.
     next = next.replace(/<=>/g, ' IS ');
@@ -1256,7 +1410,10 @@ export function translateMySQL(
   translated = applyConcatWsCompatibilityRewrites(translated);
   translated = applyGroupConcatCompatibilityRewrites(translated);
   translated = applyIfCompatibilityRewrites(translated);
+  translated = applyIsNullCompatibilityRewrites(translated);
   translated = applyDateCompatibilityRewrites(translated);
+  translated = applyDateFormatCompatibilityRewrites(translated);
+  translated = applyStrToDateCompatibilityRewrites(translated);
   translated = applyMiscFunctionRewrites(translated);
   translated = rewriteOnDuplicateKeyUpdate(translated, db);
 
@@ -1283,151 +1440,4 @@ export function translateMySQL(
       : undefined;
 
   return { sql: translated, columnRenames };
-}
-
-function buildDescribeResult(table: string, db: SqlJsDatabase): TranslatedQuery {
-  const start = performance.now();
-  try {
-    const info = db.exec(`PRAGMA table_info("${table}")`);
-    if (info.length === 0) {
-      return {
-        sql: null,
-        result: {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - start,
-          error: `Table '${table}' doesn't exist`,
-        },
-      };
-    }
-    const fkInfo = db.exec(`PRAGMA foreign_key_list("${table}")`);
-    const fks: Record<string, string> = {};
-    if (fkInfo.length > 0) {
-      for (const row of fkInfo[0].values) {
-        const fromCol = String(row[3]);
-        const toTable = String(row[2]);
-        const toCol = String(row[4]);
-        fks[fromCol] = `FK → ${toTable}(${toCol})`;
-      }
-    }
-
-    const rows: Row[] = info[0].values.map((r) => {
-      const fieldName = String(r[1]);
-      const isPk = r[5] === 1;
-      const fkDesc = fks[fieldName];
-
-      return {
-        Field: fieldName,
-        Type: r[2] || 'TEXT',
-        Null: r[3] === 0 ? 'YES' : 'NO',
-        Key: isPk ? 'PRI' : fkDesc ? 'MUL' : '',
-        Default: r[4] ?? 'NULL',
-        Extra: fkDesc ? fkDesc : '',
-      };
-    });
-    return {
-      sql: null,
-      result: {
-        columns: ['Field', 'Type', 'Null', 'Key', 'Default', 'Extra'],
-        rows,
-        rowCount: rows.length,
-        executionTimeMs: performance.now() - start,
-      },
-    };
-  } catch {
-    return {
-      sql: null,
-      result: {
-        columns: [],
-        rows: [],
-        rowCount: 0,
-        executionTimeMs: performance.now() - start,
-        error: `Table '${table}' doesn't exist`,
-      },
-    };
-  }
-}
-
-function buildShowCreateTable(table: string, db: SqlJsDatabase): TranslatedQuery {
-  const start = performance.now();
-  try {
-    const r = db.exec(`SELECT sql FROM sqlite_master WHERE type='table' AND name='${table}'`);
-    if (r.length === 0 || r[0].values.length === 0) {
-      return {
-        sql: null,
-        result: {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - start,
-          error: `Table '${table}' doesn't exist`,
-        },
-      };
-    }
-    return {
-      sql: null,
-      result: {
-        columns: ['Table', 'Create Table'],
-        rows: [{ Table: table, 'Create Table': r[0].values[0][0] }],
-        rowCount: 1,
-        executionTimeMs: performance.now() - start,
-      },
-    };
-  } catch {
-    return {
-      sql: null,
-      result: {
-        columns: [],
-        rows: [],
-        rowCount: 0,
-        executionTimeMs: performance.now() - start,
-        error: `Table '${table}' doesn't exist`,
-      },
-    };
-  }
-}
-
-function buildTableStatus(db: SqlJsDatabase): TranslatedQuery {
-  const start = performance.now();
-  try {
-    const r = db.exec(
-      "SELECT name, type FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-    );
-    if (r.length === 0) {
-      return {
-        sql: null,
-        result: {
-          columns: ['Name', 'Engine', 'Rows'],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: performance.now() - start,
-        },
-      };
-    }
-    const rows: Row[] = r[0].values.map(([name]) => {
-      let rowCount = 0;
-      try {
-        const cnt = db.exec(`SELECT COUNT(*) FROM "${name}"`);
-        if (cnt.length > 0) rowCount = Number(cnt[0].values[0][0]);
-      } catch {
-        /* empty */
-      }
-      return { Name: name, Engine: 'SQLite', Rows: rowCount };
-    });
-    return {
-      sql: null,
-      result: {
-        columns: ['Name', 'Engine', 'Rows'],
-        rows,
-        rowCount: rows.length,
-        executionTimeMs: performance.now() - start,
-      },
-    };
-  } catch {
-    return {
-      sql: null,
-      result: { columns: [], rows: [], rowCount: 0, executionTimeMs: performance.now() - start },
-    };
-  }
 }

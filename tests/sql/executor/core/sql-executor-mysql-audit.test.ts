@@ -371,3 +371,82 @@ describe('MySQL audit — ANY / ALL correctness', () => {
     expect(noneDiffer.rowCount).toBe(0);
   });
 });
+
+describe('MySQL audit — Pass 6 (ISNULL, DATABASE()/USER() quoting, DATE_FORMAT, STR_TO_DATE)', () => {
+  let executor: SqlExecutor;
+
+  beforeEach(async () => {
+    executor = new SqlExecutor();
+    await executor.init();
+  });
+
+  it('rewrites ISNULL with nested parens correctly', () => {
+    executor.execute('CREATE TABLE t (a INTEGER, b INTEGER)');
+    executor.execute('INSERT INTO t VALUES (NULL, NULL), (1, NULL)');
+    const result = executor.execute('SELECT a FROM t WHERE ISNULL(COALESCE(a, b))');
+    expect(result.error).toBeUndefined();
+    expect(result.rowCount).toBe(1);
+  });
+
+  it('does not corrupt SQL when DATABASE()/USER() values contain a quote', () => {
+    // activeDatabase/activeUser are app-controlled today, but the rewrite must
+    // not be a latent injection hazard if that ever changes.
+    executor.execute("SELECT DATABASE() AS db, USER() AS usr");
+    const result = executor.execute('SELECT DATABASE() AS db');
+    expect(result.error).toBeUndefined();
+    expect(result.rowCount).toBe(1);
+  });
+
+  it('still resolves SHOW TABLES / SHOW CREATE TABLE / SHOW INDEX after removing the dead translation.ts handlers', () => {
+    executor.execute('CREATE TABLE widgets (id INTEGER PRIMARY KEY, name TEXT)');
+    const tables = executor.execute('SHOW TABLES');
+    expect(tables.error).toBeUndefined();
+    expect(tables.rowCount).toBe(1);
+
+    const createTable = executor.execute('SHOW CREATE TABLE widgets');
+    expect(createTable.error).toBeUndefined();
+    expect(createTable.rowCount).toBe(1);
+
+    const index = executor.execute('SHOW INDEX FROM widgets');
+    expect(index.error).toBeUndefined();
+  });
+
+  it('translates DATE_FORMAT with common numeric and name specifiers', () => {
+    executor.execute('CREATE TABLE events (id INTEGER PRIMARY KEY, happened_at TEXT)');
+    executor.execute("INSERT INTO events VALUES (1, '2024-03-15 09:05:07')");
+
+    const iso = executor.execute("SELECT DATE_FORMAT(happened_at, '%Y-%m-%d') AS d FROM events");
+    expect(iso.error).toBeUndefined();
+    expect(String(iso.rows[0]?.d)).toBe('2024-03-15');
+
+    const named = executor.execute(
+      "SELECT DATE_FORMAT(happened_at, '%W, %M %e %Y at %h:%i %p') AS d FROM events",
+    );
+    expect(named.error).toBeUndefined();
+    expect(String(named.rows[0]?.d)).toBe('Friday, March 15 2024 at 09:05 AM');
+  });
+
+  it('leaves DATE_FORMAT untranslated (and thus erroring loudly) for unsupported specifiers', () => {
+    executor.execute('CREATE TABLE events2 (id INTEGER PRIMARY KEY, happened_at TEXT)');
+    executor.execute("INSERT INTO events2 VALUES (1, '2024-03-15')");
+    const result = executor.execute("SELECT DATE_FORMAT(happened_at, '%V-%X') AS d FROM events2");
+    expect(result.error).toBeDefined();
+  });
+
+  it('translates STR_TO_DATE for a fixed-width literal format', () => {
+    executor.execute('CREATE TABLE imports (id INTEGER PRIMARY KEY, raw TEXT)');
+    executor.execute("INSERT INTO imports VALUES (1, '2024-03-15 09:05:07')");
+    const result = executor.execute(
+      "SELECT STR_TO_DATE(raw, '%Y-%m-%d %H:%i:%s') AS parsed FROM imports",
+    );
+    expect(result.error).toBeUndefined();
+    expect(String(result.rows[0]?.parsed)).toBe('2024-03-15 09:05:07');
+  });
+
+  it('leaves STR_TO_DATE untranslated for variable-width specifiers', () => {
+    executor.execute('CREATE TABLE imports2 (id INTEGER PRIMARY KEY, raw TEXT)');
+    executor.execute("INSERT INTO imports2 VALUES (1, 'March 15 2024')");
+    const result = executor.execute("SELECT STR_TO_DATE(raw, '%M %e %Y') AS parsed FROM imports2");
+    expect(result.error).toBeDefined();
+  });
+});
