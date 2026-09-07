@@ -670,13 +670,6 @@ export function handleDatabaseCommand(
   {
     const m = norm.match(/^SHOW\s+CREATE\s+DATABASE\s+[`"']?(\w+)[`"']?\s*;?$/i);
     if (m) {
-      if (!this.isCurrentUserAdmin()) {
-        return sqlErrorEngine.fromMessage('Access denied. Only admin can create databases.', {
-          sql: rawSql,
-          startTime,
-        });
-      }
-
       const requestedName = m[1];
       const dbName = this.resolveDatabaseName(requestedName);
       if (!dbName) {
@@ -687,10 +680,162 @@ export function handleDatabaseCommand(
       }
       return {
         columns: ['Database', 'Create Database'],
-        rows: [{ Database: dbName, 'Create Database': `CREATE DATABASE \"${dbName}\"` }],
+        rows: [{ Database: dbName, 'Create Database': `CREATE DATABASE "${dbName}"` }],
         rowCount: 1,
         executionTimeMs: performance.now() - startTime,
       };
+    }
+  }
+
+  {
+    // SHOW [EXTENDED] [FULL] {COLUMNS | FIELDS} {FROM | IN} tbl [{FROM | IN} db] [LIKE pat]
+    const m = norm.match(
+      /^SHOW\s+(EXTENDED\s+)?(FULL\s+)?(COLUMNS|FIELDS)\s+(?:FROM|IN)\s+(.+?)(?:\s+(?:FROM|IN)\s+([`"']?[\w$]+[`"']?))?(?:\s+LIKE\s+'((?:''|[^'])*)')?\s*;?$/i,
+    );
+    if (m) {
+      const tableRaw = m[4].trim();
+      const explicitDbRaw = m[5]?.trim();
+      const likePattern = m[6]?.replace(/''/g, "'");
+      const parsed = this.parseQualifiedName(tableRaw);
+      if (!parsed) {
+        return sqlErrorEngine.fromMessage('Invalid table name in SHOW COLUMNS', {
+          sql: rawSql,
+          startTime,
+        });
+      }
+      const dbName = explicitDbRaw
+        ? (this.resolveDatabaseName(
+            explicitDbRaw.replace(/^[`"']|[`"']$/g, ''),
+          ) ?? explicitDbRaw.replace(/^[`"']|[`"']$/g, ''))
+        : parsed.database
+          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
+          : this.activeDatabase;
+      const db = this.databases.get(dbName);
+      if (!db) {
+        return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+      if (!this.hasPrivilege('SELECT', dbName)) {
+        return sqlErrorEngine.fromMessage(
+          `Access denied for user '${this.getCurrentUserDisplay()}' to SHOW COLUMNS on database '${dbName}'`,
+          {
+            sql: rawSql,
+            startTime,
+          },
+        );
+      }
+      const escapedTable = parsed.name.replace(/'/g, "''");
+      const exists = db.exec(
+        `SELECT name FROM sqlite_master WHERE type='table' AND lower(name)=lower('${escapedTable}') LIMIT 1`,
+      );
+      if (exists.length === 0 || exists[0].values.length === 0) {
+        return sqlErrorEngine.fromMessage(`Unknown table '${parsed.name}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+      const info = db.exec(`PRAGMA table_info("${parsed.name.replace(/"/g, '""')}")`);
+      const likeMatcher = buildSqlLikeMatcher(likePattern);
+      const rows: Row[] =
+        info.length > 0
+          ? info[0].values
+              .map((r) => ({
+                Field: String(r[1]),
+                Type: String(r[2] || 'TEXT'),
+                Null: Number(r[3] ?? 0) === 0 ? 'YES' : 'NO',
+                Key: Number(r[5] ?? 0) === 1 ? 'PRI' : '',
+                Default: (r[4] as string | null) ?? null,
+                Extra: '',
+              }))
+              .filter((row) => likeMatcher(String(row.Field)))
+          : [];
+      return {
+        columns: ['Field', 'Type', 'Null', 'Key', 'Default', 'Extra'],
+        rows,
+        rowCount: rows.length,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  {
+    // DESCRIBE / DESC tbl (including db.tbl) — mirrors MySQL DESCRIBE output.
+    const m = norm.match(/^(?:DESC(?:RIBE)?|EXPLAIN)\s+(.+?)\s*;?$/i);
+    if (
+      m &&
+      /^[`"']?[\w$]+[`"']?(\s*\.\s*[`"']?[\w$]+[`"']?)?$/i.test(m[1].trim()) &&
+      !/\s/.test(m[1].trim())
+    ) {
+      const parsed = this.parseQualifiedName(m[1]);
+      if (parsed) {
+        const dbName = parsed.database
+          ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
+          : this.activeDatabase;
+        const db = this.databases.get(dbName);
+        if (!db) {
+          return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+        if (!this.hasPrivilege('SELECT', dbName)) {
+          return sqlErrorEngine.fromMessage(
+            `Access denied for user '${this.getCurrentUserDisplay()}' to DESCRIBE on database '${dbName}'`,
+            {
+              sql: rawSql,
+              startTime,
+            },
+          );
+        }
+        const escapedTable = parsed.name.replace(/'/g, "''");
+        const exists = db.exec(
+          `SELECT name FROM sqlite_master WHERE type='table' AND lower(name)=lower('${escapedTable}') LIMIT 1`,
+        );
+        if (exists.length === 0 || exists[0].values.length === 0) {
+          return sqlErrorEngine.fromMessage(`Table '${parsed.name}' doesn't exist`, {
+            sql: rawSql,
+            startTime,
+          });
+        }
+        const info = db.exec(`PRAGMA table_info("${parsed.name.replace(/"/g, '""')}")`);
+        const rows: Row[] =
+          info.length > 0
+            ? info[0].values.map((r) => ({
+                Field: String(r[1]),
+                Type: String(r[2] || 'TEXT'),
+                Null: Number(r[3] ?? 0) === 0 ? 'YES' : 'NO',
+                Key: Number(r[5] ?? 0) === 1 ? 'PRI' : '',
+                Default: (r[4] as string | null) ?? null,
+                Extra: '',
+              }))
+            : [];
+        return {
+          columns: ['Field', 'Type', 'Null', 'Key', 'Default', 'Extra'],
+          rows,
+          rowCount: rows.length,
+          executionTimeMs: performance.now() - startTime,
+        };
+      }
+    }
+  }
+
+  {
+    // SHOW CREATE EVENT name — no event scheduler in sandbox; report unknown event.
+    const m = norm.match(/^SHOW\s+CREATE\s+EVENT\s+(.+)\s*;?$/i);
+    if (m) {
+      const parsed = this.parseQualifiedName(m[1]);
+      if (!parsed) {
+        return sqlErrorEngine.fromMessage('Invalid event name in SHOW CREATE EVENT', {
+          sql: rawSql,
+          startTime,
+        });
+      }
+      return sqlErrorEngine.fromMessage(`Unknown event '${parsed.name}'`, {
+        sql: rawSql,
+        startTime,
+      });
     }
   }
 
@@ -1453,6 +1598,59 @@ export function handleDatabaseCommand(
       }
       if (this.activeDatabase === dbName) {
         this.activeDatabase = 'main';
+      }
+      return {
+        columns: [],
+        rows: [],
+        rowCount: 0,
+        executionTimeMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  {
+    // CREATE OR REPLACE VIEW — emulate by dropping the existing view first.
+    // (SQLite has no OR REPLACE; MySQL labs use this form frequently.)
+    const m = norm.match(/^CREATE\s+OR\s+REPLACE\s+VIEW\s+([\s\S]+)$/i);
+    if (m) {
+      const nameMatch = m[1].match(
+        /^(?:ALGORITHM\s*=\s*\w+\s+)?(?:DEFINER\s*=\s*\S+\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?(?:TEMPORARY\s+)?([^\s(]+)/i,
+      );
+      const parsed = nameMatch ? this.parseQualifiedName(nameMatch[1]) : null;
+      if (!parsed) {
+        return sqlErrorEngine.fromMessage('Invalid view name in CREATE VIEW', {
+          sql: rawSql,
+          startTime,
+        });
+      }
+      const dbName = parsed.database
+        ? (this.resolveDatabaseName(parsed.database) ?? parsed.database)
+        : this.activeDatabase;
+      const db = this.databases.get(dbName);
+      if (!db) {
+        return sqlErrorEngine.fromMessage(`Unknown database '${dbName}'`, {
+          sql: rawSql,
+          startTime,
+        });
+      }
+      if (!this.hasPrivilege('CREATE', dbName)) {
+        return sqlErrorEngine.fromMessage(
+          `Access denied for user '${this.getCurrentUserDisplay()}' to CREATE view in database '${dbName}'`,
+          {
+            sql: rawSql,
+            startTime,
+          },
+        );
+      }
+      const createSql = rawSql.replace(/CREATE\s+OR\s+REPLACE\s+VIEW/i, 'CREATE VIEW');
+      try {
+        db.run(`DROP VIEW IF EXISTS ${this.quoteIdentifier(parsed.name)}`);
+        db.run(createSql.replace(/;$/, ''));
+      } catch (error) {
+        return sqlErrorEngine.fromUnknownError(error, {
+          sql: rawSql,
+          startTime,
+        });
       }
       return {
         columns: [],

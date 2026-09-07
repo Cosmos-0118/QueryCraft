@@ -26,6 +26,7 @@ export interface AlterTableCompatibilityContext {
     columns: RebuildColumnSpec[],
     rawSql: string,
     startTime: number,
+    extraTableConstraints?: string[],
   ): QueryResult;
   replaceLeadingIdentifier(definition: string, nextName: string): string;
   splitTopLevelComma(raw: string): string[];
@@ -389,6 +390,146 @@ export function handleAlterTableCompatibility(
           startTime,
         });
       }
+      continue;
+    }
+
+    const alterColumnMatch = operation.match(
+      /^ALTER\s+(?:COLUMN\s+)?([`"']?[A-Za-z_][\w$]*[`"']?)\s+(SET\s+DEFAULT\s+([\s\S]+)|DROP\s+DEFAULT)$/i,
+    );
+    if (alterColumnMatch) {
+      const targetParsed = this.parseLeadingIdentifier(alterColumnMatch[1]);
+      if (!targetParsed) {
+        return sqlErrorEngine.fromMessage('Invalid ALTER TABLE ALTER COLUMN syntax', {
+          sql: rawSql,
+          startTime,
+        });
+      }
+      const sourceLower = targetParsed.identifier.toLowerCase();
+      const existing = columnsMeta.find(
+        (column) => column.name.toLowerCase() === sourceLower,
+      );
+      if (!existing) {
+        return sqlErrorEngine.fromMessage(
+          `Unknown column '${targetParsed.identifier}' in '${tableName}'`,
+          {
+            sql: rawSql,
+            startTime,
+          },
+        );
+      }
+      const isDrop = /^DROP\s+DEFAULT$/i.test(alterColumnMatch[2]);
+      const defaultExpr = (alterColumnMatch[3] ?? '').trim();
+      if (!isDrop && !defaultExpr) {
+        return sqlErrorEngine.fromMessage('SET DEFAULT requires a default expression', {
+          sql: rawSql,
+          startTime,
+        });
+      }
+      const stripped = existing.definition.replace(
+        /\s+DEFAULT\s+(?:\([^)]*\)|'[^']*'|"[^"]*"|[^\s,]+)/i,
+        '',
+      );
+      const nextDefinition = isDrop ? stripped : `${stripped} DEFAULT ${defaultExpr}`;
+      const spec: RebuildColumnSpec[] = columnsMeta.map((column) =>
+        column.name.toLowerCase() === sourceLower
+          ? { name: column.name, definition: nextDefinition, sourceName: column.name }
+          : { name: column.name, definition: column.definition, sourceName: column.name },
+      );
+      const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime);
+      if (result.error) return result;
+      continue;
+    }
+
+    const addPrimaryKeyMatch = operation.match(/^ADD\s+PRIMARY\s+KEY\s*(\([\s\S]+\))$/i);
+    if (addPrimaryKeyMatch) {
+      const cols = this.splitTopLevelComma(
+        addPrimaryKeyMatch[1].replace(/^\(/, '').replace(/\)$/, ''),
+      ).map((part) => {
+        const parsed = this.parseLeadingIdentifier(part.trim());
+        return parsed ? this.quoteIdentifier(parsed.identifier) : part.trim();
+      });
+      const names = new Set(columnsMeta.map((c) => c.name.toLowerCase()));
+      for (const col of this.splitTopLevelComma(
+        addPrimaryKeyMatch[1].replace(/^\(/, '').replace(/\)$/, ''),
+      )) {
+        const parsed = this.parseLeadingIdentifier(col.trim());
+        if (!parsed || !names.has(parsed.identifier.toLowerCase())) {
+          return sqlErrorEngine.fromMessage(
+            `Unknown column '${col.trim()}' in PRIMARY KEY`,
+            { sql: rawSql, startTime },
+          );
+        }
+      }
+      const spec: RebuildColumnSpec[] = columnsMeta.map((column) => ({
+        name: column.name,
+        definition: column.definition,
+        sourceName: column.name,
+      }));
+      const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime, [
+        `PRIMARY KEY (${cols.join(', ')})`,
+      ]);
+      if (result.error) return result;
+      continue;
+    }
+
+    const addUniqueMatch = operation.match(
+      /^ADD\s+(?:CONSTRAINT\s+[`"']?[A-Za-z_][\w$]*[`"']?\s+)?UNIQUE(?:\s+(?:INDEX|KEY))?(?:\s+[`"']?[A-Za-z_][\w$]*[`"']?)?\s*(\([\s\S]+\))$/i,
+    );
+    if (addUniqueMatch) {
+      const cols = this.splitTopLevelComma(
+        addUniqueMatch[1].replace(/^\(/, '').replace(/\)$/, ''),
+      ).map((part) => {
+        const parsed = this.parseLeadingIdentifier(part.trim());
+        return parsed ? this.quoteIdentifier(parsed.identifier) : part.trim();
+      });
+      const spec: RebuildColumnSpec[] = columnsMeta.map((column) => ({
+        name: column.name,
+        definition: column.definition,
+        sourceName: column.name,
+      }));
+      const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime, [
+        `UNIQUE (${cols.join(', ')})`,
+      ]);
+      if (result.error) return result;
+      continue;
+    }
+
+    const addConstraintMatch = operation.match(/^ADD\s+CONSTRAINT\s+([\s\S]+)$/i);
+    if (addConstraintMatch) {
+      const constraintBody = addConstraintMatch[1].trim();
+      if (
+        !/^(?:[`"']?[A-Za-z_][\w$]*[`"']?\s+)?(?:PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE|CHECK)\b/i.test(
+          constraintBody,
+        )
+      ) {
+        return sqlErrorEngine.fromMessage(
+          `Unsupported ALTER TABLE operation segment: '${operation}'.`,
+          { sql: rawSql, startTime },
+        );
+      }
+      const spec: RebuildColumnSpec[] = columnsMeta.map((column) => ({
+        name: column.name,
+        definition: column.definition,
+        sourceName: column.name,
+      }));
+      const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime, [
+        `CONSTRAINT ${constraintBody}`,
+      ]);
+      if (result.error) return result;
+      continue;
+    }
+
+    const addForeignKeyMatch = operation.match(/^ADD\s+FOREIGN\s+KEY\s*(\([\s\S]+\))\s+REFERENCES\s+([\s\S]+)$/i);
+    if (addForeignKeyMatch) {
+      const spec: RebuildColumnSpec[] = columnsMeta.map((column) => ({
+        name: column.name,
+        definition: column.definition,
+        sourceName: column.name,
+      }));
+      const result = this.rebuildTableWithSpec(tableName, spec, rawSql, startTime, [
+        `FOREIGN KEY ${addForeignKeyMatch[1]} REFERENCES ${addForeignKeyMatch[2]}`,
+      ]);
+      if (result.error) return result;
       continue;
     }
 

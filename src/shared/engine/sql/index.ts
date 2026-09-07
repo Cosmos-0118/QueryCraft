@@ -196,6 +196,29 @@ const UNSUPPORTED_MYSQL_PATTERNS: UnsupportedMySqlPattern[] = [
     pattern: /\bJSON_TABLE\s*\(/i,
     reason: 'JSON_TABLE is a MySQL-specific table function not available in SQLite.',
   },
+  {
+    pattern: /^CREATE\s+(?:TEMPORARY\s+)?TABLE\s+\S+\s+LIKE\s+\S+/i,
+    reason:
+      'CREATE TABLE ... LIKE (clone table structure) is not emulated. Use SHOW CREATE TABLE on the source, then CREATE TABLE with the same definition.',
+  },
+  {
+    pattern: /\bINTO\s+(OUTFILE|DUMPFILE)\b/i,
+    reason:
+      'SELECT ... INTO OUTFILE/DUMPFILE requires server filesystem access and is not available in the sandbox.',
+  },
+  {
+    pattern: /\bSELECT\b[\s\S]*\bINTO\s+@\w+/i,
+    reason:
+      'SELECT ... INTO @variable assignments are not emulated. Use SET @variable = (SELECT ...) instead.',
+  },
+  {
+    pattern: /\bSOUNDS\s+LIKE\b/i,
+    reason: 'SOUNDS LIKE comparisons are not available in the SQLite backend.',
+  },
+  {
+    pattern: /\bPROCEDURE\s+ANALYSE\s*\(/i,
+    reason: 'PROCEDURE ANALYSE() is a legacy MySQL extension with no SQLite equivalent.',
+  },
 ];
 
 export class SqlExecutor {
@@ -460,6 +483,7 @@ export class SqlExecutor {
     columns: RebuildColumnSpec[],
     rawSql: string,
     startTime: number,
+    extraTableConstraints?: string[],
   ): QueryResult {
     const activeDb = this.getActiveDb();
     if (!activeDb) {
@@ -486,7 +510,11 @@ export class SqlExecutor {
           !droppedColumns.some((columnName) => this.sqlReferencesIdentifier(constraint, columnName)),
       );
 
-    const definitions = [...columns.map((column) => column.definition.trim()), ...rewrittenConstraints];
+    const definitions = [
+      ...columns.map((column) => column.definition.trim()),
+      ...rewrittenConstraints,
+      ...(extraTableConstraints ?? []).map((constraint) => constraint.trim()).filter(Boolean),
+    ];
     const trailingClause = createTableMeta?.trailingClause ? ` ${createTableMeta.trailingClause}` : '';
     const insertColumns: string[] = [];
     const selectColumns: string[] = [];
@@ -1132,6 +1160,30 @@ export class SqlExecutor {
       {
         pattern: /\bJSON_TABLE\s*\(/i,
         reason: 'JSON_TABLE is not available in the SQLite runtime.',
+      },
+      {
+        pattern: /\bXOR\b/i,
+        reason:
+          'The XOR logical operator has no SQLite equivalent. Rewrite as (A AND NOT B) OR (NOT A AND B).',
+      },
+      {
+        pattern: /\bSOUNDS\s+LIKE\b/i,
+        reason: 'SOUNDS LIKE comparisons are not available in the SQLite runtime.',
+      },
+      {
+        pattern: /\bUPDATE\b[\s\S]*\bLIMIT\s+\d+/i,
+        reason:
+          'UPDATE ... LIMIT is a MySQL extension that SQLite does not support. Rewrite with a WHERE clause over primary keys.',
+      },
+      {
+        pattern: /\bDELETE\b[\s\S]*\bLIMIT\s+\d+/i,
+        reason:
+          'DELETE ... LIMIT is a MySQL extension that SQLite does not support. Rewrite with a WHERE clause over primary keys.',
+      },
+      {
+        pattern: /\bINTO\s+(OUTFILE|DUMPFILE)\b/i,
+        reason:
+          'SELECT ... INTO OUTFILE/DUMPFILE requires server filesystem access and is unavailable here.',
       },
     ];
 

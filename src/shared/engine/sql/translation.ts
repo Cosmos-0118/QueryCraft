@@ -211,6 +211,156 @@ function applyConcatCompatibilityRewrites(sql: string): string {
   }
 }
 
+function applyConcatWsCompatibilityRewrites(sql: string): string {
+  let rewritten = sql;
+  while (true) {
+    const next = rewriteFunctionCalls(rewritten, ['CONCAT_WS'], (_fnName, argument) => {
+      const parts = splitTopLevelComma(argument)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+      if (parts.length === 0) return "''";
+      if (parts.length === 1) return parts[0];
+      const separator = parts[0];
+      const values = parts.slice(1);
+      // MySQL CONCAT_WS skips NULLs; approximate with nested COALESCE chains joined by separator.
+      // Each value becomes COALESCE(value, '') so NULLs contribute empty strings.
+      const coalesced = values.map((value) => `COALESCE((${value}), '')`);
+      return coalesced.join(` || ${separator} || `);
+    });
+    if (next === rewritten) return next;
+    rewritten = next;
+  }
+}
+
+function applyGroupConcatCompatibilityRewrites(sql: string): string {
+  return rewriteFunctionCalls(sql, ['GROUP_CONCAT'], (_fnName, argument) => {
+    let arg = argument.trim();
+    let separator: string | null = null;
+    const sepMatch = arg.match(/^(.*?)\s+SEPARATOR\s+('(?:''|[^'])*'|"(?:\"\"|[^\"])*")\s*$/i);
+    if (sepMatch) {
+      arg = sepMatch[1].trim();
+      separator = sepMatch[2].trim();
+    }
+    // Strip ORDER BY inside GROUP_CONCAT (SQLite group_concat doesn't support it).
+    // Keep DISTINCT if present.
+    arg = arg.replace(/\s+ORDER\s+BY\s+[\s\S]+$/i, '').trim();
+    if (!arg) return separator ? `group_concat('', ${separator})` : `group_concat('')`;
+    if (separator) return `group_concat(${arg}, ${separator})`;
+    return `group_concat(${arg})`;
+  });
+}
+
+function applyIfCompatibilityRewrites(sql: string): string {
+  // IF(cond, a, b) -> IIF(cond, a, b). Avoid matching IFNULL/IF NULL variants.
+  return transformSqlCodeSegments(sql, (segment) =>
+    segment.replace(/\bIF\s*\(/gi, 'IIF('),
+  );
+}
+
+function applyDateCompatibilityRewrites(sql: string): string {
+  let rewritten = rewriteFunctionCalls(
+    sql,
+    ['YEAR', 'MONTH', 'DAY', 'DAYOFMONTH', 'HOUR', 'MINUTE', 'SECOND', 'WEEK', 'QUARTER'],
+    (fnName, argument) => {
+      const arg = argument.trim() || 'NULL';
+      switch (fnName) {
+        case 'YEAR':
+          return `CAST(strftime('%Y', ${arg}) AS INTEGER)`;
+        case 'MONTH':
+          return `CAST(strftime('%m', ${arg}) AS INTEGER)`;
+        case 'DAY':
+        case 'DAYOFMONTH':
+          return `CAST(strftime('%d', ${arg}) AS INTEGER)`;
+        case 'HOUR':
+          return `CAST(strftime('%H', ${arg}) AS INTEGER)`;
+        case 'MINUTE':
+          return `CAST(strftime('%M', ${arg}) AS INTEGER)`;
+        case 'SECOND':
+          return `CAST(strftime('%S', ${arg}) AS INTEGER)`;
+        case 'QUARTER':
+          return `CAST((CAST(strftime('%m', ${arg}) AS INTEGER) + 2) / 3 AS INTEGER)`;
+        case 'WEEK':
+          return `CAST(strftime('%W', ${arg}) AS INTEGER)`;
+        default:
+          return `${fnName}(${arg})`;
+      }
+    },
+  );
+  rewritten = rewriteFunctionCalls(rewritten, ['DATEDIFF'], (_fnName, argument) => {
+    const parts = splitTopLevelComma(argument);
+    if (parts.length !== 2) return `DATEDIFF(${argument})`;
+    return `CAST(julianday(${parts[0].trim()}) - julianday(${parts[1].trim()}) AS INTEGER)`;
+  });
+  rewritten = rewriteFunctionCalls(
+    rewritten,
+    ['DATE_ADD', 'DATE_SUB', 'ADDDATE', 'SUBDATE', 'TIMESTAMPADD'],
+    (fnName, argument) => {
+      const parts = splitTopLevelComma(argument);
+      const upper = fnName.toUpperCase();
+      const isAdd = upper === 'DATE_ADD' || upper === 'ADDDATE' || upper === 'TIMESTAMPADD';
+      if (parts.length < 2) return `${fnName}(${argument})`;
+      const base = parts[0].trim();
+      const intervalRaw = parts.slice(1).join(',').trim();
+      const intervalMatch = intervalRaw.match(/^INTERVAL\s+('(?:''|[^'])*'|-?\d+(?:\.\d+)?)\s+([A-Za-z_]+)\s*$/i);
+      let amount = intervalMatch?.[1] ?? '';
+      let unit = (intervalMatch?.[2] ?? '').toLowerCase();
+      if (!intervalMatch) {
+        // ADDDATE(d, n) / SUBDATE(d, n) day-shorthand form.
+        amount = intervalRaw;
+        unit = 'day';
+      }
+      const plural: Record<string, string> = {
+        microsecond: 'seconds',
+        second: 'seconds',
+        minute: 'minutes',
+        hour: 'hours',
+        day: 'days',
+        week: 'weeks',
+        month: 'months',
+        quarter: 'months',
+        year: 'years',
+      };
+      let modifierUnit = plural[unit] ?? plural[unit.replace(/s$/, '')] ?? 'days';
+      let numericAmount = amount;
+      const quoted = amount.match(/^'(.*)'$/);
+      if (quoted) numericAmount = quoted[1].replace(/''/g, "'");
+      if (unit === 'quarter' && /^-?\d/.test(numericAmount)) {
+        numericAmount = `(${numericAmount} * 3)`;
+      }
+      if (unit === 'week' && /^-?\d/.test(numericAmount)) {
+        numericAmount = `(${numericAmount} * 7)`;
+        modifierUnit = 'days';
+      }
+      const sign = isAdd ? '+' : '-';
+      return `datetime(${base}, '${sign}' || (${numericAmount}) || ' ${modifierUnit}')`;
+    },
+  );
+  return rewritten;
+}
+
+function applyMiscFunctionRewrites(sql: string): string {
+  return rewriteFunctionCalls(
+    sql,
+    ['SYSDATE', 'UTC_TIMESTAMP', 'LOCALTIME', 'LOCALTIMESTAMP', 'UNIX_TIMESTAMP', 'FROM_UNIXTIME'],
+    (fnName, argument) => {
+      const arg = argument.trim();
+      switch (fnName) {
+        case 'SYSDATE':
+        case 'UTC_TIMESTAMP':
+        case 'LOCALTIME':
+        case 'LOCALTIMESTAMP':
+          return `datetime('now')`;
+        case 'UNIX_TIMESTAMP':
+          return arg ? `CAST(strftime('%s', ${arg}) AS INTEGER)` : `CAST(strftime('%s','now') AS INTEGER)`;
+        case 'FROM_UNIXTIME':
+          return arg ? `datetime(${arg}, 'unixepoch')` : `datetime('now')`;
+        default:
+          return `${fnName}(${arg})`;
+      }
+    },
+  );
+}
+
 function findMatchingParen(sql: string, openIndex: number): number {
   let depth = 0;
   let inSingle = false;
@@ -669,7 +819,7 @@ export function translateMySQL(
   }
 
   // SHOW WARNINGS / SHOW ERRORS — no-op for SQLite
-  if (/^SHOW\s+(WARNINGS|ERRORS)\s*;?$/i.test(norm)) {
+  if (/^SHOW\s+(COUNT\s*\(\s*\*\s*\)\s+)?(WARNINGS|ERRORS)\s*;?$/i.test(norm)) {
     return {
       sql: null,
       result: {
@@ -852,25 +1002,85 @@ export function translateMySQL(
     };
   }
   if (/^SHOW\s+(GLOBAL\s+|SESSION\s+)?VARIABLES/i.test(norm)) {
+    const likeMatch = norm.match(/\bLIKE\s+'((?:''|[^'])*)'/i);
+    const likePattern = likeMatch?.[1]?.replace(/''/g, "'");
+    const likeTest = (value: string): boolean => {
+      if (!likePattern) return true;
+      const regex = new RegExp(
+        `^${likePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.')}$`,
+        'i',
+      );
+      return regex.test(value);
+    };
+    const allRows = [
+      { Variable_name: 'version', Value: 'SQLite (WASM) — MySQL-compatible mode' },
+      { Variable_name: 'max_connections', Value: '1' },
+      { Variable_name: 'character_set_server', Value: 'utf8mb4' },
+      { Variable_name: 'collation_server', Value: 'utf8mb4_general_ci' },
+      { Variable_name: 'autocommit', Value: '1' },
+      { Variable_name: 'foreign_key_checks', Value: '1' },
+    ].filter((row) => likeTest(row.Variable_name));
     return {
       sql: null,
       result: {
         columns: ['Variable_name', 'Value'],
-        rows: [
-          { Variable_name: 'version', Value: 'SQLite (WASM) — MySQL-compatible mode' },
-          { Variable_name: 'max_connections', Value: '1' },
-        ],
-        rowCount: 2,
+        rows: allRows,
+        rowCount: allRows.length,
         executionTimeMs: 0,
       },
     };
   }
   if (/^SHOW\s+(GLOBAL\s+|SESSION\s+)?STATUS/i.test(norm)) {
+    const likeMatch = norm.match(/\bLIKE\s+'((?:''|[^'])*)'/i);
+    const likePattern = likeMatch?.[1]?.replace(/''/g, "'");
+    const likeTest = (value: string): boolean => {
+      if (!likePattern) return true;
+      const regex = new RegExp(
+        `^${likePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.')}$`,
+        'i',
+      );
+      return regex.test(value);
+    };
+    const allRows = [{ Variable_name: 'Uptime', Value: '0' }].filter((row) =>
+      likeTest(row.Variable_name),
+    );
     return {
       sql: null,
       result: {
         columns: ['Variable_name', 'Value'],
-        rows: [{ Variable_name: 'Uptime', Value: '0' }],
+        rows: allRows,
+        rowCount: allRows.length,
+        executionTimeMs: 0,
+      },
+    };
+  }
+  if (/^SHOW\s+PRIVILEGES\s*;?$/i.test(norm)) {
+    return {
+      sql: null,
+      result: {
+        columns: ['Privilege', 'Context', 'Comment'],
+        rows: [
+          { Privilege: 'Select', Context: 'Tables', Comment: 'To select rows from tables' },
+          { Privilege: 'Insert', Context: 'Tables', Comment: 'To insert rows into tables' },
+          { Privilege: 'Update', Context: 'Tables', Comment: 'To update rows in tables' },
+          { Privilege: 'Delete', Context: 'Tables', Comment: 'To delete rows from tables' },
+          { Privilege: 'Create', Context: 'Databases,Tables,Indexes', Comment: 'To create databases, tables and indexes' },
+          { Privilege: 'Drop', Context: 'Databases,Tables', Comment: 'To drop databases and tables' },
+          { Privilege: 'Alter', Context: 'Tables', Comment: 'To alter tables' },
+          { Privilege: 'Index', Context: 'Tables', Comment: 'To create and drop indexes' },
+          { Privilege: 'Execute', Context: 'Functions,Procedures', Comment: 'To execute stored routines' },
+        ],
+        rowCount: 9,
+        executionTimeMs: 0,
+      },
+    };
+  }
+  if (/^SHOW\s+ENGINE\s+\w+\s+STATUS\s*;?$/i.test(norm)) {
+    return {
+      sql: null,
+      result: {
+        columns: ['Type', 'Name', 'Status'],
+        rows: [{ Type: 'SQLite', Name: 'WASM backend', Status: '' }],
         rowCount: 1,
         executionTimeMs: 0,
       },
@@ -924,8 +1134,66 @@ export function translateMySQL(
     }
   }
 
+  // MySQL TABLE t shorthand → SELECT * FROM t
+  {
+    const m = norm.match(/^TABLE\s+[`"']?([\w$]+)[`"']?\s*;?$/i);
+    if (m) {
+      return { sql: `SELECT * FROM "${m[1]}"` };
+    }
+  }
+
+  // MySQL DROP INDEX idx ON tbl → SQLite DROP INDEX idx
+  {
+    const m = norm.match(/^DROP\s+INDEX\s+[`"']?([\w$]+)[`"']?\s+ON\s+[`"']?([\w$]+)[`"']?\s*;?$/i);
+    if (m) {
+      return { sql: `DROP INDEX IF EXISTS "${m[1]}"` };
+    }
+  }
+
+  // CREATE OR REPLACE VIEW → strip OR REPLACE (SQLite lacks it); best-effort for new views.
+  // Existing-view replacement is handled by attempting DROP first at execution time is out of
+  // scope for a single-string translation, so we degrade to plain CREATE VIEW here and let
+  // callers retry semantics surface naturally.
+  // NOTE: handled below via regex on translated text as well for TEMPORARY variants.
+
+  // INSERT ... SET col = val, ... → INSERT INTO t (cols) VALUES (vals)
+  {
+    const m = cleaned.match(
+      /^\s*INSERT\s+(?:LOW_PRIORITY\s+|DELAYED\s+|HIGH_PRIORITY\s+)?(?:IGNORE\s+)?(?:INTO\s+)?((?:`[^`]+`|"[^"]+"|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:`[^`]+`|"[^"]+"|[A-Za-z_][\w$]*))?)\s+SET\s+([\s\S]+?)\s*;?\s*$/i,
+    );
+    if (m && !/\bSELECT\b/i.test(m[2])) {
+      const target = m[1].trim();
+      const assignments = splitTopLevelComma(m[2]);
+      const columns: string[] = [];
+      const values: string[] = [];
+      let valid = assignments.length > 0;
+      for (const assignment of assignments) {
+        const eq = assignment.match(/^([\s\S]+?)\s*=\s*([\s\S]+)$/);
+        if (!eq) {
+          valid = false;
+          break;
+        }
+        columns.push(eq[1].trim());
+        values.push(eq[2].trim());
+      }
+      if (valid) {
+        const ignore = /\bINSERT\s+(?:LOW_PRIORITY\s+|DELAYED\s+|HIGH_PRIORITY\s+)?IGNORE\b/i.test(
+          cleaned,
+        )
+          ? 'OR IGNORE '
+          : '';
+        return { sql: `INSERT ${ignore}INTO ${target} (${columns.join(', ')}) VALUES (${values.join(', ')})` };
+      }
+    }
+  }
+
   // ENGINE=... / DEFAULT CHARSET=... / AUTO_INCREMENT — strip MySQL-specific clauses
   let translated = cleaned;
+
+  // CREATE OR REPLACE VIEW/TABLE early normalization (outside string literals).
+  translated = transformSqlCodeSegments(translated, (segment) =>
+    segment.replace(/\bCREATE\s+OR\s+REPLACE\s+(VIEW|TABLE|TRIGGER|PROCEDURE)\b/gi, 'CREATE $1'),
+  );
 
   translated = transformSqlCodeSegments(translated, (segment) => {
     let next = segment;
@@ -936,11 +1204,19 @@ export function translateMySQL(
     next = next.replace(/\s+AUTO_INCREMENT\s*=\s*\d+/gi, '');
     next = next.replace(/\s+COMMENT\s*=\s*'[^']*'/gi, '');
     next = next.replace(
-      /\bINT(?:EGER)?\s+AUTO_INCREMENT(?:\s+PRIMARY\s+KEY)?/gi,
+      /\b(?:INT(?:EGER)?|BIGINT|SMALLINT|MEDIUMINT|TINYINT)(?:\s+UNSIGNED)?\s+AUTO_INCREMENT(?:\s+PRIMARY\s+KEY)?/gi,
       'INTEGER PRIMARY KEY AUTOINCREMENT',
     );
     next = next.replace(/\s+AUTO_INCREMENT/gi, '');
     next = next.replace(/\s+UNSIGNED/gi, '');
+    // Per-column MySQL attributes with no SQLite equivalent.
+    next = next.replace(/\s+ZEROFILL\b/gi, '');
+    next = next.replace(/\s+BINARY\b(?!\s*\(\s*\d)/gi, '');
+    next = next.replace(/\s+CHARACTER\s+SET\s+[A-Za-z0-9_]+\b/gi, '');
+    next = next.replace(/\s+COLLATE\s+[A-Za-z0-9_]+\b/gi, '');
+    next = next.replace(/\s+COMMENT\s+'[^']*'/gi, '');
+    next = next.replace(/\s+ROW_FORMAT\s*=\s*\w+/gi, '');
+    next = next.replace(/\s+KEY_BLOCK_SIZE\s*=\s*\S+/gi, '');
     next = next.replace(/\bSQL_CALC_FOUND_ROWS\b/gi, '');
     next = next.replace(/\bSQL_NO_CACHE\b/gi, '');
     next = next.replace(/\bSQL_SMALL_RESULT\b/gi, '');
@@ -949,7 +1225,7 @@ export function translateMySQL(
     next = next.replace(/\bSTRAIGHT_JOIN\b/gi, 'JOIN');
     next = next.replace(/\s+FOR\s+UPDATE\b/gi, '');
     next = next.replace(/\s+LOCK\s+IN\s+SHARE\s+MODE\b/gi, '');
-    next = next.replace(/\bINSERT\s+IGNORE\b/gi, 'INSERT OR IGNORE');
+    next = next.replace(/\bINSERT\s+(?:LOW_PRIORITY\s+|DELAYED\s+|HIGH_PRIORITY\s+)?IGNORE\b/gi, 'INSERT OR IGNORE');
     next = next.replace(/\bREPLACE\s+INTO\b/gi, 'INSERT OR REPLACE INTO');
     next = next.replace(/\bLIMIT\s+(\d+)\s*,\s*(\d+)/gi, 'LIMIT $2 OFFSET $1');
     next = next.replace(/\bNVL\s*\(/gi, 'IFNULL(');
@@ -964,10 +1240,24 @@ export function translateMySQL(
     next = next.replace(/\bDATABASE\s*\(\s*\)/gi, `'${activeDatabase}'`);
     next = next.replace(/\b(?:CURRENT_USER|USER)\s*\(\s*\)/gi, `'${activeUser}'`);
     next = next.replace(/\bVERSION\s*\(\s*\)/gi, 'sqlite_version()');
+    // MySQL operators with no direct SQLite spelling.
+    next = next.replace(/<=>/g, ' IS ');
+    next = next.replace(/&&/g, ' AND ');
+    // `||` is string concatenation in SQLite but logical OR in MySQL's default mode.
+    // Our own CONCAT rewrite below reintroduces `||` after this step, so translate user
+    // `||` to OR here first.
+    next = next.replace(/\|\|/g, ' OR ');
+    next = next.replace(/([)\w'"\d`])\s+\bMOD\b\s+([(\w'"\d`])/gi, '$1 % $2');
+    next = next.replace(/([)\w'"\d`])\s+\bDIV\b\s+([(\w'"\d`])/gi, '$1 / $2');
     return next;
   });
 
   translated = applyConcatCompatibilityRewrites(translated);
+  translated = applyConcatWsCompatibilityRewrites(translated);
+  translated = applyGroupConcatCompatibilityRewrites(translated);
+  translated = applyIfCompatibilityRewrites(translated);
+  translated = applyDateCompatibilityRewrites(translated);
+  translated = applyMiscFunctionRewrites(translated);
   translated = rewriteOnDuplicateKeyUpdate(translated, db);
 
   if (/^CREATE\s+(?:TEMPORARY\s+)?TABLE\b/i.test(upper)) {
@@ -978,8 +1268,8 @@ export function translateMySQL(
   // ALTER TABLE ... CHANGE COLUMN old new TYPE → ALTER TABLE ... RENAME COLUMN old TO new
   // (Limited support — SQLite ALTER TABLE is restricted)
 
-  // Backtick → double-quote
-  translated = translated.replace(/`/g, '"');
+  // Backtick → double-quote (identifiers only; never inside string literals).
+  translated = transformSqlCodeSegments(translated, (segment) => segment.replace(/`/g, '"'));
 
   // Rewrite MySQL ANY / SOME / ALL subquery operators → SQLite-compatible
   translated = rewriteSubqueryOperators(translated);
