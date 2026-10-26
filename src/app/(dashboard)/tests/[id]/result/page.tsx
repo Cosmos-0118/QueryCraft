@@ -252,7 +252,7 @@ export default function TestResultPage() {
       }
     }
     return map;
-  }, [attempt?.answers]);
+  }, [attempt]);
 
   const reviewItems = useMemo(() => {
     if (attempt?.results && attempt.results.length > 0) {
@@ -279,7 +279,7 @@ export default function TestResultPage() {
       is_correct: false,
       feedback: '',
     }));
-  }, [attempt?.results, attempt?.answers, answerMap, questions]);
+  }, [attempt, answerMap, questions]);
 
   const questionMap = useMemo(() => {
     const map = new Map<string, Question>();
@@ -305,7 +305,7 @@ export default function TestResultPage() {
         )
         : []
     ),
-    [attempt?.violation_events],
+    [attempt],
   );
   const [selectedIntegrityEventIndex, setSelectedIntegrityEventIndex] = useState<number | null>(null);
   const [selectedAnswerInsight, setSelectedAnswerInsight] = useState<AnswerInsightPayload | null>(null);

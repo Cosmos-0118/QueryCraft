@@ -149,10 +149,6 @@ function EditTestModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setTitle(test?.title || '');
-  }, [test]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!test) return;
@@ -444,7 +440,6 @@ export default function TestsPage() {
 
   useEffect(() => {
     if (hydrated || typeof window === 'undefined') {
-      setHydrationTimeoutReached(false);
       return;
     }
 
@@ -460,12 +455,16 @@ export default function TestsPage() {
   useEffect(() => {
     if (!isTeacher) return;
     if (searchParams?.get('chooser') === '1') {
+      // Navigation requests the chooser through the URL, outside React state.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowTeacherModuleChooser(true);
     }
   }, [isTeacher, searchParams]);
 
   useEffect(() => {
     if (!hydrated || !isAuthenticated || !user) {
+      // Clear account-scoped results immediately when the external auth session changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTests([]);
       setStudentPastTests([]);
       setPastTestsError(null);
@@ -990,6 +989,7 @@ export default function TestsPage() {
         createdBy={user?.id ?? '999f68ef-cd80-4a7a-b02e-75f33c56a77f'}
       />
       <EditTestModal
+        key={`${editingTest?.id ?? 'new'}:${showEdit}`}
         open={showEdit}
         onClose={() => setShowEdit(false)}
         test={editingTest}

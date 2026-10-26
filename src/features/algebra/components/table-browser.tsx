@@ -64,12 +64,16 @@ export function TableBrowser({ open, onClose, tables, execute }: TableBrowserPro
       const r = execute(`SELECT COUNT(*) as c FROM "${t.name}"`);
       counts[t.name] = r.rows.length > 0 ? Number(r.rows[0].c) : 0;
     }
+    // SQL reads use an external mutable engine; execute also synchronizes its owner.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRowCounts(counts);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableKey, open]);
 
   const [previewData, setPreviewData] = useState<QueryResult | null>(null);
   useEffect(() => {
+    // Keep imperative engine reads outside render, including when clearing a preview.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!selectedTable || view !== 'data') { setPreviewData(null); return; }
     setPreviewData(execute(`SELECT * FROM "${selectedTable}" LIMIT 100`));
     // eslint-disable-next-line react-hooks/exhaustive-deps

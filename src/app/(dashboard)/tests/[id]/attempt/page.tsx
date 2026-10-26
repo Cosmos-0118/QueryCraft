@@ -219,6 +219,12 @@ export default function TestAttemptPage() {
           return;
         }
 
+        const loadedTest = testData.test as Test;
+        if (loadedTest.duration_minutes) {
+          setRemainingSeconds(loadedTest.duration_minutes * 60);
+          setAutoSubmitTriggered(false);
+        }
+
         const attemptRes = await fetch(`/api/tests/${testId}/attempts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -290,12 +296,6 @@ export default function TestAttemptPage() {
   }, [autoSubmitTriggered, submitted]);
 
   useEffect(() => {
-    if (!test?.duration_minutes) return;
-    setRemainingSeconds(test.duration_minutes * 60);
-    setAutoSubmitTriggered(false);
-  }, [test?.duration_minutes]);
-
-  useEffect(() => {
     if (loading || submitted) return;
 
     const timer = setInterval(() => {
@@ -315,6 +315,8 @@ export default function TestAttemptPage() {
     if (remainingSeconds > 0) return;
     if (!questions.length || !attemptId || !testId) return;
 
+    // Lock submission immediately when the external countdown expires.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAutoSubmitTriggered(true);
     setSubmitting(true);
     setSaveMessage(null);

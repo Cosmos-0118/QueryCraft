@@ -2107,6 +2107,7 @@ export default function NormalizerPage() {
         () => fdDialogTableOptions.find((entry) => entry.table.id === fdDialogTableId)?.table ?? null,
         [fdDialogTableId, fdDialogTableOptions],
     );
+    const [previousFdDialogTable, setPreviousFdDialogTable] = useState<TableSchema | null>(null);
     const fdStageTableCounts = useMemo(
         () =>
             STAGES.map((stage) => ({
@@ -2538,18 +2539,15 @@ export default function NormalizerPage() {
         }
     }, [canvases, hasAnyTables, isAiLoading]);
 
-    useEffect(() => {
-        if (!isFdDialogOpen) return;
+    // Reconcile selection before committing the dialog, avoiding an intermediate
+    // render with a stale table after the stage or available tables change.
+    if (isFdDialogOpen) {
         if (fdDialogTableOptions.length === 0) {
             if (fdDialogTableId !== '') setFdDialogTableId('');
-            return;
-        }
-
-        const exists = fdDialogTableOptions.some((entry) => entry.table.id === fdDialogTableId);
-        if (!exists) {
+        } else if (!fdDialogTableOptions.some((entry) => entry.table.id === fdDialogTableId)) {
             setFdDialogTableId(fdDialogTableOptions[0].table.id);
         }
-    }, [fdDialogTableId, fdDialogTableOptions, isFdDialogOpen]);
+    }
 
     useEffect(() => {
         if (!isFdDialogOpen) return;
@@ -2583,14 +2581,11 @@ export default function NormalizerPage() {
         };
     }, [isFdDialogOpen]);
 
-    useEffect(() => {
-        if (!fdDialogTable) {
-            setFdDeterminantDraft((previous) => (previous.length === 0 ? previous : []));
-            setFdDependentDraft((previous) => (previous.length === 0 ? previous : []));
-            return;
-        }
-
-        const validColumns = new Set(fdDialogTable.columns.map((column) => column.name));
+    // Discard invalid draft attributes as the selected schema changes, before
+    // children can submit a dependency against the previous schema.
+    if (fdDialogTable !== previousFdDialogTable) {
+        setPreviousFdDialogTable(fdDialogTable);
+        const validColumns = new Set(fdDialogTable?.columns.map((column) => column.name) ?? []);
         setFdDeterminantDraft((previous) => {
             const next = previous.filter((column) => validColumns.has(column));
             return next.length === previous.length ? previous : next;
@@ -2599,7 +2594,7 @@ export default function NormalizerPage() {
             const next = previous.filter((column) => validColumns.has(column));
             return next.length === previous.length ? previous : next;
         });
-    }, [fdDialogTable]);
+    }
 
     useEffect(() => {
         if (!isGeneratorMenuOpen) return;

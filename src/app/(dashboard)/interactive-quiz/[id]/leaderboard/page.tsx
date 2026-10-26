@@ -57,7 +57,7 @@ export default function InteractiveQuizLeaderboardPage() {
   const testId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const attemptId = searchParams.get('attemptId') ?? undefined;
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(testId));
   const [error, setError] = useState<string | null>(null);
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [currentEntry, setCurrentEntry] = useState<LeaderboardEntry | null>(null);
@@ -66,8 +66,6 @@ export default function InteractiveQuizLeaderboardPage() {
 
   useEffect(() => {
     if (!testId) {
-      setLoading(false);
-      setError('Missing test ID.');
       return;
     }
 
@@ -142,6 +140,8 @@ export default function InteractiveQuizLeaderboardPage() {
     };
   }, [testId]);
 
+  const displayError = error ?? (!testId ? 'Missing test ID.' : null);
+
   const stats = useMemo(() => {
     const n = entries.length;
     const sum = entries.reduce((s, e) => s + e.points, 0);
@@ -171,13 +171,13 @@ export default function InteractiveQuizLeaderboardPage() {
     );
   }
 
-  if (error) {
+  if (displayError) {
     return (
       <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
         <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,color-mix(in_oklab,var(--primary)_12%,transparent),transparent_45%),radial-gradient(ellipse_at_top_right,color-mix(in_oklab,var(--accent)_10%,transparent),transparent_45%)]" />
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">
           <p className="font-semibold">Unable to load leaderboard</p>
-          <p className="mt-1 text-sm text-red-300/90">{error}</p>
+          <p className="mt-1 text-sm text-red-300/90">{displayError}</p>
           <Link
             href={backPath}
             className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/70 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-border hover:text-foreground"

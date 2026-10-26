@@ -347,7 +347,7 @@ export default function InteractiveQuizPage() {
   }, [hydrated, isAuthenticated, isAdmin, router]);
 
   const [tests, setTests] = useState<Test[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(user?.role && user?.id));
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
@@ -358,7 +358,6 @@ export default function InteractiveQuizPage() {
 
   useEffect(() => {
     if (!user?.role || !user?.id) {
-      setLoading(false);
       return;
     }
 

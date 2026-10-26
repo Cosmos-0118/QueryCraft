@@ -812,17 +812,6 @@ export default function TestDetailPage() {
     isInteractiveQuiz,
   ]);
 
-  useEffect(() => {
-    setQuestionBankPage(0);
-  }, [
-    questionBankQuery,
-    questionBankDifficulty,
-    questionBankType,
-    questionBankUnit,
-    questionBankUploadedFrom,
-    questionBankUploadedTo,
-  ]);
-
   const toggleQuestionBankSelection = (questionId: string) => {
     setQuestionBankSelectedIds((prev) => (
       prev.includes(questionId)

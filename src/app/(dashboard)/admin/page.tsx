@@ -116,6 +116,9 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     if (hydrated && isAuthenticated && user?.role === 'admin') {
+      // Authentication readiness is the trigger for this async data request.
+      // Showing its loading state before the network round trip is intentional.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void loadAccounts();
     }
   }, [hydrated, isAuthenticated, loadAccounts, user?.role]);

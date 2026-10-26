@@ -8,12 +8,11 @@ import {
   ArrowLeft,
   CircuitBoard,
   GraduationCap,
-  Github,
-  Linkedin,
   Sparkles,
   UserRound,
   UsersRound,
 } from 'lucide-react';
+import { Github, Linkedin } from '@/features/our-team/components/brand-icons';
 import TeamMemberImage from '@/features/our-team/components/TeamMemberImage';
 import { preloadImages } from '@/shared/lib/preload-images';
 import { useLoadingStore } from '@/shared/ui/loading/store';

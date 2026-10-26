@@ -386,6 +386,8 @@ export function useSqlEngine(options?: { isolated?: boolean }) {
   useEffect(() => {
     // --- Isolated engines: ephemeral, no caching ---
     if (isolated) {
+      // This effect synchronizes React state with an imperative, account-scoped SQL runtime.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsReady(false);
       setTables([]);
       setDatabases([]);

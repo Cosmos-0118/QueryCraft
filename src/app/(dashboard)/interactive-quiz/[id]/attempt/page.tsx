@@ -137,6 +137,11 @@ function formatSeconds(seconds: number) {
   return `${mins}:${secs}`;
 }
 
+// Kept outside the render path so event handlers can sample wall-clock time.
+function getCurrentTimeMs() {
+  return Date.now();
+}
+
 export default function InteractiveQuizAttemptPage() {
   const router = useRouter();
   const params = useParams();
@@ -168,7 +173,7 @@ export default function InteractiveQuizAttemptPage() {
   const [autoSubmitTriggered, setAutoSubmitTriggered] = useState(false);
   const [integrityNotice, setIntegrityNotice] = useState<string | null>(null);
 
-  const questionStartedAtRef = useRef<number>(Date.now());
+  const questionStartedAtRef = useRef<number>(0);
   const advancingRef = useRef(false);
   const violationCountRef = useRef(0);
   const lastPrimaryViolationAtRef = useRef(0);
@@ -485,6 +490,9 @@ export default function InteractiveQuizAttemptPage() {
       return;
     }
 
+    // Advancing questions resets the per-question clock and pending selection.
+    // These are lifecycle updates tied to the newly loaded question.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRemainingSeconds(settings.question_timer_seconds);
     questionStartedAtRef.current = Date.now();
     setPendingOptionKey(null);
@@ -843,6 +851,9 @@ export default function InteractiveQuizAttemptPage() {
       return;
     }
 
+    // A zero timer records the unanswered question and advances the attempt
+    // state, which is the timeout's intentional lifecycle transition.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTimingByQuestion((previous) => {
       if (previous[currentQuestion.id] !== undefined) {
         return previous;
@@ -886,7 +897,7 @@ export default function InteractiveQuizAttemptPage() {
       0,
       Math.min(
         settings.question_timer_seconds,
-        Math.round((Date.now() - questionStartedAtRef.current) / 1000),
+        Math.round((getCurrentTimeMs() - questionStartedAtRef.current) / 1000),
       ),
     );
 

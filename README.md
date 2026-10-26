@@ -61,7 +61,7 @@ API routes:
 
 Prerequisites:
 
-- Node.js 20+
+- Node.js 22.13+ (22.x), 24.x, or 26+
 - npm
 
 Install and run:
@@ -110,9 +110,11 @@ npm run test-db:migrate
 - `npm run build`: create production build.
 - `npm run start`: run production server.
 - `npm run lint`: run ESLint.
+- `npm run typecheck`: check TypeScript without emitting files.
 - `npm run format`: run Prettier over repository.
 - `npm run test`: run Vitest test suite once.
 - `npm run test:watch`: run Vitest in watch mode.
+- `npm run sync:sql-wasm`: copy the installed sql.js WASM runtime to `public/` (also runs after installation).
 - `npm run test-db:migrate:status`: show Test DB migration status.
 - `npm run test-db:migrate`: apply pending Test DB migrations.
 - `npm run test-db:migrate:down`: roll back the latest Test DB migration.
@@ -138,6 +140,12 @@ Current bundled datasets:
 This design is intended for learning workflows, not production authentication.
 
 ## Tests
+
+TypeScript stays on 6.0.x because the ESLint TypeScript parser requires a version
+below 6.1. Node type definitions track the minimum supported Node major (22).
+ESLint stays on the latest 9.x release because Next's React, accessibility, and
+import plugins do not yet support ESLint 10. npm reports an upstream support
+deprecation for ESLint 9; upgrading it currently creates invalid peer dependencies.
 
 The unit suite validates:
 
